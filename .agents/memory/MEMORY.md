@@ -1,0 +1,1 @@
+- [ZERO3 public display](zero3-public-display.md) — Keep the public screen as one Brasília-clock TV with SC/RX results and podiums; admin work stays separate.
