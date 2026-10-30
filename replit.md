@@ -43,3 +43,4 @@ _Populate as you build — sharp edges, "always run X before Y" rules._
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- ZERO3 integration audit and progress notes: `docs/zero3-live/CONTEXTO.md` and `docs/zero3-live/PROGRESSO.md`
