@@ -4,6 +4,12 @@
 
 **Bloco 1 concluído como auditoria. Blocos 2–6 bloqueados para homologação ou implementação funcional:** a aplicação e os dados reais do ZERO3 PRO não estão acessíveis neste projeto.
 
+## Atualização de escopo — TV única
+
+A orientação mais recente substitui a separação anterior de Timer e Leaderboard públicos: uma única página/TV mostra o relógio civil `America/Sao_Paulo` e as áreas SC/RX simultaneamente; o painel administrativo permanece separado. Resultados confirmados atualizam a área correspondente sem recarga, e o pódio continua manual na mesma TV.
+
+Essa alteração foi registrada em `docs/zero3-live/CONTEXTO.md` e `docs/zero3-live/TESTES.md`. Não foi implementada porque o app ZERO3 e seus dados continuam ausentes neste workspace.
+
 ## Concluído
 
 - Inspecionados os arquivos rastreados, instruções do repositório, contratos, schema, servidor, manifests, configuração de serviço e histórico Git disponível.

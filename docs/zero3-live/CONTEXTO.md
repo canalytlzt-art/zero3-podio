@@ -7,10 +7,22 @@ Evoluir o ZERO3 PRO Leaderboard/Timer existente, preservando seu timer, autentic
 As experiências pretendidas são:
 
 1. Controle autorizado pelo computador ou celular.
-2. TV acompanhando a execução compartilhada e exibindo chegadas provisórias.
-3. Leaderboard final com vencedores RX e SC definidos e publicados manualmente.
+2. Uma única página pública em uma única TV, acompanhando a execução e os resultados.
+3. Leaderboard final com vencedores RX e SC definidos e publicados manualmente na mesma TV.
 
 Não inventar provas, atletas, regras, agrupamentos ou pontuação. Não automatizar soma de pontos nem classificação geral nesta etapa. Não alterar dados oficiais nem publicar em produção.
+
+## Exibição pública — escopo vigente
+
+Esta decisão substitui qualquer instrução anterior que separasse Timer e Leaderboard em duas telas públicas:
+
+- Uma página pública única permanece aberta em uma TV; o painel administrativo segue separado.
+- No topo, exibir a hora atual de Brasília em `HH:mm:ss`, usando explicitamente `America/Sao_Paulo`, atualizada a cada segundo.
+- Manter esse relógio independente da duração esportiva: iniciar, pausar ou encerrar a prova não altera a hora civil.
+- Abaixo do relógio, exibir simultaneamente as áreas SC e RX.
+- Cada resultado confirmado aparece automaticamente na área correspondente, sem recarregar; resultados já exibidos permanecem ao trocar de bateria.
+- Vencedores finais continuam escolhidos manualmente e aparecem na respectiva área da mesma TV.
+- Não inferir que SC equivale a Scale sem confirmar os cadastros reais.
 
 ## Estado da base inspecionada
 

@@ -4,6 +4,17 @@
 
 **Homologação do ZERO3 bloqueada.** O projeto ZERO3 e um ambiente Development isolado não estão acessíveis. Os checks abaixo são apenas do scaffold presente e não aprovam nenhum fluxo esportivo.
 
+## Critérios atuais — TV pública única
+
+A revisão de escopo mais recente substitui qualquer plano anterior de duas telas públicas. Estes critérios continuam **não testados**:
+
+- Uma única página pública em uma TV, com painel administrativo separado.
+- Hora civil `America/Sao_Paulo` em `HH:mm:ss`, atualizada a cada segundo e sem depender do timer esportivo.
+- Áreas SC e RX simultâneas; cada lançamento confirmado aparece na categoria correta sem recarregar.
+- Resultados anteriores permanecem visíveis ao trocar de bateria.
+- Pódios finais são escolhidos manualmente e aparecem na mesma TV, na área de cada categoria.
+- Nenhuma associação automática de SC com Scale sem confirmação dos dados reais.
+
 ## Checks executados
 
 | Check | Resultado | O que comprova — e o que não comprova |
