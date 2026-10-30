@@ -2,7 +2,7 @@
 
 ## Estado
 
-**Bloco 1 concluído como auditoria. Blocos 2–5 bloqueados para implementação funcional:** a aplicação e os dados reais do ZERO3 PRO não estão acessíveis neste projeto.
+**Bloco 1 concluído como auditoria. Blocos 2–6 bloqueados para homologação ou implementação funcional:** a aplicação e os dados reais do ZERO3 PRO não estão acessíveis neste projeto.
 
 ## Concluído
 
@@ -52,9 +52,17 @@ O Bloco 5 depende dos eventos, categorias, inscrições, papéis de acesso e ser
 - Não inferir vencedores, categorias, posições, pontos ou dados de equipe.
 - Testar rascunho privado, publicação isolada por categoria, retificação, recuperação após recarga e ocultação de dados internos.
 
+## Bloco 6 — ensaio bloqueado
+
+- Não foi criado o evento `TESTE` nem inseridos atletas fictícios: este workspace não tem schema de eventos, atletas, equipes ou inscrições, e não há banco Development isolado confirmado.
+- Não foram executados os fluxos de importação, timer, chegadas, revisão, pódio ou TV.
+- O typecheck do workspace e o health check da API genérica passaram; isso não é homologação ZERO3.
+- Não há links reais de controle, timer/chegadas ou leaderboard final para entregar.
+- Um guia operacional real, instruções de importação/backup e cuidados de reversão dependem da interface, rotinas e banco verdadeiros; não foram inventados.
+
 ## Testes executados
 
-Nenhum teste funcional de timer, captura, leaderboard ou projeção pública foi executado: não há aplicação ZERO3 nem ambiente isolado confirmado. Não foram feitas importações, seeds, consultas a dados oficiais ou migrações.
+Os dois checks disponíveis do scaffold passaram. Nenhum teste funcional de timer, captura, leaderboard ou projeção pública foi executado: não há aplicação ZERO3 nem ambiente isolado confirmado. Ver detalhes em `docs/zero3-live/TESTES.md`. Não foram feitas importações, seeds, consultas a dados oficiais ou migrações.
 
 ## Riscos conhecidos
 
@@ -64,6 +72,7 @@ Nenhum teste funcional de timer, captura, leaderboard ou projeção pública foi
 - Implementar um timer novo aqui criaria uma execução paralela, sem garantia de equivalência com os formatos, CAP, pausas e resultados do app existente.
 - Implementar chegadas neste scaffold não permitiria validar a participação correta, a janela do score, a sincronização do instante ou o fluxo de revisão usado pelo app real.
 - Criar pódios sem inscrições, categorias e permissões reais poderia publicar vencedores incorretos ou expor rascunhos.
+- Tratar typecheck ou health check do scaffold como aprovação do ZERO3 criaria uma falsa homologação.
 
 ## Checkpoint e próxima etapa
 
@@ -71,5 +80,6 @@ Nenhum teste funcional de timer, captura, leaderboard ou projeção pública foi
 - Checkpoint documental do Bloco 2: `95d9b33`.
 - Checkpoint documental do Bloco 3: `79be225`.
 - Checkpoint documental do Bloco 4: `863d3e7`.
-- Checkpoint documental deste registro do Bloco 5: revisão Git de encerramento desta etapa; nenhum código do produto ou dado foi alterado.
-- Próxima etapa: localizar ou disponibilizar o projeto ZERO3 correto; concluir os Blocos 2–5 em ordem. Não iniciar o Bloco 6.
+- Checkpoint documental do Bloco 5: `d4d7ff2`.
+- Checkpoint final documental do Bloco 6: revisão Git de encerramento desta etapa; nenhum código do produto ou dado foi alterado.
+- Próxima etapa: localizar ou disponibilizar o projeto ZERO3 correto antes de qualquer homologação ou publicação.

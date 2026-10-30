@@ -18,6 +18,13 @@ O código-base ZERO3 não está presente nos arquivos acessíveis deste projeto.
 
 O histórico Git acessível contém a revisão inicial `fa3ed5c` (`Initial commit`). Essa revisão é o registro da base observada no início do Bloco 2; não é uma confirmação de que a aplicação ZERO3 esteja incluída.
 
+## Validação observada no scaffold
+
+- `pnpm run typecheck` passou para as bibliotecas, API genérica, Canvas e scripts do workspace.
+- `GET /api/healthz` respondeu `{"status":"ok"}`.
+- Esses checks validam apenas o scaffold disponível; não comprovam autenticação, banco, timer, captura, resultados ou TV do ZERO3.
+- Resultados e limites da homologação estão em `docs/zero3-live/TESTES.md`.
+
 ## Mapa dos arquivos reais relevantes
 
 | Arquivo/serviço | Conteúdo observado |
