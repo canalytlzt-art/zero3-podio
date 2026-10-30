@@ -2,7 +2,7 @@
 
 ## Estado
 
-**Bloco 1 concluído como auditoria. Blocos 2, 3 e 4 bloqueados para implementação funcional:** a aplicação e os dados reais do ZERO3 PRO não estão acessíveis neste projeto.
+**Bloco 1 concluído como auditoria. Blocos 2–5 bloqueados para implementação funcional:** a aplicação e os dados reais do ZERO3 PRO não estão acessíveis neste projeto.
 
 ## Concluído
 
@@ -42,9 +42,19 @@ O Bloco 4 depende do timer, da execução compartilhada e dos vínculos de bater
 - Localizar a projeção de TV para mantê-la somente leitura, sem expor observações internas ou publicar pódio.
 - Testar idempotência, chegadas concorrentes em raias distintas, rejeições/revisões temporais e a preservação exata de `135000 ms` antes do arredondamento.
 
+## Bloco 5 — pendente
+
+O Bloco 5 depende dos eventos, categorias, inscrições, papéis de acesso e serviço de publicação reais, que não existem no código acessível. Não foi criado um leaderboard paralelo.
+
+- Localizar como as inscrições, categorias e subdivisões existentes identificam os participantes elegíveis para o pódio.
+- Reutilizar as permissões e a publicação existentes; confirmar como preservar versões, auditoria e retirada explícita.
+- Identificar a projeção pública da TV e garantir separação entre rascunho e versão publicada.
+- Não inferir vencedores, categorias, posições, pontos ou dados de equipe.
+- Testar rascunho privado, publicação isolada por categoria, retificação, recuperação após recarga e ocultação de dados internos.
+
 ## Testes executados
 
-Nenhum teste funcional, medição de diferença entre telas/latência ou verificação de captura foi executado: não há aplicação ZERO3 nem ambiente isolado confirmado. Não foram feitas importações, seeds, consultas a dados oficiais ou migrações.
+Nenhum teste funcional de timer, captura, leaderboard ou projeção pública foi executado: não há aplicação ZERO3 nem ambiente isolado confirmado. Não foram feitas importações, seeds, consultas a dados oficiais ou migrações.
 
 ## Riscos conhecidos
 
@@ -53,11 +63,13 @@ Nenhum teste funcional, medição de diferença entre telas/latência ou verific
 - O banco efetivo de Development e sua separação da produção não foram verificados.
 - Implementar um timer novo aqui criaria uma execução paralela, sem garantia de equivalência com os formatos, CAP, pausas e resultados do app existente.
 - Implementar chegadas neste scaffold não permitiria validar a participação correta, a janela do score, a sincronização do instante ou o fluxo de revisão usado pelo app real.
+- Criar pódios sem inscrições, categorias e permissões reais poderia publicar vencedores incorretos ou expor rascunhos.
 
 ## Checkpoint e próxima etapa
 
 - Revisão Git de partida: `fa3ed5c` (`Initial commit`), árvore de trabalho limpa no início da etapa.
 - Checkpoint documental do Bloco 2: `95d9b33`.
 - Checkpoint documental do Bloco 3: `79be225`.
-- Checkpoint documental deste registro do Bloco 4: revisão Git de encerramento desta etapa; nenhum código do produto ou dado foi alterado.
-- Próxima etapa: localizar ou disponibilizar o projeto ZERO3 correto; concluir os Blocos 2, 3 e 4 em ordem. Não iniciar o Bloco 5.
+- Checkpoint documental do Bloco 4: `863d3e7`.
+- Checkpoint documental deste registro do Bloco 5: revisão Git de encerramento desta etapa; nenhum código do produto ou dado foi alterado.
+- Próxima etapa: localizar ou disponibilizar o projeto ZERO3 correto; concluir os Blocos 2–5 em ordem. Não iniciar o Bloco 6.
