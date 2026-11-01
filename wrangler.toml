@@ -19,4 +19,4 @@ run_worker_first = ["/api/*"]
 binding = "HYPERDRIVE"
 # Placeholder only. Replace with a cache-disabled Hyperdrive configuration ID
 # after an externally reachable PostgreSQL origin is available.
-id = "00000000000000000000000000000000"
+id = "794b0f4bf3534892be7b89be1613c7bc"
