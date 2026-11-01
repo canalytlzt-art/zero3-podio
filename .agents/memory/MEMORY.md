@@ -1,1 +1,2 @@
 - [ZERO3 public display](zero3-public-display.md) — Keep the public screen as one Brasília-clock TV with SC/RX results and podiums; admin work stays separate.
+- [Clerk package compatibility](clerk-package-compatibility.md) — Keep Clerk React and shared packages on compatible major lines; misaligned exports can fail only during Vite bundling.

@@ -21,3 +21,10 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.development]
+ZERO3_INITIAL_ADMIN_EMAIL = "canalytlzt@gmail.com"
+
+[userenv.shared]

@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: zero3
+    description: ZERO3 competition operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,513 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /zero3/me:
+    get:
+      operationId: getZero3Me
+      tags: [zero3]
+      summary: Get current app role
+      responses:
+        "200":
+          description: Authenticated user role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Me"
+        "401":
+          description: Authentication required
+  /zero3/dashboard:
+    get:
+      operationId: getZero3Dashboard
+      tags: [zero3]
+      summary: Get operation summary
+      responses:
+        "200":
+          description: Summary for the current operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Dashboard"
+        "401":
+          description: Authentication required
+  /zero3/events:
+    get:
+      operationId: listZero3Events
+      tags: [zero3]
+      summary: List competition events
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Zero3Event"
+        "401":
+          description: Authentication required
+    post:
+      operationId: createZero3Event
+      tags: [zero3]
+      summary: Create an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3EventInput"
+      responses:
+        "201":
+          description: Created event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Event"
+        "401":
+          description: Authentication required
+  /zero3/events/{eventId}:
+    patch:
+      operationId: updateZero3Event
+      tags: [zero3]
+      summary: Update an event
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3EventUpdate"
+      responses:
+        "200":
+          description: Updated event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Event"
+        "401":
+          description: Authentication required
+        "404":
+          description: Event not found
+  /zero3/events/{eventId}/heats:
+    get:
+      operationId: listZero3Heats
+      tags: [zero3]
+      summary: List event heats
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event heats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Zero3Heat"
+        "401":
+          description: Authentication required
+    post:
+      operationId: createZero3Heat
+      tags: [zero3]
+      summary: Create an event heat
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3HeatInput"
+      responses:
+        "201":
+          description: Created heat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Heat"
+        "401":
+          description: Authentication required
+        "409":
+          description: Heat order already exists
+  /zero3/events/{eventId}/active-heats/{category}:
+    put:
+      operationId: setZero3ActiveHeat
+      tags: [zero3]
+      summary: Select the heat shown for one category on the public TV
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: category
+          required: true
+          schema: { $ref: "#/components/schemas/Zero3Category" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3ActiveHeatInput"
+      responses:
+        "200":
+          description: Active heat selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3ActiveHeat"
+        "400":
+          description: Heat does not belong to this event and category
+        "401":
+          description: Authentication required
+  /zero3/events/{eventId}/registrations:
+    get:
+      operationId: listZero3Registrations
+      tags: [zero3]
+      summary: List event registrations
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Registered teams and athletes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Zero3Registration"
+        "401":
+          description: Authentication required
+    post:
+      operationId: createZero3Registration
+      tags: [zero3]
+      summary: Register a team or athlete
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3RegistrationInput"
+      responses:
+        "201":
+          description: Created registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Registration"
+        "400":
+          description: Invalid or duplicate registration
+        "401":
+          description: Authentication required
+  /zero3/events/{eventId}/registrations/{registrationId}:
+    patch:
+      operationId: updateZero3Registration
+      tags: [zero3]
+      summary: Add or edit a team name without changing its registration
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: registrationId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3RegistrationUpdate"
+      responses:
+        "200":
+          description: Updated registration; athlete and result links remain unchanged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Registration"
+        "401":
+          description: Authentication required
+        "404":
+          description: Registration not found
+  /zero3/athletes:
+    get:
+      operationId: listZero3Athletes
+      tags: [zero3]
+      summary: List persistent athlete records
+      responses:
+        "200":
+          description: Athletes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Zero3Athlete"
+        "401":
+          description: Authentication required
+    post:
+      operationId: createZero3Athlete
+      tags: [zero3]
+      summary: Create an athlete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3AthleteInput"
+      responses:
+        "201":
+          description: Created athlete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Athlete"
+        "401":
+          description: Authentication required
+  /zero3/events/{eventId}/timer:
+    put:
+      operationId: controlZero3Timer
+      tags: [zero3]
+      summary: Apply a shared sports timer command
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3TimerCommand"
+      responses:
+        "200":
+          description: Updated shared timer state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Timer"
+        "401":
+          description: Authentication required
+        "409":
+          description: Timer state changed in another client
+  /zero3/results:
+    post:
+      operationId: captureZero3Result
+      tags: [zero3]
+      summary: Record a finish result
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3ResultInput"
+      responses:
+        "201":
+          description: Recorded provisional result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Result"
+        "400":
+          description: Invalid or duplicate finish
+        "401":
+          description: Authentication required
+  /zero3/results/{resultId}:
+    patch:
+      operationId: updateZero3Result
+      tags: [zero3]
+      summary: Validate or correct a result
+      parameters:
+        - in: path
+          name: resultId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3ResultUpdate"
+      responses:
+        "200":
+          description: Updated result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Result"
+        "401":
+          description: Authentication required
+        "404":
+          description: Result not found
+  /zero3/events/{eventId}/podiums/{category}:
+    get:
+      operationId: getZero3PodiumState
+      tags: [zero3]
+      summary: Get private podium draft and public version
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: category
+          required: true
+          schema:
+            $ref: "#/components/schemas/Zero3Category"
+      responses:
+        "200":
+          description: Draft is private; published version is separately identified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3PodiumState"
+        "401":
+          description: Authentication required
+    put:
+      operationId: saveZero3PodiumDraft
+      tags: [zero3]
+      summary: Save a private manual podium draft
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: category
+          required: true
+          schema:
+            $ref: "#/components/schemas/Zero3Category"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3PodiumInput"
+      responses:
+        "200":
+          description: Saved podium draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Podium"
+        "401":
+          description: Authentication required
+  /zero3/events/{eventId}/podiums/{category}/publish:
+    post:
+      operationId: publishZero3Podium
+      tags: [zero3]
+      summary: Publish a manual podium to the public TV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3PodiumPublishInput"
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: category
+          required: true
+          schema:
+            $ref: "#/components/schemas/Zero3Category"
+      responses:
+        "200":
+          description: Published podium
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Podium"
+        "401":
+          description: Authentication required
+        "400":
+          description: Podium does not reference valid registrations
+  /zero3/members:
+    get:
+      operationId: listZero3Members
+      tags: [zero3]
+      summary: List authorized operation members
+      responses:
+        "200":
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Zero3Member"
+        "401":
+          description: Authentication required
+    put:
+      operationId: setZero3MemberRole
+      tags: [zero3]
+      summary: Grant an operation role to a verified email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3MemberInput"
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Member"
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator access required
+  /zero3/public-board:
+    get:
+      operationId: getZero3PublicBoard
+      tags: [zero3]
+      summary: Get the unified public competition TV board
+      parameters:
+        - in: query
+          name: eventId
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public SC/RX results and podiums with timer state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3PublicBoard"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +542,291 @@ components:
           type: string
       required:
         - status
+    Zero3Category:
+      type: string
+      enum: [SC, RX]
+    Zero3Role:
+      type: string
+      enum: [ADMIN, JUIZ_CHEFE, JUIZ]
+    Zero3EventStatus:
+      type: string
+      enum: [PLANNED, ACTIVE, FINISHED]
+    Zero3ResultStatus:
+      type: string
+      enum: [PROVISIONAL, VALIDATED, DNS, DNF]
+    Zero3TimerState:
+      type: string
+      enum: [IDLE, PREPARATION, RUNNING, PAUSED, FINISHED]
+    Zero3Me:
+      type: object
+      properties:
+        userId: { type: string }
+        email: { type: ["string", "null"] }
+        role: { $ref: "#/components/schemas/Zero3Role" }
+      required: [userId, role]
+    Zero3Dashboard:
+      type: object
+      properties:
+        eventCount: { type: integer }
+        athleteCount: { type: integer }
+        activeEvent: { $ref: "#/components/schemas/Zero3Event" }
+        recentResults:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3Result" }
+        connected: { type: boolean }
+      required: [eventCount, athleteCount, recentResults, connected]
+    Zero3Event:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        proofName: { type: string }
+        status: { $ref: "#/components/schemas/Zero3EventStatus" }
+        preparationSeconds: { type: integer }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, proofName, status, preparationSeconds, createdAt]
+    Zero3EventInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        proofName: { type: string, minLength: 1 }
+        preparationSeconds: { type: integer, minimum: 0, maximum: 120 }
+      required: [name, proofName, preparationSeconds]
+    Zero3EventUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        proofName: { type: string, minLength: 1 }
+        status: { $ref: "#/components/schemas/Zero3EventStatus" }
+        preparationSeconds: { type: integer, minimum: 0, maximum: 120 }
+      minProperties: 1
+    Zero3Athlete:
+      type: object
+      properties:
+        id: { type: string }
+        fullName: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, fullName, createdAt]
+    Zero3AthleteInput:
+      type: object
+      properties:
+        fullName: { type: string, minLength: 1 }
+      required: [fullName]
+    Zero3Registration:
+      type: object
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        teamName: { type: ["string", "null"] }
+        athleteIds:
+          type: array
+          items: { type: string }
+        athleteNames:
+          type: array
+          items: { type: string }
+        laneLabel: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+      required: [id, eventId, category, athleteIds, athleteNames, createdAt]
+    Zero3RegistrationInput:
+      type: object
+      properties:
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        teamName: { type: ["string", "null"] }
+        athleteIds:
+          type: array
+          items: { type: string }
+          minItems: 1
+        laneLabel: { type: ["string", "null"] }
+      required: [category, athleteIds]
+    Zero3RegistrationUpdate:
+      type: object
+      properties:
+        teamName: { type: ["string", "null"] }
+      required: [teamName]
+    Zero3Heat:
+      type: object
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        name: { type: string }
+        order: { type: integer }
+        registrations:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3Registration" }
+      required: [id, eventId, category, name, order, registrations]
+    Zero3ActiveHeat:
+      type: object
+      properties:
+        eventId: { type: string }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        heatId: { type: ["string", "null"] }
+        heatName: { type: ["string", "null"] }
+        updatedAt: { type: string, format: date-time }
+      required: [eventId, category, heatId, heatName, updatedAt]
+    Zero3ActiveHeatInput:
+      type: object
+      properties:
+        heatId: { type: ["string", "null"] }
+      required: [heatId]
+    Zero3HeatInput:
+      type: object
+      properties:
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        name: { type: string, minLength: 1 }
+        order: { type: integer, minimum: 1 }
+        registrationIds:
+          type: array
+          items: { type: string }
+      required: [category, name, order]
+    Zero3Timer:
+      type: object
+      properties:
+        eventId: { type: string }
+        state: { $ref: "#/components/schemas/Zero3TimerState" }
+        elapsedMs: { type: integer, minimum: 0 }
+        preparationRemainingMs: { type: integer, minimum: 0 }
+        preparationSeconds: { type: integer }
+        startedAt: { type: ["string", "null"], format: date-time }
+        version: { type: integer }
+        updatedAt: { type: string, format: date-time }
+      required: [eventId, state, elapsedMs, preparationRemainingMs, preparationSeconds, version, updatedAt]
+    Zero3TimerCommand:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [prepare, start, pause, resume, finish, reset]
+        expectedVersion: { type: integer, minimum: 0 }
+        commandId: { type: string, minLength: 1 }
+      required: [action, expectedVersion, commandId]
+    Zero3Result:
+      type: object
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        registrationId: { type: string }
+        heatId: { type: ["string", "null"] }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        laneLabel: { type: ["string", "null"] }
+        elapsedMs: { type: ["integer", "null"], minimum: 0 }
+        syncErrorMs: { type: ["integer", "null"], minimum: 0 }
+        status: { $ref: "#/components/schemas/Zero3ResultStatus" }
+        capturedAt: { type: string, format: date-time }
+        revision: { type: integer }
+        names:
+          type: array
+          items: { type: string }
+        teamName: { type: ["string", "null"] }
+        heatName: { type: ["string", "null"] }
+      required: [id, eventId, registrationId, category, status, capturedAt, revision, names, syncErrorMs]
+    Zero3ResultInput:
+      type: object
+      properties:
+        eventId: { type: string }
+        registrationId: { type: string }
+        heatId: { type: ["string", "null"] }
+        elapsedMs: { type: ["integer", "null"], minimum: 0 }
+        status: { $ref: "#/components/schemas/Zero3ResultStatus" }
+        idempotencyKey: { type: string, minLength: 1 }
+      required: [eventId, registrationId, status, idempotencyKey]
+    Zero3ResultUpdate:
+      type: object
+      properties:
+        status: { $ref: "#/components/schemas/Zero3ResultStatus" }
+        elapsedMs: { type: ["integer", "null"], minimum: 0 }
+        reason: { type: string, minLength: 1 }
+      required: [reason]
+      minProperties: 2
+    Zero3Podium:
+      type: object
+      properties:
+        eventId: { type: string }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        registrationIds:
+          type: array
+          items: { type: ["string", "null"] }
+          minItems: 3
+          maxItems: 3
+        published: { type: boolean }
+        publishedBy: { type: ["string", "null"] }
+        publishedAt: { type: ["string", "null"], format: date-time }
+        publishReason: { type: ["string", "null"] }
+        version: { type: integer }
+        updatedAt: { type: string, format: date-time }
+      required: [eventId, category, registrationIds, published, publishedBy, publishedAt, publishReason, version, updatedAt]
+    Zero3PodiumState:
+      type: object
+      properties:
+        draft: { oneOf: [{ $ref: "#/components/schemas/Zero3Podium" }, { type: "null" }] }
+        published: { oneOf: [{ $ref: "#/components/schemas/Zero3Podium" }, { type: "null" }] }
+      required: [draft, published]
+    Zero3PodiumInput:
+      type: object
+      properties:
+        registrationIds:
+          type: array
+          items: { type: ["string", "null"] }
+          minItems: 3
+          maxItems: 3
+      required: [registrationIds]
+    Zero3PodiumPublishInput:
+      type: object
+      properties:
+        reason: { type: string, minLength: 3 }
+      required: [reason]
+    Zero3Member:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        role: { $ref: "#/components/schemas/Zero3Role" }
+        active: { type: boolean }
+      required: [email, role, active]
+    Zero3MemberInput:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        role: { $ref: "#/components/schemas/Zero3Role" }
+        active: { type: boolean }
+      required: [email, role, active]
+    Zero3PublicResult:
+      allOf:
+        - $ref: "#/components/schemas/Zero3Result"
+    Zero3PublicPodium:
+      type: object
+      properties:
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        places:
+          type: array
+          items:
+            type: object
+            properties:
+              place: { type: integer }
+              registrationId: { type: string }
+              teamName: { type: ["string", "null"] }
+              athleteNames:
+                type: array
+                items: { type: string }
+            required: [place, registrationId, athleteNames]
+      required: [category, places]
+    Zero3PublicBoard:
+      type: object
+      properties:
+        serverTime: { type: string, format: date-time }
+        event: { $ref: "#/components/schemas/Zero3Event" }
+        timer: { $ref: "#/components/schemas/Zero3Timer" }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3PublicResult" }
+        podiums:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3PublicPodium" }
+        activeHeats:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3ActiveHeat" }
+      required: [serverTime, results, podiums, activeHeats]
+    Zero3MemberList:
+      type: array
+      items: { $ref: "#/components/schemas/Zero3Member" }
 

@@ -1,0 +1,78 @@
+import { clerkClient, getAuth } from "@clerk/express";
+import { eq } from "drizzle-orm";
+import type { NextFunction, Request, Response } from "express";
+import { db, zero3MembersTable } from "@workspace/db";
+
+export type Zero3Role = "ADMIN" | "JUIZ_CHEFE" | "JUIZ";
+export type Zero3MemberContext = {
+  email: string;
+  role: Zero3Role;
+};
+
+export type Zero3Request = Request & {
+  zero3Member?: Zero3MemberContext;
+};
+
+export async function resolveZero3Member(
+  req: Request,
+): Promise<{ userId: string; member: Zero3MemberContext } | null> {
+  const { userId } = getAuth(req);
+  if (!userId) return null;
+
+  const user = await clerkClient.users.getUser(userId);
+  const email = user.emailAddresses
+    .find((address) => address.id === user.primaryEmailAddressId)
+    ?.emailAddress.toLowerCase();
+  if (!email) return null;
+
+  let [member] = await db
+    .select()
+    .from(zero3MembersTable)
+    .where(eq(zero3MembersTable.email, email))
+    .limit(1);
+
+  const initialAdminEmail = process.env.ZERO3_INITIAL_ADMIN_EMAIL
+    ?.trim()
+    .toLowerCase();
+  if (!member && initialAdminEmail && email === initialAdminEmail) {
+    await db
+      .insert(zero3MembersTable)
+      .values({ email, role: "ADMIN", active: true })
+      .onConflictDoNothing();
+    [member] = await db
+      .select()
+      .from(zero3MembersTable)
+      .where(eq(zero3MembersTable.email, email))
+      .limit(1);
+  }
+
+  if (!member || !member.active) return null;
+  return {
+    userId,
+    member: { email, role: member.role as Zero3Role },
+  };
+}
+
+export function requireZero3Roles(
+  roles: Zero3Role[],
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req, res, next): void => {
+    void resolveZero3Member(req)
+      .then((resolved) => {
+        if (!resolved) {
+          res.status(403).json({ error: "Acesso ZERO3 não autorizado." });
+          return;
+        }
+        if (!roles.includes(resolved.member.role)) {
+          res.status(403).json({ error: "Permissão insuficiente." });
+          return;
+        }
+        (req as Zero3Request).zero3Member = resolved.member;
+        next();
+      })
+      .catch((error: unknown) => {
+        req.log.error({ err: error }, "Unable to resolve ZERO3 role");
+        res.status(401).json({ error: "Sessão inválida." });
+      });
+  };
+}

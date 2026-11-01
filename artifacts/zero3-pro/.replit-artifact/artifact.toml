@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "ZERO3 PRO — TV e Operação"
+description = "Aplicação de competição ZERO3 PRO com TV pública única para resultados SC/RX e painel administrativo separado para eventos, baterias, timer, lançamentos e pódios."
+version = "1.0.0"
+id = "artifacts/zero3-pro"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20423
+
+[services.development]
+run = "pnpm --filter @workspace/zero3-pro run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/zero3-pro", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/zero3-pro/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20423"
+BASE_PATH = "/"

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 42" fill="none">
+  <rect x="1" y="1" width="40" height="40" rx="20" stroke="#8CB1A1" stroke-width="1.5"/>
+  <path d="M13 13h16v3.7l-10.1 8.8H29v3.7H12.6v-3.7l10.1-8.8H13V13Z" fill="#F4F1E8"/>
+  <text x="52" y="28" fill="#F4F1E8" font-family="Manrope,sans-serif" font-size="19" font-weight="800" letter-spacing="-1.5">ZERO3</text>
+  <text x="117" y="28" fill="#A8B0A8" font-family="Manrope,sans-serif" font-size="14" font-weight="500" letter-spacing="-.5">PRO</text>
+</svg>
