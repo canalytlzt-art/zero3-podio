@@ -111,13 +111,13 @@ pnpm exec wrangler deploy --config wrangler.toml
 
 O Worker usa `env.HYPERDRIVE.connectionString` para configurar o PostgreSQL. O binding `HYPERDRIVE` aponta para a configuração Hyperdrive do banco Neon de testes, com cache de consultas desativado conforme confirmado para esse ambiente. Esse banco é separado do PostgreSQL gerenciado pela Replit: não foram copiados nem migrados dados, e a API Node do Preview continua usando `DATABASE_URL`. A Replit documenta que seu PostgreSQL gerenciado não expõe TCP externo nem permite configurar um IP/firewall público ([Database](https://docs.replit.com/features/data-and-storage/sql-database), [Connection details](https://docs.replit.com/features/data-and-storage/connection-details)); por isso, não conecte o Hyperdrive ao banco da Replit.
 
-O schema Drizzle do projeto está em `lib/db/src/schema/`. O repositório ainda não mantém migrations versionadas; o comando existente `pnpm --filter @workspace/db run push` lê `DATABASE_URL`. Para criar o schema em um Neon de testes novo e vazio sem tocar no banco Replit, configure o segredo operacional `NEON_TEST_DATABASE_URL` e execute somente para esse processo:
+O schema Drizzle do projeto está em `lib/db/src/schema/`. O repositório ainda não mantém migrations versionadas; o comando existente `pnpm --filter @workspace/db run push` lê `DATABASE_URL`. Para criar as tabelas ZERO3 no Neon de testes sem tocar no banco Replit, configure o segredo operacional `NEON_TEST_DATABASE_URL` e execute somente para esse processo:
 
 ```sh
 DATABASE_URL="$NEON_TEST_DATABASE_URL" pnpm --filter @workspace/db run push
 ```
 
-Confirme que a URL aponta para o banco Neon de testes antes de aceitar as alterações propostas pelo Drizzle. Não altere o `DATABASE_URL` do Replit e não use `push-force`. O Worker em Cloudflare usa o binding Hyperdrive; `NEON_TEST_DATABASE_URL` é apenas para preparar o schema e não é uma variável de runtime do Worker.
+Confirme que a URL aponta para o banco Neon de testes antes de aceitar as alterações propostas pelo Drizzle. O banco de testes atual também contém o schema `neon_auth`; preserve essas tabelas e seus registros. O push do schema ZERO3 foi verificado no schema `public` e manteve os dados de `neon_auth`. Não altere o `DATABASE_URL` do Replit e não use `push-force`. O Worker em Cloudflare usa o binding Hyperdrive; `NEON_TEST_DATABASE_URL` é apenas para preparar o schema e não é uma variável de runtime do Worker.
 
 ### Configuração Cloudflare
 
