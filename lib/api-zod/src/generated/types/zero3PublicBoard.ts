@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Zero3ActiveHeat } from './zero3ActiveHeat';
+import type { Zero3CategoryLeaderboard } from './zero3CategoryLeaderboard';
 import type { Zero3Event } from './zero3Event';
+import type { Zero3Proof } from './zero3Proof';
 import type { Zero3PublicPodium } from './zero3PublicPodium';
 import type { Zero3PublicResult } from './zero3PublicResult';
 import type { Zero3Timer } from './zero3Timer';
@@ -16,6 +18,8 @@ export interface Zero3PublicBoard {
   event?: Zero3Event;
   timer?: Zero3Timer;
   results: Zero3PublicResult[];
+  proofs: Zero3Proof[];
+  leaderboards: Zero3CategoryLeaderboard[];
   podiums: Zero3PublicPodium[];
   activeHeats: Zero3ActiveHeat[];
 }

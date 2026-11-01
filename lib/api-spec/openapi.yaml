@@ -117,6 +117,59 @@ paths:
           description: Authentication required
         "404":
           description: Event not found
+  /zero3/events/{eventId}/proofs:
+    get:
+      operationId: listZero3Proofs
+      tags: [zero3]
+      summary: List the four configurable proofs for an event
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Proof definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Zero3Proof" }
+        "401":
+          description: Authentication required
+  /zero3/events/{eventId}/proofs/{proofId}:
+    patch:
+      operationId: updateZero3Proof
+      tags: [zero3]
+      summary: Configure one proof's name and scoring metric
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: proofId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3ProofUpdate" }
+      responses:
+        "200":
+          description: Updated proof
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3Proof" }
+        "400":
+          description: Invalid proof configuration
+        "401":
+          description: Authentication required
+        "404":
+          description: Proof not found
+        "409":
+          description: Metric cannot change after results have been recorded
   /zero3/events/{eventId}/heats:
     get:
       operationId: listZero3Heats
@@ -600,6 +653,33 @@ components:
         status: { $ref: "#/components/schemas/Zero3EventStatus" }
         preparationSeconds: { type: integer, minimum: 0, maximum: 120 }
       minProperties: 1
+    Zero3ProofMetric:
+      type: string
+      enum: [TIME, REPETITIONS, LOAD, CUSTOM, UNCONFIGURED]
+    Zero3ProofDirection:
+      type: string
+      enum: [LOWER, HIGHER]
+    Zero3Proof:
+      type: object
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        order: { type: integer, minimum: 1, maximum: 4 }
+        name: { type: string }
+        metricType: { $ref: "#/components/schemas/Zero3ProofMetric" }
+        unit: { type: ["string", "null"] }
+        direction: { oneOf: [{ $ref: "#/components/schemas/Zero3ProofDirection" }, { type: "null" }] }
+        configured: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, eventId, order, name, metricType, unit, direction, configured, createdAt]
+    Zero3ProofUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        metricType: { $ref: "#/components/schemas/Zero3ProofMetric" }
+        unit: { type: ["string", "null"] }
+        direction: { $ref: "#/components/schemas/Zero3ProofDirection" }
+      required: [name, metricType, direction]
     Zero3Athlete:
       type: object
       properties:
@@ -711,6 +791,11 @@ components:
         category: { $ref: "#/components/schemas/Zero3Category" }
         laneLabel: { type: ["string", "null"] }
         elapsedMs: { type: ["integer", "null"], minimum: 0 }
+        proofId: { type: ["string", "null"] }
+        rawValue: { type: ["number", "null"], minimum: 0 }
+        placement: { type: ["integer", "null"], minimum: 1 }
+        points: { type: ["integer", "null"], minimum: 1 }
+        tieRulePending: { type: boolean }
         syncErrorMs: { type: ["integer", "null"], minimum: 0 }
         status: { $ref: "#/components/schemas/Zero3ResultStatus" }
         capturedAt: { type: string, format: date-time }
@@ -728,6 +813,8 @@ components:
         registrationId: { type: string }
         heatId: { type: ["string", "null"] }
         elapsedMs: { type: ["integer", "null"], minimum: 0 }
+        proofId: { type: ["string", "null"] }
+        rawValue: { type: ["number", "null"], minimum: 0 }
         status: { $ref: "#/components/schemas/Zero3ResultStatus" }
         idempotencyKey: { type: string, minLength: 1 }
       required: [eventId, registrationId, status, idempotencyKey]
@@ -736,6 +823,7 @@ components:
       properties:
         status: { $ref: "#/components/schemas/Zero3ResultStatus" }
         elapsedMs: { type: ["integer", "null"], minimum: 0 }
+        rawValue: { type: ["number", "null"], minimum: 0 }
         reason: { type: string, minLength: 1 }
       required: [reason]
       minProperties: 2
@@ -819,13 +907,67 @@ components:
         results:
           type: array
           items: { $ref: "#/components/schemas/Zero3PublicResult" }
+        proofs:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3Proof" }
+        leaderboards:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3CategoryLeaderboard" }
         podiums:
           type: array
           items: { $ref: "#/components/schemas/Zero3PublicPodium" }
         activeHeats:
           type: array
           items: { $ref: "#/components/schemas/Zero3ActiveHeat" }
-      required: [serverTime, results, podiums, activeHeats]
+      required: [serverTime, results, proofs, leaderboards, podiums, activeHeats]
+    Zero3LeaderboardProofScore:
+      type: object
+      properties:
+        resultId: { type: ["string", "null"] }
+        proofId: { type: string }
+        order: { type: integer }
+        name: { type: string }
+        unit: { type: ["string", "null"] }
+        value: { type: ["number", "null"] }
+        status:
+          type: string
+          enum: [MISSING, PROVISIONAL, VALIDATED, DNS, DNF, CONFIGURATION_PENDING, TIE_RULE_PENDING]
+        placement: { type: ["integer", "null"], minimum: 1 }
+        points: { type: ["integer", "null"], minimum: 1 }
+      required: [resultId, proofId, order, name, unit, value, status, placement, points]
+    Zero3LeaderboardEntry:
+      type: object
+      properties:
+        registrationId: { type: string }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        laneLabel: { type: ["string", "null"] }
+        teamName: { type: ["string", "null"] }
+        athleteNames:
+          type: array
+          items: { type: string }
+        proofScores:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3LeaderboardProofScore" }
+        completedProofs: { type: integer, minimum: 0 }
+        proofCount: { type: integer, minimum: 0 }
+        totalPoints: { type: ["integer", "null"], minimum: 0 }
+        overallPlace: { type: ["integer", "null"], minimum: 1 }
+        status:
+          type: string
+          enum: [PARTIAL, FINAL, TIE_RULE_PENDING, CONFIGURATION_PENDING]
+      required: [registrationId, category, laneLabel, teamName, athleteNames, proofScores, completedProofs, proofCount, totalPoints, overallPlace, status]
+    Zero3CategoryLeaderboard:
+      type: object
+      properties:
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        proofCount: { type: integer, minimum: 0 }
+        status:
+          type: string
+          enum: [PARTIAL, FINAL, TIE_RULE_PENDING, CONFIGURATION_PENDING]
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3LeaderboardEntry" }
+      required: [category, proofCount, status, entries]
     Zero3MemberList:
       type: array
       items: { $ref: "#/components/schemas/Zero3Member" }

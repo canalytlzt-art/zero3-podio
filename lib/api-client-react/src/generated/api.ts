@@ -45,6 +45,8 @@ import type {
   Zero3PodiumInput,
   Zero3PodiumPublishInput,
   Zero3PodiumState,
+  Zero3Proof,
+  Zero3ProofUpdate,
   Zero3PublicBoard,
   Zero3Registration,
   Zero3RegistrationInput,
@@ -663,6 +665,198 @@ export const useUpdateZero3Event = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdateZero3EventMutationOptions(options), queryClient);
+    }
+
+export const getListZero3ProofsUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/proofs`
+}
+
+/**
+ * @summary List the four configurable proofs for an event
+ */
+export const listZero3Proofs = async (eventId: string, options?: Parameters<typeof customFetch>[1]): Promise<Zero3Proof[]> => {
+
+  return customFetch<Zero3Proof[]>(getListZero3ProofsUrl(eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListZero3ProofsQueryKey = (eventId: string,) => {
+    return [
+    `/api/zero3/events/${eventId}/proofs`
+    ] as const;
+    }
+
+
+export const getListZero3ProofsQueryOptions = <TData = Awaited<ReturnType<typeof listZero3Proofs>>, TError = ErrorType<void>>(eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3Proofs>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListZero3ProofsQueryKey(eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listZero3Proofs>>> = ({ signal }) => listZero3Proofs(eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listZero3Proofs>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListZero3ProofsQueryResult = NonNullable<Awaited<ReturnType<typeof listZero3Proofs>>>
+export type ListZero3ProofsQueryError = ErrorType<void>
+
+
+export function useListZero3Proofs<TData = Awaited<ReturnType<typeof listZero3Proofs>>, TError = ErrorType<void>>(
+ eventId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3Proofs>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listZero3Proofs>>,
+          TError,
+          Awaited<ReturnType<typeof listZero3Proofs>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListZero3Proofs<TData = Awaited<ReturnType<typeof listZero3Proofs>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3Proofs>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listZero3Proofs>>,
+          TError,
+          Awaited<ReturnType<typeof listZero3Proofs>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListZero3Proofs<TData = Awaited<ReturnType<typeof listZero3Proofs>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3Proofs>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List the four configurable proofs for an event
+ */
+
+export function useListZero3Proofs<TData = Awaited<ReturnType<typeof listZero3Proofs>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3Proofs>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListZero3ProofsQueryOptions(eventId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateZero3ProofUrl = (eventId: string,
+    proofId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/proofs/${proofId}`
+}
+
+/**
+ * @summary Configure one proof's name and scoring metric
+ */
+export const updateZero3Proof = async (eventId: string,
+    proofId: string,
+    zero3ProofUpdate: Zero3ProofUpdate, options?: Parameters<typeof customFetch>[1]): Promise<Zero3Proof> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3Proof>(getUpdateZero3ProofUrl(eventId,proofId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3ProofUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateZero3ProofMutationKey = () => ['updateZero3Proof'] as const;
+
+export const getUpdateZero3ProofMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateZero3Proof>>, TError,UpdateZero3ProofMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateZero3Proof>>, TError,UpdateZero3ProofMutationVariables, TContext> => {
+
+const mutationKey = getUpdateZero3ProofMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateZero3Proof>>, UpdateZero3ProofMutationVariables> = (props) => {
+          const {eventId,proofId,data} = props ?? {};
+
+          return  updateZero3Proof(eventId,proofId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateZero3ProofMutationResult = NonNullable<Awaited<ReturnType<typeof updateZero3Proof>>>
+    export type UpdateZero3ProofMutationBody = BodyType<Zero3ProofUpdate>
+    export type UpdateZero3ProofMutationError = ErrorType<void>
+    export type UpdateZero3ProofMutationVariables = {eventId: string;proofId: string;data: BodyType<Zero3ProofUpdate>}
+
+    /**
+ * @summary Configure one proof's name and scoring metric
+ */
+export const useUpdateZero3Proof = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateZero3Proof>>, TError,UpdateZero3ProofMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateZero3Proof>>,
+        TError,
+        UpdateZero3ProofMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateZero3ProofMutationOptions(options), queryClient);
     }
 
 export const getListZero3HeatsUrl = (eventId: string,) => {

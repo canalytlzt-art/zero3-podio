@@ -32,6 +32,10 @@ export const GetZero3MeResponse = zod.object({
  */
 export const getZero3DashboardResponseRecentResultsItemElapsedMsMin = 0;
 
+export const getZero3DashboardResponseRecentResultsItemRawValueMin = 0;
+
+
+
 export const getZero3DashboardResponseRecentResultsItemSyncErrorMsMin = 0;
 
 
@@ -55,6 +59,11 @@ export const GetZero3DashboardResponse = zod.object({
   "category": zod.enum(['SC', 'RX']),
   "laneLabel": zod.string().nullish(),
   "elapsedMs": zod.number().int().min(getZero3DashboardResponseRecentResultsItemElapsedMsMin).nullish(),
+  "proofId": zod.string().nullish(),
+  "rawValue": zod.number().min(getZero3DashboardResponseRecentResultsItemRawValueMin).nullish(),
+  "placement": zod.number().int().min(1).nullish(),
+  "points": zod.number().int().min(1).nullish(),
+  "tieRulePending": zod.boolean().optional(),
   "syncErrorMs": zod.number().int().min(getZero3DashboardResponseRecentResultsItemSyncErrorMsMin).nullable(),
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
@@ -134,6 +143,66 @@ export const UpdateZero3EventResponse = zod.object({
   "proofName": zod.string(),
   "status": zod.enum(['PLANNED', 'ACTIVE', 'FINISHED']),
   "preparationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List the four configurable proofs for an event
+ */
+export const ListZero3ProofsParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const listZero3ProofsResponseOrderMax = 4;
+
+
+
+export const ListZero3ProofsResponseItem = zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "order": zod.number().int().min(1).max(listZero3ProofsResponseOrderMax),
+  "name": zod.string(),
+  "metricType": zod.enum(['TIME', 'REPETITIONS', 'LOAD', 'CUSTOM', 'UNCONFIGURED']),
+  "unit": zod.string().nullable(),
+  "direction": zod.union([zod.enum(['LOWER', 'HIGHER']),zod.null()]),
+  "configured": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+export const ListZero3ProofsResponse = zod.array(ListZero3ProofsResponseItem)
+
+
+/**
+ * @summary Configure one proof's name and scoring metric
+ */
+export const UpdateZero3ProofParams = zod.object({
+  "eventId": zod.coerce.string(),
+  "proofId": zod.coerce.string()
+})
+
+
+
+
+export const UpdateZero3ProofBody = zod.object({
+  "name": zod.string().min(1),
+  "metricType": zod.enum(['TIME', 'REPETITIONS', 'LOAD', 'CUSTOM', 'UNCONFIGURED']),
+  "unit": zod.string().nullish(),
+  "direction": zod.enum(['LOWER', 'HIGHER'])
+})
+
+export const updateZero3ProofResponseOrderMax = 4;
+
+
+
+export const UpdateZero3ProofResponse = zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "order": zod.number().int().min(1).max(updateZero3ProofResponseOrderMax),
+  "name": zod.string(),
+  "metricType": zod.enum(['TIME', 'REPETITIONS', 'LOAD', 'CUSTOM', 'UNCONFIGURED']),
+  "unit": zod.string().nullable(),
+  "direction": zod.union([zod.enum(['LOWER', 'HIGHER']),zod.null()]),
+  "configured": zod.boolean(),
   "createdAt": zod.coerce.date()
 })
 
@@ -365,6 +434,8 @@ export const ControlZero3TimerResponse = zod.object({
  */
 export const captureZero3ResultBodyElapsedMsMin = 0;
 
+export const captureZero3ResultBodyRawValueMin = 0;
+
 
 
 
@@ -373,11 +444,17 @@ export const CaptureZero3ResultBody = zod.object({
   "registrationId": zod.string(),
   "heatId": zod.string().nullish(),
   "elapsedMs": zod.number().int().min(captureZero3ResultBodyElapsedMsMin).nullish(),
+  "proofId": zod.string().nullish(),
+  "rawValue": zod.number().min(captureZero3ResultBodyRawValueMin).nullish(),
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "idempotencyKey": zod.string().min(1)
 })
 
 export const captureZero3ResultResponseElapsedMsMin = 0;
+
+export const captureZero3ResultResponseRawValueMin = 0;
+
+
 
 export const captureZero3ResultResponseSyncErrorMsMin = 0;
 
@@ -391,6 +468,11 @@ export const CaptureZero3ResultResponse = zod.object({
   "category": zod.enum(['SC', 'RX']),
   "laneLabel": zod.string().nullish(),
   "elapsedMs": zod.number().int().min(captureZero3ResultResponseElapsedMsMin).nullish(),
+  "proofId": zod.string().nullish(),
+  "rawValue": zod.number().min(captureZero3ResultResponseRawValueMin).nullish(),
+  "placement": zod.number().int().min(1).nullish(),
+  "points": zod.number().int().min(1).nullish(),
+  "tieRulePending": zod.boolean().optional(),
   "syncErrorMs": zod.number().int().min(captureZero3ResultResponseSyncErrorMsMin).nullable(),
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
@@ -410,16 +492,23 @@ export const UpdateZero3ResultParams = zod.object({
 
 export const updateZero3ResultBodyElapsedMsMin = 0;
 
+export const updateZero3ResultBodyRawValueMin = 0;
+
 
 
 
 export const UpdateZero3ResultBody = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']).optional(),
   "elapsedMs": zod.number().int().min(updateZero3ResultBodyElapsedMsMin).nullish(),
+  "rawValue": zod.number().min(updateZero3ResultBodyRawValueMin).nullish(),
   "reason": zod.string().min(1)
 })
 
 export const updateZero3ResultResponseElapsedMsMin = 0;
+
+export const updateZero3ResultResponseRawValueMin = 0;
+
+
 
 export const updateZero3ResultResponseSyncErrorMsMin = 0;
 
@@ -433,6 +522,11 @@ export const UpdateZero3ResultResponse = zod.object({
   "category": zod.enum(['SC', 'RX']),
   "laneLabel": zod.string().nullish(),
   "elapsedMs": zod.number().int().min(updateZero3ResultResponseElapsedMsMin).nullish(),
+  "proofId": zod.string().nullish(),
+  "rawValue": zod.number().min(updateZero3ResultResponseRawValueMin).nullish(),
+  "placement": zod.number().int().min(1).nullish(),
+  "points": zod.number().int().min(1).nullish(),
+  "tieRulePending": zod.boolean().optional(),
   "syncErrorMs": zod.number().int().min(updateZero3ResultResponseSyncErrorMsMin).nullable(),
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
@@ -594,7 +688,24 @@ export const getZero3PublicBoardResponseTimerPreparationRemainingMsMin = 0;
 
 export const getZero3PublicBoardResponseResultsItemOneElapsedMsMin = 0;
 
+export const getZero3PublicBoardResponseResultsItemOneRawValueMin = 0;
+
+
+
 export const getZero3PublicBoardResponseResultsItemOneSyncErrorMsMin = 0;
+
+export const getZero3PublicBoardResponseProofsItemOrderMax = 4;
+
+export const getZero3PublicBoardResponseLeaderboardsItemProofCountMin = 0;
+
+
+
+export const getZero3PublicBoardResponseLeaderboardsItemEntriesItemCompletedProofsMin = 0;
+
+export const getZero3PublicBoardResponseLeaderboardsItemEntriesItemProofCountMin = 0;
+
+export const getZero3PublicBoardResponseLeaderboardsItemEntriesItemTotalPointsMin = 0;
+
 
 
 
@@ -626,6 +737,11 @@ export const GetZero3PublicBoardResponse = zod.object({
   "category": zod.enum(['SC', 'RX']),
   "laneLabel": zod.string().nullish(),
   "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseResultsItemOneElapsedMsMin).nullish(),
+  "proofId": zod.string().nullish(),
+  "rawValue": zod.number().min(getZero3PublicBoardResponseResultsItemOneRawValueMin).nullish(),
+  "placement": zod.number().int().min(1).nullish(),
+  "points": zod.number().int().min(1).nullish(),
+  "tieRulePending": zod.boolean().optional(),
   "syncErrorMs": zod.number().int().min(getZero3PublicBoardResponseResultsItemOneSyncErrorMsMin).nullable(),
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
@@ -633,6 +749,45 @@ export const GetZero3PublicBoardResponse = zod.object({
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
+})),
+  "proofs": zod.array(zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "order": zod.number().int().min(1).max(getZero3PublicBoardResponseProofsItemOrderMax),
+  "name": zod.string(),
+  "metricType": zod.enum(['TIME', 'REPETITIONS', 'LOAD', 'CUSTOM', 'UNCONFIGURED']),
+  "unit": zod.string().nullable(),
+  "direction": zod.union([zod.enum(['LOWER', 'HIGHER']),zod.null()]),
+  "configured": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})),
+  "leaderboards": zod.array(zod.object({
+  "category": zod.enum(['SC', 'RX']),
+  "proofCount": zod.number().int().min(getZero3PublicBoardResponseLeaderboardsItemProofCountMin),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING']),
+  "entries": zod.array(zod.object({
+  "registrationId": zod.string(),
+  "category": zod.enum(['SC', 'RX']),
+  "laneLabel": zod.string().nullable(),
+  "teamName": zod.string().nullable(),
+  "athleteNames": zod.array(zod.string()),
+  "proofScores": zod.array(zod.object({
+  "resultId": zod.string().nullable(),
+  "proofId": zod.string(),
+  "order": zod.number().int(),
+  "name": zod.string(),
+  "unit": zod.string().nullable(),
+  "value": zod.number().nullable(),
+  "status": zod.enum(['MISSING', 'PROVISIONAL', 'VALIDATED', 'DNS', 'DNF', 'CONFIGURATION_PENDING', 'TIE_RULE_PENDING']),
+  "placement": zod.number().int().min(1).nullable(),
+  "points": zod.number().int().min(1).nullable()
+})),
+  "completedProofs": zod.number().int().min(getZero3PublicBoardResponseLeaderboardsItemEntriesItemCompletedProofsMin),
+  "proofCount": zod.number().int().min(getZero3PublicBoardResponseLeaderboardsItemEntriesItemProofCountMin),
+  "totalPoints": zod.number().int().min(getZero3PublicBoardResponseLeaderboardsItemEntriesItemTotalPointsMin).nullable(),
+  "overallPlace": zod.number().int().min(1).nullable(),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING'])
+}))
 })),
   "podiums": zod.array(zod.object({
   "category": zod.enum(['SC', 'RX']),

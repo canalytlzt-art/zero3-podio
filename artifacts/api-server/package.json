@@ -7,7 +7,9 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:scoring": "esbuild src/lib/zero3-scoring.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-scoring.test.mjs && node --test /tmp/zero3-scoring.test.mjs",
+    "seed:demo": "NODE_ENV=development node --experimental-strip-types ../../scripts/seed-zero3-demo.mjs"
   },
   "dependencies": {
     "@clerk/express": "^2.1.86",

@@ -86,6 +86,24 @@ export interface Zero3Result {
      * @nullable
      */
   elapsedMs?: number | null;
+  /** @nullable */
+  proofId?: string | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  rawValue?: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  placement?: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  points?: number | null;
+  tieRulePending?: boolean;
   /**
      * @minimum 0
      * @nullable
@@ -132,6 +150,51 @@ export interface Zero3EventUpdate {
      * @maximum 120
      */
   preparationSeconds?: number;
+}
+
+export type Zero3ProofMetric = typeof Zero3ProofMetric[keyof typeof Zero3ProofMetric];
+
+
+export const Zero3ProofMetric = {
+  TIME: 'TIME',
+  REPETITIONS: 'REPETITIONS',
+  LOAD: 'LOAD',
+  CUSTOM: 'CUSTOM',
+  UNCONFIGURED: 'UNCONFIGURED',
+} as const;
+
+export type Zero3ProofDirection = typeof Zero3ProofDirection[keyof typeof Zero3ProofDirection];
+
+
+export const Zero3ProofDirection = {
+  LOWER: 'LOWER',
+  HIGHER: 'HIGHER',
+} as const;
+
+export interface Zero3Proof {
+  id: string;
+  eventId: string;
+  /**
+     * @minimum 1
+     * @maximum 4
+     */
+  order: number;
+  name: string;
+  metricType: Zero3ProofMetric;
+  /** @nullable */
+  unit: string | null;
+  direction: Zero3ProofDirection | null;
+  configured: boolean;
+  createdAt: string;
+}
+
+export interface Zero3ProofUpdate {
+  /** @minLength 1 */
+  name: string;
+  metricType: Zero3ProofMetric;
+  /** @nullable */
+  unit?: string | null;
+  direction: Zero3ProofDirection;
 }
 
 export interface Zero3Athlete {
@@ -250,6 +313,13 @@ export interface Zero3ResultInput {
      * @nullable
      */
   elapsedMs?: number | null;
+  /** @nullable */
+  proofId?: string | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  rawValue?: number | null;
   status: Zero3ResultStatus;
   /** @minLength 1 */
   idempotencyKey: string;
@@ -262,6 +332,11 @@ export interface Zero3ResultUpdate {
      * @nullable
      */
   elapsedMs?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  rawValue?: number | null;
   /** @minLength 1 */
   reason: string;
 }
@@ -330,11 +405,103 @@ export interface Zero3PublicPodium {
   places: Zero3PublicPodiumPlacesItem[];
 }
 
+export type Zero3CategoryLeaderboardStatus = typeof Zero3CategoryLeaderboardStatus[keyof typeof Zero3CategoryLeaderboardStatus];
+
+
+export const Zero3CategoryLeaderboardStatus = {
+  PARTIAL: 'PARTIAL',
+  FINAL: 'FINAL',
+  TIE_RULE_PENDING: 'TIE_RULE_PENDING',
+  CONFIGURATION_PENDING: 'CONFIGURATION_PENDING',
+} as const;
+
+export type Zero3LeaderboardProofScoreStatus = typeof Zero3LeaderboardProofScoreStatus[keyof typeof Zero3LeaderboardProofScoreStatus];
+
+
+export const Zero3LeaderboardProofScoreStatus = {
+  MISSING: 'MISSING',
+  PROVISIONAL: 'PROVISIONAL',
+  VALIDATED: 'VALIDATED',
+  DNS: 'DNS',
+  DNF: 'DNF',
+  CONFIGURATION_PENDING: 'CONFIGURATION_PENDING',
+  TIE_RULE_PENDING: 'TIE_RULE_PENDING',
+} as const;
+
+export interface Zero3LeaderboardProofScore {
+  /** @nullable */
+  resultId: string | null;
+  proofId: string;
+  order: number;
+  name: string;
+  /** @nullable */
+  unit: string | null;
+  /** @nullable */
+  value: number | null;
+  status: Zero3LeaderboardProofScoreStatus;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  placement: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  points: number | null;
+}
+
+export type Zero3LeaderboardEntryStatus = typeof Zero3LeaderboardEntryStatus[keyof typeof Zero3LeaderboardEntryStatus];
+
+
+export const Zero3LeaderboardEntryStatus = {
+  PARTIAL: 'PARTIAL',
+  FINAL: 'FINAL',
+  TIE_RULE_PENDING: 'TIE_RULE_PENDING',
+  CONFIGURATION_PENDING: 'CONFIGURATION_PENDING',
+} as const;
+
+export interface Zero3LeaderboardEntry {
+  registrationId: string;
+  category: Zero3Category;
+  /** @nullable */
+  laneLabel: string | null;
+  /** @nullable */
+  teamName: string | null;
+  athleteNames: string[];
+  proofScores: Zero3LeaderboardProofScore[];
+  /** @minimum 0 */
+  completedProofs: number;
+  /** @minimum 0 */
+  proofCount: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  totalPoints: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  overallPlace: number | null;
+  status: Zero3LeaderboardEntryStatus;
+}
+
+export interface Zero3CategoryLeaderboard {
+  category: Zero3Category;
+  /** @minimum 0 */
+  proofCount: number;
+  status: Zero3CategoryLeaderboardStatus;
+  entries: Zero3LeaderboardEntry[];
+}
+
 export interface Zero3PublicBoard {
   serverTime: string;
   event?: Zero3Event;
   timer?: Zero3Timer;
   results: Zero3PublicResult[];
+  proofs: Zero3Proof[];
+  leaderboards: Zero3CategoryLeaderboard[];
   podiums: Zero3PublicPodium[];
   activeHeats: Zero3ActiveHeat[];
 }

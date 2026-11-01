@@ -21,6 +21,8 @@ import {
   ListZero3EventsResponse,
   ListZero3HeatsParams,
   ListZero3HeatsResponse,
+  ListZero3ProofsParams,
+  ListZero3ProofsResponse,
   ListZero3MembersResponse,
   ListZero3RegistrationsParams,
   ListZero3RegistrationsResponse,
@@ -41,6 +43,9 @@ import {
   UpdateZero3RegistrationBody,
   UpdateZero3RegistrationParams,
   UpdateZero3RegistrationResponse,
+  UpdateZero3ProofBody,
+  UpdateZero3ProofParams,
+  UpdateZero3ProofResponse,
   UpdateZero3ResultBody,
   UpdateZero3ResultParams,
   UpdateZero3ResultResponse,
@@ -61,12 +66,18 @@ import {
   zero3HeatsTable,
   zero3MembersTable,
   zero3PodiumsTable,
+  zero3ProofsTable,
   zero3RegistrationsTable,
   zero3ResultRevisionsTable,
   zero3ResultsTable,
   zero3TimersTable,
 } from "@workspace/db";
 import { resolveZero3Member, requireZero3Roles, type Zero3Request } from "../lib/zero3-auth";
+import {
+  calculateAllResultPlacements,
+  type ResultPlacement,
+  type ScoreProof,
+} from "../lib/zero3-scoring";
 
 const router: IRouter = Router();
 const ADMIN_ROLES = ["ADMIN"] as const;
@@ -79,6 +90,7 @@ type EventRow = typeof zero3EventsTable.$inferSelect;
 type RegistrationRow = typeof zero3RegistrationsTable.$inferSelect;
 type ResultRow = typeof zero3ResultsTable.$inferSelect;
 type TimerRow = typeof zero3TimersTable.$inferSelect;
+type ProofRow = typeof zero3ProofsTable.$inferSelect;
 
 function eventDto(event: EventRow) {
   return {
@@ -89,6 +101,74 @@ function eventDto(event: EventRow) {
     preparationSeconds: event.preparationSeconds,
     createdAt: event.createdAt,
   };
+}
+
+function proofDto(proof: ProofRow) {
+  const configured =
+    proof.metricType !== "UNCONFIGURED" &&
+    Boolean(proof.name.trim()) &&
+    (proof.direction === "LOWER" || proof.direction === "HIGHER");
+  return {
+    id: proof.id,
+    eventId: proof.eventId,
+    order: proof.order,
+    name: proof.name,
+    metricType: proof.metricType,
+    unit: proof.unit,
+    direction: proof.direction,
+    configured,
+    createdAt: proof.createdAt,
+  };
+}
+
+async function ensureProofSlots(eventId: string) {
+  const existing = await db
+    .select()
+    .from(zero3ProofsTable)
+    .where(eq(zero3ProofsTable.eventId, eventId));
+  const present = new Set(existing.map((proof) => proof.order));
+  const missing = [1, 2, 3, 4].filter((order) => !present.has(order));
+  if (missing.length) {
+    await db
+      .insert(zero3ProofsTable)
+      .values(
+        missing.map((order) => ({
+          eventId,
+          order,
+          name: "",
+          metricType: "UNCONFIGURED",
+          unit: null,
+          direction: null,
+        })),
+      )
+      .onConflictDoNothing();
+  }
+  return db
+    .select()
+    .from(zero3ProofsTable)
+    .where(eq(zero3ProofsTable.eventId, eventId))
+    .orderBy(zero3ProofsTable.order);
+}
+
+async function registrationDtos(rows: RegistrationRow[]) {
+  const athleteIds = [...new Set(rows.flatMap((registration) => registration.athleteIds))];
+  const athletes = athleteIds.length
+    ? await db
+        .select()
+        .from(zero3AthletesTable)
+        .where(inArray(zero3AthletesTable.id, athleteIds))
+    : [];
+  const names = new Map(athletes.map((athlete) => [athlete.id, athlete.fullName]));
+  return rows.map((registration) => ({
+    id: registration.id,
+    eventId: registration.eventId,
+    category: registration.category,
+    teamName: registration.teamName,
+    athleteIds: registration.athleteIds,
+    athleteNames: registration.athleteIds.map((id) => names.get(id) ?? "Atleta removido"),
+    laneLabel: registration.laneLabel,
+    createdAt: registration.createdAt,
+  }));
 }
 
 async function registrationDto(registration: RegistrationRow) {
@@ -111,7 +191,10 @@ async function registrationDto(registration: RegistrationRow) {
   };
 }
 
-async function resultDto(result: ResultRow) {
+async function resultDto(
+  result: ResultRow,
+  placement?: ResultPlacement,
+) {
   const [registration] = await db
     .select()
     .from(zero3RegistrationsTable)
@@ -135,6 +218,11 @@ async function resultDto(result: ResultRow) {
     category: result.category,
     laneLabel: result.laneLabel,
     elapsedMs: result.elapsedMs,
+    proofId: result.proofId,
+    rawValue: result.rawValue === null ? null : Number(result.rawValue),
+    placement: placement?.placement ?? null,
+    points: placement?.points ?? null,
+    tieRulePending: placement?.tiePending ?? false,
     syncErrorMs: result.syncErrorMs,
     status: result.status,
     capturedAt: result.capturedAt,
@@ -145,13 +233,59 @@ async function resultDto(result: ResultRow) {
   };
 }
 
-async function eventResults(eventId: string) {
+async function eventResults(
+  eventId: string,
+  placements: Map<string, ResultPlacement> = new Map(),
+) {
   const rows = await db
     .select()
     .from(zero3ResultsTable)
     .where(eq(zero3ResultsTable.eventId, eventId))
     .orderBy(desc(zero3ResultsTable.capturedAt));
-  return Promise.all(rows.map(resultDto));
+  return Promise.all(rows.map((row) => resultDto(row, placements.get(row.id))));
+}
+
+async function eventScoring(event: EventRow) {
+  const [proofRows, registrationRows, resultRows] = await Promise.all([
+    ensureProofSlots(event.id),
+    db
+      .select()
+      .from(zero3RegistrationsTable)
+      .where(eq(zero3RegistrationsTable.eventId, event.id)),
+    db
+      .select()
+      .from(zero3ResultsTable)
+      .where(eq(zero3ResultsTable.eventId, event.id)),
+  ]);
+  const registrations = await registrationDtos(registrationRows);
+  const proofs: ScoreProof[] = proofRows.map((proof) => ({
+    id: proof.id,
+    order: proof.order,
+    name: proof.name,
+    metricType: proof.metricType,
+    unit: proof.unit,
+    direction: proof.direction,
+  }));
+  const calculated = calculateAllResultPlacements({
+    categories: ["SC", "RX"],
+    eventStatus: event.status,
+    proofs,
+    registrations,
+    results: resultRows.map((result) => ({
+      id: result.id,
+      registrationId: result.registrationId,
+      proofId: result.proofId,
+      rawValue: result.rawValue,
+      status: result.status,
+    })),
+  });
+  return {
+    proofs: proofRows.map(proofDto),
+    registrations,
+    resultRows,
+    leaderboards: calculated.leaderboards,
+    placements: calculated.placements,
+  };
 }
 
 async function activeHeatDtos(eventId: string) {
@@ -357,7 +491,9 @@ router.get(
       .from(zero3ResultsTable)
       .orderBy(desc(zero3ResultsTable.capturedAt))
       .limit(8);
-    const recentResults = await Promise.all(recentRows.map(resultDto));
+    const recentResults = await Promise.all(
+      recentRows.map((result) => resultDto(result)),
+    );
     const payload = {
       eventCount: events.length,
       athleteCount: athletes.length,
@@ -390,11 +526,29 @@ router.post(
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const [event] = await db
-      .insert(zero3EventsTable)
-      .values(parsed.data)
-      .returning();
-    await db.insert(zero3TimersTable).values({ eventId: event.id });
+    const [event] = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(zero3EventsTable)
+        .values({
+          ...parsed.data,
+          proofName:
+            parsed.data.proofName?.trim() ||
+            "4 provas — configuração pendente",
+        })
+        .returning();
+      await tx.insert(zero3ProofsTable).values(
+        [1, 2, 3, 4].map((order) => ({
+          eventId: created.id,
+          order,
+          name: "",
+          metricType: "UNCONFIGURED",
+          unit: null,
+          direction: null,
+        })),
+      );
+      await tx.insert(zero3TimersTable).values({ eventId: created.id });
+      return [created];
+    });
     res
       .status(201)
       .json(CreateZero3EventResponse.parse(eventDto(event)));
@@ -425,6 +579,92 @@ router.patch(
       return;
     }
     res.json(UpdateZero3EventResponse.parse(eventDto(event)));
+  },
+);
+
+router.get(
+  "/zero3/events/:eventId/proofs",
+  requireZero3Roles([...RESULT_ROLES]),
+  async (req, res): Promise<void> => {
+    const params = ListZero3ProofsParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const [event] = await db
+      .select()
+      .from(zero3EventsTable)
+      .where(eq(zero3EventsTable.id, params.data.eventId))
+      .limit(1);
+    if (!event) {
+      res.status(404).json({ error: "Evento não encontrado." });
+      return;
+    }
+    const proofs = await ensureProofSlots(event.id);
+    res.json(ListZero3ProofsResponse.parse(proofs.map(proofDto)));
+  },
+);
+
+router.patch(
+  "/zero3/events/:eventId/proofs/:proofId",
+  requireZero3Roles([...EVENT_ROLES]),
+  async (req, res): Promise<void> => {
+    const params = UpdateZero3ProofParams.safeParse(req.params);
+    const body = UpdateZero3ProofBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({
+        error: !params.success
+          ? params.error.message
+          : (body.error?.message ?? "Dados inválidos."),
+      });
+      return;
+    }
+    const [proof] = await db
+      .select()
+      .from(zero3ProofsTable)
+      .where(
+        and(
+          eq(zero3ProofsTable.id, params.data.proofId),
+          eq(zero3ProofsTable.eventId, params.data.eventId),
+        ),
+      )
+      .limit(1);
+    if (!proof) {
+      res.status(404).json({ error: "Prova não encontrada." });
+      return;
+    }
+    if (body.data.metricType === "UNCONFIGURED") {
+      res.status(400).json({ error: "Selecione uma métrica válida." });
+      return;
+    }
+    const [existingResult] = await db
+      .select({ id: zero3ResultsTable.id })
+      .from(zero3ResultsTable)
+      .where(eq(zero3ResultsTable.proofId, proof.id))
+      .limit(1);
+    if (
+      existingResult &&
+      (proof.metricType !== body.data.metricType ||
+        proof.direction !== body.data.direction)
+    ) {
+      res.status(409).json({
+        error:
+          "A métrica e a direção não podem mudar após lançamentos. Revise os resultados antes de alterar a regra.",
+      });
+      return;
+    }
+    const [updated] = await db
+      .update(zero3ProofsTable)
+      .set({
+        name: body.data.name.trim(),
+        metricType: body.data.metricType,
+        unit: body.data.unit?.trim() || null,
+        direction: body.data.direction,
+        updatedAt: new Date(),
+      })
+      .where(eq(zero3ProofsTable.id, proof.id))
+      .returning();
+    res.json(UpdateZero3ProofResponse.parse(proofDto(updated)));
   },
 );
 
@@ -956,6 +1196,100 @@ router.post(
       res.status(400).json({ error: "Inscrição inválida para esta prova." });
       return;
     }
+    if (body.data.proofId || body.data.rawValue !== undefined) {
+      if (!body.data.proofId || body.data.status !== "PROVISIONAL") {
+        res.status(400).json({
+          error:
+            "Informe a prova e salve o lançamento como provisório para revisão.",
+        });
+        return;
+      }
+      const [proof] = await db
+        .select()
+        .from(zero3ProofsTable)
+        .where(
+          and(
+            eq(zero3ProofsTable.id, body.data.proofId),
+            eq(zero3ProofsTable.eventId, body.data.eventId),
+          ),
+        )
+        .limit(1);
+      if (!proof) {
+        res.status(400).json({ error: "Prova inválida para este evento." });
+        return;
+      }
+      if (proofDto(proof).configured && body.data.rawValue == null) {
+        res.status(400).json({
+          error: `Informe o resultado da prova ${proof.order}.`,
+        });
+        return;
+      }
+      if (!proofDto(proof).configured) {
+        res.status(409).json({
+          error: "Configure nome, métrica e direção antes de lançar resultados.",
+        });
+        return;
+      }
+      const [duplicate] = await db
+        .select()
+        .from(zero3ResultsTable)
+        .where(
+          and(
+            eq(zero3ResultsTable.eventId, body.data.eventId),
+            eq(zero3ResultsTable.proofId, proof.id),
+            eq(zero3ResultsTable.registrationId, registration.id),
+          ),
+        )
+        .limit(1);
+      if (duplicate) {
+        res.status(409).json({
+          error:
+            "Esta equipe já tem um lançamento nesta prova. Edite o resultado existente para corrigir.",
+        });
+        return;
+      }
+      const [created] = await db
+        .insert(zero3ResultsTable)
+        .values({
+          eventId: body.data.eventId,
+          registrationId: registration.id,
+          proofId: proof.id,
+          heatId: body.data.heatId ?? null,
+          category: registration.category,
+          laneLabel: registration.laneLabel,
+          elapsedMs: null,
+          rawValue:
+            body.data.rawValue === undefined || body.data.rawValue === null
+              ? null
+              : String(body.data.rawValue),
+          syncErrorMs: null,
+          status: "PROVISIONAL",
+          idempotencyKey: body.data.idempotencyKey,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (!created) {
+        const [byIdempotency] = await db
+          .select()
+          .from(zero3ResultsTable)
+          .where(eq(zero3ResultsTable.idempotencyKey, body.data.idempotencyKey))
+          .limit(1);
+        if (byIdempotency) {
+          res.status(201).json(
+            CaptureZero3ResultResponse.parse(await resultDto(byIdempotency)),
+          );
+          return;
+        }
+        res.status(409).json({
+          error: "Já existe um lançamento para esta equipe e prova.",
+        });
+        return;
+      }
+      res
+        .status(201)
+        .json(CaptureZero3ResultResponse.parse(await resultDto(created)));
+      return;
+    }
     if (
       body.data.heatId &&
       !(
@@ -1110,6 +1444,7 @@ router.patch(
         resultId: existing.id,
         previousStatus: existing.status,
         previousElapsedMs: existing.elapsedMs,
+        previousRawValue: existing.rawValue,
         reason: body.data.reason,
         actorId: member?.email ?? "unknown",
       });
@@ -1119,6 +1454,14 @@ router.patch(
           ...(body.data.status ? { status: body.data.status } : {}),
           ...(body.data.elapsedMs !== undefined
             ? { elapsedMs: body.data.elapsedMs }
+            : {}),
+          ...(body.data.rawValue !== undefined
+            ? {
+                rawValue:
+                  body.data.rawValue === null
+                    ? null
+                    : String(body.data.rawValue),
+              }
             : {}),
           revision: existing.revision + 1,
         })
@@ -1379,6 +1722,8 @@ router.get(
         GetZero3PublicBoardResponse.parse({
           serverTime: new Date(),
           results: [],
+          proofs: [],
+          leaderboards: [],
           podiums: [],
           activeHeats: [],
         }),
@@ -1386,7 +1731,8 @@ router.get(
       return;
     }
     const timer = await getTimerDto(event);
-    const results = await eventResults(event.id);
+    const scoring = await eventScoring(event);
+    const results = await eventResults(event.id, scoring.placements);
     const podiums = await publicPodiums(event.id);
     const activeHeats = await activeHeatDtos(event.id);
     res.json(
@@ -1395,6 +1741,8 @@ router.get(
         event: eventDto(event),
         timer,
         results,
+        proofs: scoring.proofs,
+        leaderboards: scoring.leaderboards,
         podiums,
         activeHeats,
       }),

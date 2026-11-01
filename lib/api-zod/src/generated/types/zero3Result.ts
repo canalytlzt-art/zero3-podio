@@ -22,6 +22,24 @@ export interface Zero3Result {
      * @nullable
      */
   elapsedMs?: number | null;
+  /** @nullable */
+  proofId?: string | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  rawValue?: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  placement?: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  points?: number | null;
+  tieRulePending?: boolean;
   /**
      * @minimum 0
      * @nullable

@@ -17,6 +17,13 @@ export interface Zero3ResultInput {
      * @nullable
      */
   elapsedMs?: number | null;
+  /** @nullable */
+  proofId?: string | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  rawValue?: number | null;
   status: Zero3ResultStatus;
   /** @minLength 1 */
   idempotencyKey: string;

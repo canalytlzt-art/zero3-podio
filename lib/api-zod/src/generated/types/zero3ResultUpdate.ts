@@ -14,6 +14,11 @@ export interface Zero3ResultUpdate {
      * @nullable
      */
   elapsedMs?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  rawValue?: number | null;
   /** @minLength 1 */
   reason: string;
 }

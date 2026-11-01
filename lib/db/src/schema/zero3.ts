@@ -2,6 +2,7 @@ import {
   boolean,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -21,6 +22,29 @@ export const zero3EventsTable = pgTable("zero3_events", {
   preparationSeconds: integer("preparation_seconds").notNull().default(10),
   createdAt: createdAt(),
 });
+
+export const zero3ProofsTable = pgTable(
+  "zero3_proofs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => zero3EventsTable.id, { onDelete: "cascade" }),
+    order: integer("proof_order").notNull(),
+    name: text("name").notNull().default(""),
+    metricType: text("metric_type").notNull().default("UNCONFIGURED"),
+    unit: text("unit"),
+    direction: text("direction"),
+    createdAt: createdAt(),
+    updatedAt: createdAt(),
+  },
+  (table) => ({
+    proofOrderUnique: uniqueIndex("zero3_proof_order_unique").on(
+      table.eventId,
+      table.order,
+    ),
+  }),
+);
 
 export const zero3AthletesTable = pgTable("zero3_athletes", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -106,26 +130,40 @@ export const zero3ActiveHeatsTable = pgTable(
   }),
 );
 
-export const zero3ResultsTable = pgTable("zero3_results", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  eventId: uuid("event_id")
-    .notNull()
-    .references(() => zero3EventsTable.id, { onDelete: "cascade" }),
-  registrationId: uuid("registration_id")
-    .notNull()
-    .references(() => zero3RegistrationsTable.id, { onDelete: "cascade" }),
-  heatId: uuid("heat_id").references(() => zero3HeatsTable.id, {
-    onDelete: "set null",
+export const zero3ResultsTable = pgTable(
+  "zero3_results",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => zero3EventsTable.id, { onDelete: "cascade" }),
+    registrationId: uuid("registration_id")
+      .notNull()
+      .references(() => zero3RegistrationsTable.id, { onDelete: "cascade" }),
+    proofId: uuid("proof_id").references(() => zero3ProofsTable.id, {
+      onDelete: "set null",
+    }),
+    heatId: uuid("heat_id").references(() => zero3HeatsTable.id, {
+      onDelete: "set null",
+    }),
+    category: text("category").notNull(),
+    laneLabel: text("lane_label"),
+    elapsedMs: integer("elapsed_ms"),
+    rawValue: numeric("raw_value", { precision: 12, scale: 3 }),
+    syncErrorMs: integer("sync_error_ms"),
+    status: text("status").notNull().default("PROVISIONAL"),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    capturedAt: createdAt(),
+    revision: integer("revision").notNull().default(1),
+  },
+  (table) => ({
+    oneResultPerProof: uniqueIndex("zero3_result_proof_registration_unique").on(
+      table.eventId,
+      table.proofId,
+      table.registrationId,
+    ),
   }),
-  category: text("category").notNull(),
-  laneLabel: text("lane_label"),
-  elapsedMs: integer("elapsed_ms"),
-  syncErrorMs: integer("sync_error_ms"),
-  status: text("status").notNull().default("PROVISIONAL"),
-  idempotencyKey: text("idempotency_key").notNull().unique(),
-  capturedAt: createdAt(),
-  revision: integer("revision").notNull().default(1),
-});
+);
 
 export const zero3ResultRevisionsTable = pgTable("zero3_result_revisions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -134,6 +172,7 @@ export const zero3ResultRevisionsTable = pgTable("zero3_result_revisions", {
     .references(() => zero3ResultsTable.id, { onDelete: "cascade" }),
   previousStatus: text("previous_status").notNull(),
   previousElapsedMs: integer("previous_elapsed_ms"),
+  previousRawValue: numeric("previous_raw_value", { precision: 12, scale: 3 }),
   reason: text("reason").notNull(),
   actorId: text("actor_id").notNull(),
   createdAt: createdAt(),
