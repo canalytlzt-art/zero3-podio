@@ -53,3 +53,29 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Local environment values and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.token
+credentials.json
+service-account*.json
+
+# Private database copies and backups (keep schema/migration source files)
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.dump
+*.dump.gz
+*.backup
+*.bak
+*.sql.gz
