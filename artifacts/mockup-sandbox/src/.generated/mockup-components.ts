@@ -2,6 +2,7 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/zero3-tv/TvBoard.tsx": () => import("../components/mockups/zero3-tv/TvBoard.tsx"),
+  "./components/mockups/zero3-tv/Zero3Results.tsx": () => import("../components/mockups/zero3-tv/Zero3Results.tsx"),
   "./components/mockups/templates/MissionControlBentoDashboard-7_dlIv/Dashboard.tsx": () => import("../components/mockups/templates/MissionControlBentoDashboard-7_dlIv/Dashboard.tsx"),
   "./components/mockups/templates/MissionControlBentoDashboard-XHSAhz/Dashboard.tsx": () => import("../components/mockups/templates/MissionControlBentoDashboard-XHSAhz/Dashboard.tsx")
 };
