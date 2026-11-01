@@ -10,6 +10,7 @@ import type { Zero3CategoryLeaderboard } from './zero3CategoryLeaderboard';
 import type { Zero3Event } from './zero3Event';
 import type { Zero3Proof } from './zero3Proof';
 import type { Zero3PublicPodium } from './zero3PublicPodium';
+import type { Zero3PublicRegistration } from './zero3PublicRegistration';
 import type { Zero3PublicResult } from './zero3PublicResult';
 import type { Zero3Timer } from './zero3Timer';
 
@@ -19,6 +20,7 @@ export interface Zero3PublicBoard {
   timer?: Zero3Timer;
   results: Zero3PublicResult[];
   proofs: Zero3Proof[];
+  registrations: Zero3PublicRegistration[];
   leaderboards: Zero3CategoryLeaderboard[];
   podiums: Zero3PublicPodium[];
   activeHeats: Zero3ActiveHeat[];

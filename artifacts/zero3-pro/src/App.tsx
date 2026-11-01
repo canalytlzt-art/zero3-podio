@@ -12,6 +12,8 @@ import { getGetZero3MeQueryKey, useGetZero3Me } from '@workspace/api-client-reac
 import { Zero3Role } from '@workspace/api-client-react';
 import { DashboardPage, EventDetailPage, EventsPage, MembersPage, RosterPage } from '@/pages/AdminPages';
 import { PublicTV } from '@/pages/PublicTV';
+import { PublicEntry } from '@/pages/PublicEntry';
+import { OperationPage } from '@/pages/OperationPage';
 
 const queryClient = new QueryClient({defaultOptions:{queries:{staleTime:1500,refetchOnWindowFocus:true,retry:1}}});
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -90,6 +92,9 @@ function AppRoutes(){
   return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={clerkAppearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{signIn:{start:{title:'Acessar ZERO3 PRO',subtitle:'Entre para operar a competição'}},signUp:{start:{title:'Criar acesso ZERO3 PRO',subtitle:'Solicite acesso à equipe de operação'}}}} routerPush={(to:string)=>setLocation(stripBase(to))} routerReplace={(to:string)=>setLocation(stripBase(to),{replace:true})}>
     <QueryClientProvider client={queryClient}><CacheInvalidator/><TooltipProvider><RoutedErrorBoundary><Switch>
       <Route path="/" component={PublicTV}/>
+      <Route path="/inicio" component={PublicEntry}/>
+      <Route path="/tv" component={PublicTV}/>
+      <Route path="/operacao"><Protected><OperationPage/></Protected></Route>
       <Route path="/sign-in/*?" component={SignInPage}/>
       <Route path="/sign-up/*?" component={SignUpPage}/>
       <Route path="/admin/events/:eventId"><Protected><EventDetailPage/></Protected></Route>

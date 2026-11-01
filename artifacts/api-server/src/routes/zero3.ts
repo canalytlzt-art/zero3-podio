@@ -281,7 +281,15 @@ async function eventScoring(event: EventRow) {
   });
   return {
     proofs: proofRows.map(proofDto),
-    registrations,
+    registrations: registrations.map(
+      ({ id, category, teamName, laneLabel, athleteNames }) => ({
+        id,
+        category,
+        teamName,
+        laneLabel,
+        athleteNames,
+      }),
+    ),
     resultRows,
     leaderboards: calculated.leaderboards,
     placements: calculated.placements,
@@ -1723,6 +1731,7 @@ router.get(
           serverTime: new Date(),
           results: [],
           proofs: [],
+          registrations: [],
           leaderboards: [],
           podiums: [],
           activeHeats: [],
@@ -1742,6 +1751,7 @@ router.get(
         timer,
         results,
         proofs: scoring.proofs,
+        registrations: scoring.registrations,
         leaderboards: scoring.leaderboards,
         podiums,
         activeHeats,

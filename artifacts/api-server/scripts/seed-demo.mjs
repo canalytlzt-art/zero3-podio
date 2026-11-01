@@ -5,11 +5,47 @@ import {
   zero3AthletesTable,
   zero3EventsTable,
   zero3ProofsTable,
+  zero3PodiumsTable,
   zero3RegistrationsTable,
   zero3ResultsTable,
 } from "@workspace/db";
 
 const demoEventName = "DEMONSTRAÇÃO — DADOS DE TESTE";
+const longDemoTeamName =
+  "TESTE SC — Associação Esportiva Horizonte — Núcleo de Formação e Desenvolvimento";
+
+async function ensureDemoPodiums(eventId) {
+  const [registrations, existingPodiums] = await Promise.all([
+    db
+      .select()
+      .from(zero3RegistrationsTable)
+      .where(eq(zero3RegistrationsTable.eventId, eventId)),
+    db
+      .select({ category: zero3PodiumsTable.category })
+      .from(zero3PodiumsTable)
+      .where(eq(zero3PodiumsTable.eventId, eventId)),
+  ]);
+
+  for (const category of ["SC", "RX"]) {
+    if (existingPodiums.some((podium) => podium.category === category)) continue;
+    const registrationIds = registrations
+      .filter((registration) => registration.category === category)
+      .sort((a, b) => (a.laneLabel ?? "").localeCompare(b.laneLabel ?? "", "pt-BR", { numeric: true }))
+      .slice(0, 3)
+      .map((registration) => registration.id);
+    if (registrationIds.length !== 3) continue;
+    await db.insert(zero3PodiumsTable).values({
+      eventId,
+      category,
+      registrationIds,
+      published: true,
+      publishedBy: "DEMO — DADOS FICTÍCIOS",
+      publishedAt: new Date(),
+      publishReason: "Fixture manual de demonstração; não representa resultado oficial.",
+      version: 1,
+    });
+  }
+}
 
 if (process.env.NODE_ENV !== "development") {
   throw new Error("O seed de demonstração só pode ser executado em Development.");
@@ -23,7 +59,17 @@ try {
     .limit(1);
 
   if (existing) {
-    console.log("Demonstração já existe; nenhum registro foi alterado.");
+    await db
+      .update(zero3RegistrationsTable)
+      .set({ teamName: longDemoTeamName })
+      .where(
+        and(
+          eq(zero3RegistrationsTable.eventId, existing.id),
+          eq(zero3RegistrationsTable.laneLabel, "SC-03"),
+        ),
+      );
+    await ensureDemoPodiums(existing.id);
+    console.log("Demonstração existente verificada; fixtures visuais preservadas.");
   } else {
     await db.transaction(async (tx) => {
       const [event] = await tx
@@ -50,7 +96,11 @@ try {
       const teams = [
         { category: "SC", label: "Roxo", ranks: [1, 1, 2, 3] },
         { category: "SC", label: "Cinza", ranks: [2, 2, 3, 1] },
-        { category: "SC", label: "Verde", ranks: [3, 3, 1, 2] },
+        {
+          category: "SC",
+          label: "Associação Esportiva Horizonte — Núcleo de Formação e Desenvolvimento",
+          ranks: [3, 3, 1, 2],
+        },
         { category: "RX", label: "Azul", ranks: [1, 2, 1, 1] },
         { category: "RX", label: "Prata", ranks: [2, 1, 2, 3] },
         { category: "RX", label: "Âmbar", ranks: [3, 3, 3, 2] },
@@ -102,6 +152,23 @@ try {
         }),
       );
       await tx.insert(zero3ResultsTable).values(resultValues);
+      await tx.insert(zero3PodiumsTable).values(
+        ["SC", "RX"].map((category) => ({
+          eventId: event.id,
+          category,
+          registrationIds: registrationRows
+            .filter((registration) => registration.category === category)
+            .sort((a, b) =>
+              (a.laneLabel ?? "").localeCompare(b.laneLabel ?? "", "pt-BR", { numeric: true }),
+            )
+            .map((registration) => registration.id),
+          published: true,
+          publishedBy: "DEMO — DADOS FICTÍCIOS",
+          publishedAt: new Date(),
+          publishReason: "Fixture manual de demonstração; não representa resultado oficial.",
+          version: 1,
+        })),
+      );
     });
     console.log("Evento de demonstração criado com 4 provas e 6 equipes fictícias.");
   }

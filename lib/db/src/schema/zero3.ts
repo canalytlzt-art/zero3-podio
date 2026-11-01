@@ -36,7 +36,9 @@ export const zero3ProofsTable = pgTable(
     unit: text("unit"),
     direction: text("direction"),
     createdAt: createdAt(),
-    updatedAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     proofOrderUnique: uniqueIndex("zero3_proof_order_unique").on(

@@ -34,11 +34,11 @@ const registrations: ScoreRegistration[] = [
 
 const rankByCategory: Record<string, number[][]> = {
   SC: [
-    [1, 2, 3, 4],
-    [2, 1, 2, 3],
-    [3, 3, 1, 1],
+    [1, 2, 3, 5],
+    [2, 1, 2, 1],
+    [3, 3, 1, 4],
     [4, 4, 4, 3],
-    [5, 5, 5, 5],
+    [5, 5, 5, 2],
   ],
   RX: [
     [1, 1, 1, 1],

@@ -1,2 +1,3 @@
-- [ZERO3 public display](zero3-public-display.md) — Keep the public screen as one Brasília-clock TV with SC/RX results and podiums; admin work stays separate.
+- [ZERO3 display and scoring](zero3-public-display.md) — One Brasília-clock TV shows SC/RX, four-proof points, progress and manually published podiums; admin stays separate.
 - [Clerk package compatibility](clerk-package-compatibility.md) — Keep Clerk React and shared packages on compatible major lines; misaligned exports can fail only during Vite bundling.
+- [ZERO3 Development demo seed](zero3-development-seed.md) — Bundle workspace TypeScript seed scripts with esbuild and place transient output under `lib/db` for Node ESM resolution.

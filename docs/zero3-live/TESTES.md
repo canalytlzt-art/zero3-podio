@@ -2,57 +2,46 @@
 
 ## Resultado
 
-**Homologação do ZERO3 bloqueada.** O projeto ZERO3 e um ambiente Development isolado não estão acessíveis. Os checks abaixo são apenas do scaffold presente e não aprovam nenhum fluxo esportivo.
-
-## Critérios atuais — TV pública única
-
-A revisão de escopo mais recente substitui qualquer plano anterior de duas telas públicas. Estes critérios continuam **não testados**:
-
-- Uma única página pública em uma TV, com painel administrativo separado.
-- Hora civil `America/Sao_Paulo` em `HH:mm:ss`, atualizada a cada segundo e sem depender do timer esportivo.
-- Áreas SC e RX simultâneas; cada lançamento confirmado aparece na categoria correta sem recarregar.
-- Resultados anteriores permanecem visíveis ao trocar de bateria.
-- Pódios finais são escolhidos manualmente e aparecem na mesma TV, na área de cada categoria.
-- Nenhuma associação automática de SC com Scale sem confirmação dos dados reais.
+Validação técnica executada em Development; nenhuma publicação foi feita. O placar público e o bloqueio de operação sem autorização foram conferidos. A tela autenticada, a captura real por usuário logado e dispositivos físicos ainda exigem ensaio operacional.
 
 ## Checks executados
 
-| Check | Resultado | O que comprova — e o que não comprova |
+| Check | Resultado | Evidência/limite |
 |---|---|---|
-| `pnpm run typecheck` | **Passou** | O typecheck das bibliotecas, API genérica, Canvas e scripts terminou sem erro. Não verifica regras, banco ou telas ZERO3. |
-| `curl -sS -f --max-time 10 http://localhost:80/api/healthz` | **Passou** — `{"status":"ok"}` | A rota de health da API genérica respondeu. Não comprova conexão ao banco ou APIs do ZERO3. |
-| `git diff --check` | **Passou** | As alterações documentais não têm erros de whitespace detectáveis por esse comando. |
+| `pnpm --filter @workspace/db run push` | **Passou** | Aplicado somente à base Development. A base ZERO3 estava vazia antes da alteração. |
+| `pnpm --filter @workspace/api-server run seed:demo` | **Passou e idempotente** | Um evento fictício, quatro provas, 12 atletas, seis inscrições (3 SC/3 RX), 24 resultados e dois pódios demonstrativos com três lugares cada. A reexecução não duplicou registros; garantiu um nome longo para validar quebra de linha. |
+| `pnpm --filter @workspace/api-server run test:scoring` | **5 testes passaram** | Pontos por colocação, equipe incompleta, resultado provisório, empate sem desempate e recálculo após correção. |
+| API `typecheck` | **Passou** | `pnpm --filter @workspace/api-server run typecheck`. |
+| Interface `typecheck` | **Passou** | `pnpm --filter @workspace/zero3-pro run typecheck`. |
+| Interface `build` | **Passou** | Vite concluiu. Permanecem aviso de sourcemap em `tooltip.tsx` e aviso de chunk acima de 500 kB. |
+| GET `/api/zero3/public-board` | **HTTP 200** | Retornou evento, quatro provas, seis registros públicos, 24 resultados com pontuação e dois leaderboards; campos internos `athleteIds` não foram expostos. |
+| GET `/api/zero3/events/{id}/proofs` sem sessão | **HTTP 403** | Configuração continua protegida; nenhum bypass de Clerk foi criado. |
+| Preview `/tv`, viewport 1920×1080, e `/`, 1280×720 | **Capturado** | Conferidos relógio civil, timer separado, demo identificada, SC/RX, quatro provas com pontos e valores, progresso, nome longo quebrado sem corte e pódios demonstrativos separados por categoria. |
+| Preview `/operacao`, sem sessão | **Acesso protegido** | O navegador mostra o gate de entrada, não os formulários autenticados. A sessão não foi contornada. |
+| `git diff --check` | **Passou** | Nenhum erro de whitespace encontrado até a revisão registrada. |
 
-## Testes de aceitação não executados
+## Regras e estados exercitados
 
-Estes itens estão **bloqueados/não executados**, não aprovados:
+- O score está no servidor; cliente não envia pontos nem calcula soma oficial.
+- Provisórios não pontuam; resultados ausentes não são tratados como zero.
+- A correção parte do valor persistido e recalcula classificação, sem acumular pontos anteriores.
+- Empates sem regra explícita mantêm pontuação/classificação oficial pendente.
+- A TV recebe inscrições por um endpoint público somente leitura, com payload reduzido.
+- O relógio da TV usa explicitamente `America/Sao_Paulo`, atualizado a cada segundo, separado do timer esportivo.
+- Pódios publicados são carregados junto do placar; não são escolhidos nem publicados automaticamente.
 
-- Evento de teste, importação de atletas, prévia de inválidos e duplicidades, atletas sem equipe e equipes com nome pendente.
-- Provas, categorias, baterias, raias, timer, largada de 10 segundos, CAP, reinício e reconexão.
-- Capturas em raias diferentes, concorrência, idempotência, correção auditada e tempo de chegada preservado.
-- Validação, permissões de operador, árbitro, juiz-chefe, Admin e modo somente leitura.
-- Pódio manual, rascunho privado, publicação RX/SC isolada, retificação e recuperação da versão publicada.
-- Visualização em celular/TV, privacidade, tela cheia, áudio e Wake Lock.
-- Diferença de tempo entre telas, latência de propagação, queda de rede e reinício do backend.
-- Preservação de módulos e dados esportivos anteriores, exportação/backup e reversão.
+## Ainda não homologado
 
-## Medições e dispositivos
-
-- Telas ZERO3 comparadas: **nenhuma**.
-- Latência ou diferença entre telas medida: **não**.
-- Celular ou TV físico testado: **não**.
-- Emulação ou navegador automatizado do ZERO3: **não**.
-- Áudio ouvido em TV: **não**.
-
-Não é possível afirmar precisão temporal, funcionamento offline ou capacidade de público sem executar os ensaios no app real e registrar as condições de rede e os dispositivos usados.
+- Capturar, validar e corrigir um lançamento por uma sessão operacional real de cada papel.
+- Confirmar a animação de atualização após um novo lançamento autenticado em navegador ao vivo.
+- Interagir com a tela nos estados sem evento/inscrição, reconexão e perda de rede; não foi possível usar o screenshot para simular ações ou offline.
+- Ensaiar concorrência entre juízes, reinício do backend, temporização em rede real e preservação do timer após reconexão.
+- Conferir TV/celular físicos, áudio, Wake Lock, latência entre telas e nomes oficiais longos.
+- Substituir os dados sintéticos pelas definições oficiais das provas, unidades, direções, desempates e participantes.
+- Confirmar se SC equivale a SCALE; a implementação preserva SC sem inferência.
 
 ## Dados e produção
 
-- Evento `TESTE` e dados fictícios não foram criados.
-- Nenhuma consulta, seed, importação ou alteração foi feita em banco oficial.
-- Nenhuma migração foi aplicada.
-- Produção não foi acessada nem publicada.
-
-## Bloqueio para homologação
-
-Disponibilizar o repositório/artifact ZERO3 correto e um ambiente Development isolado. Depois disso, executar os testes dos Blocos 2–6 contra a implementação real e registrar as medições, limitações e evidências.
+- A demonstração Development é sintética e está identificada como `DEMONSTRAÇÃO — DADOS DE TESTE`; não representa participantes ou regras oficiais.
+- Não havia registros ZERO3 na base Development antes da implantação. O seed usa dados de teste e é idempotente.
+- Produção não foi consultada, migrada ou publicada.

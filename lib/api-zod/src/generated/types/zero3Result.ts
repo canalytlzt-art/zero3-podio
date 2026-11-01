@@ -23,23 +23,23 @@ export interface Zero3Result {
      */
   elapsedMs?: number | null;
   /** @nullable */
-  proofId?: string | null;
+  proofId: string | null;
   /**
      * @minimum 0
      * @nullable
      */
-  rawValue?: number | null;
+  rawValue: number | null;
   /**
      * @minimum 1
      * @nullable
      */
-  placement?: number | null;
+  placement: number | null;
   /**
      * @minimum 1
      * @nullable
      */
-  points?: number | null;
-  tieRulePending?: boolean;
+  points: number | null;
+  tieRulePending: boolean;
   /**
      * @minimum 0
      * @nullable

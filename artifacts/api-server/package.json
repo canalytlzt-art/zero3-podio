@@ -9,7 +9,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:scoring": "esbuild src/lib/zero3-scoring.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-scoring.test.mjs && node --test /tmp/zero3-scoring.test.mjs",
-    "seed:demo": "NODE_ENV=development node --experimental-strip-types ../../scripts/seed-zero3-demo.mjs"
+    "seed:demo": "export NODE_ENV=development; set -e; out=../../lib/db/seed-demo.build.mjs; trap 'rm -f \"$out\"' EXIT; esbuild scripts/seed-demo.mjs --bundle --platform=node --format=esm --external:pg --external:drizzle-orm --external:drizzle-orm/* --outfile=\"$out\" && node \"$out\""
   },
   "dependencies": {
     "@clerk/express": "^2.1.86",

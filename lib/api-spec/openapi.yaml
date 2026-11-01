@@ -644,7 +644,7 @@ components:
         name: { type: string, minLength: 1 }
         proofName: { type: string, minLength: 1 }
         preparationSeconds: { type: integer, minimum: 0, maximum: 120 }
-      required: [name, proofName, preparationSeconds]
+      required: [name, preparationSeconds]
     Zero3EventUpdate:
       type: object
       properties:
@@ -805,7 +805,7 @@ components:
           items: { type: string }
         teamName: { type: ["string", "null"] }
         heatName: { type: ["string", "null"] }
-      required: [id, eventId, registrationId, category, status, capturedAt, revision, names, syncErrorMs]
+      required: [id, eventId, registrationId, category, status, capturedAt, revision, names, syncErrorMs, proofId, rawValue, placement, points, tieRulePending]
     Zero3ResultInput:
       type: object
       properties:
@@ -881,6 +881,17 @@ components:
     Zero3PublicResult:
       allOf:
         - $ref: "#/components/schemas/Zero3Result"
+    Zero3PublicRegistration:
+      type: object
+      properties:
+        id: { type: string }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        teamName: { type: ["string", "null"] }
+        laneLabel: { type: ["string", "null"] }
+        athleteNames:
+          type: array
+          items: { type: string }
+      required: [id, category, teamName, laneLabel, athleteNames]
     Zero3PublicPodium:
       type: object
       properties:
@@ -910,6 +921,9 @@ components:
         proofs:
           type: array
           items: { $ref: "#/components/schemas/Zero3Proof" }
+        registrations:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3PublicRegistration" }
         leaderboards:
           type: array
           items: { $ref: "#/components/schemas/Zero3CategoryLeaderboard" }
@@ -919,7 +933,7 @@ components:
         activeHeats:
           type: array
           items: { $ref: "#/components/schemas/Zero3ActiveHeat" }
-      required: [serverTime, results, proofs, leaderboards, podiums, activeHeats]
+      required: [serverTime, results, proofs, registrations, leaderboards, podiums, activeHeats]
     Zero3LeaderboardProofScore:
       type: object
       properties:

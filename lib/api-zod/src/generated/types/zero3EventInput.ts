@@ -10,7 +10,7 @@ export interface Zero3EventInput {
   /** @minLength 1 */
   name: string;
   /** @minLength 1 */
-  proofName: string;
+  proofName?: string;
   /**
      * @minimum 0
      * @maximum 120

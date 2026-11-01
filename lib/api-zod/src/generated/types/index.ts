@@ -41,6 +41,7 @@ export * from './zero3ProofUpdate';
 export * from './zero3PublicBoard';
 export * from './zero3PublicPodium';
 export * from './zero3PublicPodiumPlacesItem';
+export * from './zero3PublicRegistration';
 export * from './zero3PublicResult';
 export * from './zero3Registration';
 export * from './zero3RegistrationInput';

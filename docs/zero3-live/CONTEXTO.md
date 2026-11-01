@@ -10,7 +10,7 @@ As experiências pretendidas são:
 2. Uma única página pública em uma única TV, acompanhando a execução e os resultados.
 3. Leaderboard final com vencedores RX e SC definidos e publicados manualmente na mesma TV.
 
-Não inventar provas, atletas, regras, agrupamentos ou pontuação. Não automatizar soma de pontos nem classificação geral nesta etapa. Não alterar dados oficiais nem publicar em produção.
+Não inventar definições oficiais de prova, métrica, unidade, desempate ou participantes. A regra de pontuação confirmada para esta implementação é 1, 2, 3… pontos pela colocação de cada prova; a menor soma vence. Não alterar dados oficiais nem publicar em produção.
 
 ## Exibição pública — escopo vigente
 
@@ -24,43 +24,39 @@ Esta decisão substitui qualquer instrução anterior que separasse Timer e Lead
 - Vencedores finais continuam escolhidos manualmente e aparecem na respectiva área da mesma TV.
 - Não inferir que SC equivale a Scale sem confirmar os cadastros reais.
 
-## Estado da base inspecionada
+## Estado atual do projeto e da base
 
-O código-base ZERO3 não está presente nos arquivos acessíveis deste projeto. O repositório disponível contém apenas um scaffold pnpm com um servidor API de health check, bibliotecas geradas e um Canvas de preview genérico.
+- O projeto ZERO3 PRO existente foi preservado: Clerk, eventos, atletas, inscrições, baterias, timer compartilhado, captura de resultados e publicação manual de pódios continuam como base.
+- A base Development foi consultada antes das mudanças; não havia eventos, atletas, inscrições, timer ou resultados ZERO3. Nenhum dado oficial existente foi sobrescrito.
+- O schema Development recebeu as tabelas/campos necessários para quatro provas e valores de resultado. Não foi consultada nem alterada a base de produção.
+- Foi criado um único evento de demonstração explicitamente fictício, com quatro definições sintéticas, 12 atletas de teste, seis equipes e 24 resultados de demonstração. O seed é idempotente.
+- As regras oficiais das provas, métricas, unidades, desempates e participantes ainda não foram fornecidas; os campos de novos eventos começam pendentes.
 
-O histórico Git acessível contém a revisão inicial `fa3ed5c` (`Initial commit`). Essa revisão é o registro da base observada no início do Bloco 2; não é uma confirmação de que a aplicação ZERO3 esteja incluída.
+## Pontuação e classificação
 
-## Validação observada no scaffold
+- A API calcula as colocações por prova e categoria, usando todos os resultados do evento, sem descartar resultados anteriores quando uma bateria muda.
+- Resultado provisório não recebe pontos. Resultados validados recebem pontos pela colocação: 1 para primeiro, 2 para segundo, 3 para terceiro e assim sucessivamente; menor total vence.
+- Uma prova sem resultado não equivale a zero. Equipes incompletas não recebem classificação final. Correções recalculam a tabela a partir dos valores salvos, sem acumular pontos antigos.
+- Como o usuário não forneceu desempate, resultados empatados ficam sem pontuação/classificação oficial até existir regra confirmada. Não inferir que SC significa SCALE.
+- Pódios publicados continuam manuais, por categoria, e não são gerados automaticamente pela soma de pontos.
 
-- `pnpm run typecheck` passou para as bibliotecas, API genérica, Canvas e scripts do workspace.
-- `GET /api/healthz` respondeu `{"status":"ok"}`.
-- Esses checks validam apenas o scaffold disponível; não comprovam autenticação, banco, timer, captura, resultados ou TV do ZERO3.
-- Resultados e limites da homologação estão em `docs/zero3-live/TESTES.md`.
+## Mapa da implementação
 
-## Mapa dos arquivos reais relevantes
-
-| Arquivo/serviço | Conteúdo observado |
+| Arquivo/serviço | Responsabilidade |
 |---|---|
-| `replit.md` | Instruções e stack do scaffold atual. |
-| `artifacts/api-server/src/app.ts` | Configuração Express e montagem das rotas sob `/api`. |
-| `artifacts/api-server/src/routes/health.ts` | Única rota HTTP observada: health check. |
-| `artifacts/api-server/.replit-artifact/artifact.toml` | Serviço de API com comandos de desenvolvimento e build/run de produção. |
-| `lib/api-spec/openapi.yaml` | Contrato limitado a `GET /healthz`. |
-| `lib/db/src/schema/index.ts` | Schema sem tabelas de domínio. |
-| `lib/db/src/index.ts` e `lib/db/drizzle.config.ts` | Conexão PostgreSQL genérica condicionada a `DATABASE_URL`; instância e registros reais não verificados. |
-| `lib/api-client-react/src/custom-fetch.ts` | Suporte opcional a token bearer no cliente; não comprova autenticação implementada. |
-| `artifacts/mockup-sandbox/src/App.tsx` | Preview genérico de componentes, não uma interface ZERO3. |
+| `artifacts/zero3-pro/src/App.tsx` | Roteamento público e acesso protegido via Clerk/papéis. |
+| `artifacts/zero3-pro/src/pages/PublicTV.tsx` | TV pública única, somente leitura, em `/` e `/tv`. |
+| `artifacts/zero3-pro/src/pages/OperationPage.tsx` | Configuração das quatro provas, lançamentos provisórios e revisão em `/operacao`. |
+| `artifacts/zero3-pro/src/pages/AdminPages.tsx` | Eventos, roster, inscrições, baterias, timer e pódios manuais já existentes. |
+| `artifacts/api-server/src/routes/zero3.ts` | Endpoints operacionais e placar público. |
+| `artifacts/api-server/src/lib/zero3-scoring.ts` | Cálculo autoritativo de pontos e classificação no servidor. |
+| `lib/db/src/schema/zero3.ts` | Schema persistente do domínio ZERO3. |
+| `lib/api-spec/openapi.yaml` | Contrato-fonte dos endpoints e tipos gerados. |
+| `replit.md` | Comandos, mapa do workspace e regras operacionais do produto. |
 
-Não há documentação de progresso ZERO3 anterior acessível nem histórico anterior do app. A skill local do produto contém diretrizes, mas não comprova recursos implementados.
+## Limites de homologação
 
-## Decisões e limites
-
-- Não criar modelos alternativos de atletas, equipes, provas, baterias ou timer para substituir uma base ausente.
-- Não associar atletas a equipes por nome, sobrenome, ordem ou categoria.
-- Não inferir RX/SC, nem assumir que SC seja Scale, sem consultar os registros existentes.
-- Não executar migrações, importações ou seeds enquanto a base real e o ambiente de desenvolvimento isolado não forem identificados.
-- Não reutilizar o banco de produção para testes.
-
-## Dependência para prosseguir
-
-É necessário tornar acessível o repositório ou artefato correto do ZERO3 PRO, incluindo sua documentação e acesso seguro ao ambiente Development isolado. Só então será possível verificar timer, cadastros, banco, permissões e dados reais antes de continuar o Bloco 2.
+- A validação foi feita em Development. A produção não foi consultada, migrada ou publicada.
+- Testes unitários de pontuação, typecheck, build e preview podem confirmar os fluxos de código; não substituem um ensaio com dispositivos físicos, rede instável ou dados oficiais.
+- A tela autenticada da operação não pode ser conferida visualmente pela captura do navegador sem sessão. A autenticação e as barreiras de papel permanecem ativas; não criar bypass temporário.
+- Evidências e itens ainda não testados estão em `docs/zero3-live/TESTES.md`; o andamento está em `docs/zero3-live/PROGRESSO.md`.
