@@ -1,0 +1,22 @@
+name = "zero3-podio"
+main = "artifacts/api-server/src/worker.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = [
+  "nodejs_compat",
+  "nodejs_compat_populate_process_env",
+]
+
+[vars]
+ZERO3_CLOUDFLARE_WORKER = "true"
+
+[assets]
+directory = "./artifacts/zero3-pro/dist/public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+# Placeholder only. Replace with a cache-disabled Hyperdrive configuration ID
+# after an externally reachable PostgreSQL origin is available.
+id = "00000000000000000000000000000000"

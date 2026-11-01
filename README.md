@@ -92,8 +92,33 @@ Consulte `.env.example` para os nomes das variáveis. `PORT` e `BASE_PATH` são 
 - `.replit` e `artifacts/*/.replit-artifact/artifact.toml` configuram workflows, portas e encaminhamento de rotas do Preview.
 - `@replit/vite-plugin-cartographer` e `@replit/vite-plugin-dev-banner` são ativados no desenvolvimento Replit; `@replit/vite-plugin-runtime-error-modal` também é carregado pela configuração Vite. O workspace declara `@replit/connectors-sdk`, mas não há import dele no código principal do ZERO3 PRO.
 - O middleware Clerk pode servir `/api/__clerk` em produção quando `CLERK_SECRET_KEY` está configurada. Em outro host, domínio, proxy e chaves Clerk precisam ser configurados para esse ambiente.
-- O repositório não tem configuração Wrangler/Cloudflare. A interface gera arquivos estáticos que podem ser avaliados para Pages. A API atual é Express/Node e depende de PostgreSQL; uma publicação Cloudflare exige definir um destino compatível para a API e encaminhar `/api`, ou adaptar essa camada em uma etapa futura. Nenhuma adaptação ou migração de banco foi feita aqui.
+- O Replit continua usando os workflows e o roteamento atuais; a preparação Cloudflare fica em `wrangler.toml` e não substitui a entrada Node/Express.
 
-## GitHub antes de um push público
+## Cloudflare Workers — preparação, sem publicação
 
-Não existe um remote `github.com` configurado: `origin` aponta para um host interno do Replit, além de um remote de backup interno. O histórico existente inclui a configuração de bootstrap `ZERO3_INITIAL_ADMIN_EMAIL` no `.replit`. Não reproduza o valor aqui; antes de publicar em um repositório público, mova essa configuração para um secret e decida como limpar o valor do histórico. Não reescrevi o histórico para preservar checkpoints e a configuração atual do Preview.
+O Worker usa o mesmo app Express por `httpServerHandler` e mantém `/api/*` no Worker; os demais caminhos e rotas do cliente usam os assets Vite com fallback SPA. A compilação da interface gera `artifacts/zero3-pro/dist/public/`.
+
+```sh
+pnpm run build:cloudflare
+pnpm run check:cloudflare
+# Publicação manual somente depois de resolver os pré-requisitos:
+pnpm exec wrangler deploy --config wrangler.toml
+```
+
+`check:cloudflare` gera os tipos do Worker, executa os typechecks e builds existentes e faz `wrangler deploy --dry-run`; não publica nada. Para desenvolvimento local com Wrangler, é necessário fornecer um binding Hyperdrive válido e as variáveis Clerk do ambiente de teste.
+
+### Bloqueio de banco
+
+O Worker espera o binding `HYPERDRIVE`. Ele precisa apontar para um PostgreSQL externamente acessível e ser criado com o cache de consultas desativado, por exemplo com `wrangler hyperdrive create ... --caching-disabled`. A Replit documenta que o PostgreSQL gerenciado do workspace não expõe acesso TCP externo nem permite configurar um IP/firewall público. Portanto, o ID no `wrangler.toml` é apenas um placeholder: o Worker pode ser compilado em dry-run, mas não pode operar resultados, autenticação com consultas ao banco ou ser publicado funcionalmente com o banco atual. Nenhum banco foi migrado, substituído ou alterado; não execute `drizzle-kit push` como parte dessa preparação.
+
+### Configuração Cloudflare
+
+- Binding: `HYPERDRIVE` (PostgreSQL, configuração com `--caching-disabled`).
+- Segredos runtime do Clerk: `CLERK_SECRET_KEY` e `CLERK_PUBLISHABLE_KEY`, configurados no ambiente Cloudflare; nunca os grave neste repositório.
+- Variáveis runtime: `ZERO3_INITIAL_ADMIN_EMAIL` e, se necessário, `VITE_CLERK_PROXY_URL`.
+- Build frontend: `VITE_CLERK_PUBLISHABLE_KEY` (pública, incorporada no build) e opcionalmente `VITE_CLERK_PROXY_URL`.
+- O domínio de produção/teste do Worker também precisa estar autorizado nas configurações do Clerk. `DATABASE_URL` continua sendo o caminho local/Replit da API Node; no Worker, a conexão vem do binding Hyperdrive.
+
+## GitHub
+
+O repositório privado `canalytlzt-art/zero3-podio` está conectado; o `main` local acompanha `origin/main`, que permanece no host interno de integração do Replit. O histórico atual foi mantido, sem reescrita ou remoção de commits.

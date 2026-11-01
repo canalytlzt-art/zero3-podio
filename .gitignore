@@ -54,6 +54,12 @@ Thumbs.db
 .cache/
 .local/
 
+# Cloudflare local state and secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
 # Local environment values and credentials
 .env
 .env.*
