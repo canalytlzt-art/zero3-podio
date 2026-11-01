@@ -1,4 +1,4 @@
-import app from "./app";
+import app from "./node-app";
 import { logger } from "./lib/logger";
 import { configureDatabase } from "@workspace/db";
 

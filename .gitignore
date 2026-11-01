@@ -82,6 +82,13 @@ service-account*.json
 *.sqlite-*
 *.dump
 *.dump.gz
+*.pgdump
 *.backup
 *.bak
 *.sql.gz
+*.sql.backup
+*.sql.bak
+*.backup.sql
+*.private.sql
+**/database-backups/
+**/db-backups/

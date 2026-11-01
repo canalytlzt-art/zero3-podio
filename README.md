@@ -105,19 +105,20 @@ pnpm run check:cloudflare
 pnpm exec wrangler deploy --config wrangler.toml
 ```
 
-`check:cloudflare` gera os tipos do Worker, executa os typechecks e builds existentes e faz `wrangler deploy --dry-run`; não publica nada. Para desenvolvimento local com Wrangler, é necessário fornecer um binding Hyperdrive válido e as variáveis Clerk do ambiente de teste.
+`build:cloudflare` gera a interface em `artifacts/zero3-pro/dist/public/` e compila o Worker por meio de `wrangler deploy --dry-run`, salvando a saída em `.wrangler/build/`. `check:cloudflare` gera os tipos do Worker, executa os typechecks e chama esse build; não publica nada. Para `wrangler dev --local`, use a variável `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` com uma conexão PostgreSQL local de teste e as variáveis Clerk do ambiente de teste.
 
 ### Bloqueio de banco
 
-O Worker espera o binding `HYPERDRIVE`. Ele precisa apontar para um PostgreSQL externamente acessível e ser criado com o cache de consultas desativado, por exemplo com `wrangler hyperdrive create ... --caching-disabled`. A Replit documenta que o PostgreSQL gerenciado do workspace não expõe acesso TCP externo nem permite configurar um IP/firewall público. Portanto, o ID no `wrangler.toml` é apenas um placeholder: o Worker pode ser compilado em dry-run, mas não pode operar resultados, autenticação com consultas ao banco ou ser publicado funcionalmente com o banco atual. Nenhum banco foi migrado, substituído ou alterado; não execute `drizzle-kit push` como parte dessa preparação.
+O Worker espera o binding `HYPERDRIVE`. Ele precisa apontar para um PostgreSQL externamente acessível e ser criado com o cache de consultas desativado, por exemplo com `wrangler hyperdrive create zero3-podio-fresh --connection-string="<POSTGRES_CONNECTION_STRING>" --caching-disabled`. A Replit documenta que o PostgreSQL gerenciado do workspace não expõe acesso TCP externo nem permite configurar um IP/firewall público ([Database](https://docs.replit.com/features/data-and-storage/sql-database), [Connection details](https://docs.replit.com/features/data-and-storage/connection-details)). Portanto, o ID no `wrangler.toml` é apenas um placeholder: o Worker pode ser compilado em dry-run, mas não pode operar resultados, autenticação com consultas ao banco ou ser publicado funcionalmente com o banco atual. Nenhum banco foi migrado, substituído ou alterado; não execute `drizzle-kit push` como parte dessa preparação.
 
 ### Configuração Cloudflare
 
 - Binding: `HYPERDRIVE` (PostgreSQL, configuração com `--caching-disabled`).
 - Segredos runtime do Clerk: `CLERK_SECRET_KEY` e `CLERK_PUBLISHABLE_KEY`, configurados no ambiente Cloudflare; nunca os grave neste repositório.
-- Variáveis runtime: `ZERO3_INITIAL_ADMIN_EMAIL` e, se necessário, `VITE_CLERK_PROXY_URL`.
-- Build frontend: `VITE_CLERK_PUBLISHABLE_KEY` (pública, incorporada no build) e opcionalmente `VITE_CLERK_PROXY_URL`.
+- Variável runtime: `ZERO3_INITIAL_ADMIN_EMAIL`.
+- Build frontend: `VITE_CLERK_PUBLISHABLE_KEY` (pública, incorporada no build) e, se necessário, `VITE_CLERK_PROXY_URL`.
 - O domínio de produção/teste do Worker também precisa estar autorizado nas configurações do Clerk. `DATABASE_URL` continua sendo o caminho local/Replit da API Node; no Worker, a conexão vem do binding Hyperdrive.
+- Referências Cloudflare: [Express on Workers](https://developers.cloudflare.com/workers/framework-guides/web-apps/more-web-frameworks/express/), [Node.js HTTP server API](https://developers.cloudflare.com/workers/runtime-apis/nodejs/http/), [Hyperdrive query caching](https://developers.cloudflare.com/hyperdrive/concepts/query-caching/).
 
 ## GitHub
 

@@ -1,50 +1,42 @@
-import express, { type Express } from "express";
+import express, { type Express, type RequestHandler } from "express";
 import cors from "cors";
-import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
-import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
 
-const app: Express = express();
+interface AppOptions {
+  beforeMiddleware?: RequestHandler;
+  beforeRoutes?: RequestHandler;
+}
 
-app.use(
-  pinoHttp({
-    logger,
-    serializers: {
-      req(req) {
-        return {
-          id: req.id,
-          method: req.method,
-          url: req.url?.split("?")[0],
-        };
-      },
-      res(res) {
-        return {
-          statusCode: res.statusCode,
-        };
-      },
-    },
-  }),
-);
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
-app.use(cors({ credentials: true, origin: true }));
-app.use(
-  clerkMiddleware((req) => ({
-    publishableKey: publishableKeyFromHost(
-      getClerkProxyHost(req) ?? "",
-      process.env.CLERK_PUBLISHABLE_KEY,
-    ),
-  })),
-);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+export function createApp(options: AppOptions = {}): Express {
+  const app: Express = express();
 
-app.use("/api", router);
+  if (options.beforeMiddleware) {
+    app.use(options.beforeMiddleware);
+  }
+  app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+  app.use(cors({ credentials: true, origin: true }));
+  app.use(
+    clerkMiddleware((req) => ({
+      publishableKey: publishableKeyFromHost(
+        getClerkProxyHost(req) ?? "",
+        process.env.CLERK_PUBLISHABLE_KEY,
+      ),
+    })),
+  );
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
-export default app;
+  if (options.beforeRoutes) {
+    app.use(options.beforeRoutes);
+  }
+  app.use("/api", router);
+
+  return app;
+}

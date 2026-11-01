@@ -1,3 +1,5 @@
 - [ZERO3 display and scoring](zero3-public-display.md) — One Brasília-clock TV shows SC/RX, four-proof points, progress and manually published podiums; admin stays separate.
 - [Clerk package compatibility](clerk-package-compatibility.md) — Keep Clerk React and shared packages on compatible major lines; misaligned exports can fail only during Vite bundling.
 - [ZERO3 Development demo seed](zero3-development-seed.md) — Bundle workspace TypeScript seed scripts with esbuild and place transient output under `lib/db` for Node ESM resolution.
+- [Cloudflare PostgreSQL boundary](cloudflare-postgres-boundary.md) — Replit-managed PostgreSQL has no external TCP endpoint; keep Worker database work pending rather than migrating it.
+- [ZERO3 Git history](zero3-github-history.md) — Preserve existing branch/checkpoint history; the user chose not to rewrite it during GitHub preparation.
