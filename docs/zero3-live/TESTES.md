@@ -136,3 +136,75 @@ Os checks acima não provam login na instância Clerk do domínio Cloudflare, au
 - A demonstração Development é sintética e está identificada como `DEMONSTRAÇÃO — DADOS DE TESTE`; não representa participantes ou regras oficiais.
 - Não havia registros ZERO3 na base Development antes da implantação. O seed usa dados de teste e é idempotente.
 - Produção não foi consultada, migrada ou publicada.
+
+## Investigação direcionada de sessão
+
+- Requisição anônima no Preview: `/api/zero3/me` respondeu **401**; os logs registraram cookie ausente e Authorization ausente sem revelar valores.
+- Requisições posteriores no Preview: `/api/zero3/me` respondeu **200**, assim como leituras de eventos e dashboard. O endpoint só responde 200 após identidade Clerk e função ativa; isso é evidência real no Preview, não uma simulação nem validação do Worker Cloudflare.
+- Reproduzido com Express: dentro do router, `req.path` é `/me` e o caminho completo está em `req.originalUrl`. Corrigido o filtro dos logs para preservar etapas de busca do usuário e do papel.
+- O logger agora registra apenas `cookiePresent` e `authorizationPresent` como booleanos no início de `/api/zero3/me`; testes também garantem que valores de cookie/token não apareçam.
+- Os checks unitários atualizados de `request-tracing` e `worker-logger` cobrem o caminho montado e a presença segura dos headers.
+- Não testados nesta sessão: login real no domínio publicado, expiração/renovação, troca de usuário, conta autenticada sem função ou indisponibilidade real do banco. O 401 Cloudflare permanece sem causa comprovada.
+- Após reiniciar o servidor, o Preview registrou duas requisições autenticadas a `/api/zero3/me` com status **200** e função ativa; Clerk user lookup: 233 ms/145 ms; aquisição do cliente DB: 35 ms/8 ms; query de função: 12 ms/2 ms. `/api/zero3/events` e `/api/zero3/dashboard` responderam **200**. Esses são requests reais do Preview, não do Worker Cloudflare.
+- GET anônimo novo pelo Preview: **401**, request ID `2`, cookie ausente e Authorization ausente. Nenhum JWT, cookie, e-mail ou secret foi registrado.
+- Regressão de reautenticação: novo teste passa, comprovando uma chamada explícita a `signOut` com destino interno `/admin/events/...`; não houve clique automatizado nem logout de usuário real.
+- Resultados desta rodada: navegação **19/19**; request tracing **2/2**; worker logger **3/3**; auth session **3/3**; API errors **8/8**; safe error **1/1**; db context **2/2**. `pnpm run check:cloudflare` passou com typecheck, build e Wrangler dry-run. Build em `artifacts/zero3-pro/dist/public`; o dry-run não foi deploy nem teste de conexão real com Neon.
+- Nenhum push, deploy, alteração de dados, papel, segredo ou configuração remota foi feito. Testes de expiração, troca de usuário, 403 de conta sem função e indisponibilidade real do banco continuam pendentes.
+
+## Diagnóstico HTTP 500 — validação local adicional
+
+| Teste | Resultado | Limite |
+|---|---|---|
+| Serialização/redação de `message`, `cause`, `code` e stack | **Passou** | Testes unitários verificam cadeia de erros e remoção de cookies, tokens, chaves, URLs de banco e e-mails. |
+| Etapa que ultrapassa o limite diagnóstico | **Passou** | Emite `still_running` e posteriormente `finish`; não aborta nem aumenta o timeout da operação. |
+| Falha de aquisição PostgreSQL e classificação HTTP | **Passou em teste unitário** | Preserva causa original e mapeia `DATABASE_CONNECTION_UNAVAILABLE` para 503 `DATABASE_UNAVAILABLE`; SQLSTATE 28000/28P01 também são tratados como falha de banco. |
+| Wrangler local com configuração sintética | **Inicializou** | Não reproduziu `stringifySym`; `/api/healthz` 200 e `/api/zero3/me` sem sessão 401. Chave Clerk era sintética, não autenticava uma pessoa. |
+| Placar contra endereço PostgreSQL local deliberadamente inválido | **500 `API_INTERNAL_ERROR`** | O erro Drizzle continha causa genérica sem código SQLSTATE; não é a rota de aquisição explícita usada por `/api/zero3/me`. Registra uma limitação para consultas genéricas, sem classificar indevidamente como 401/403. |
+| `pnpm run check:cloudflare` | **Passou** | Typecheck, build Vite e Wrangler dry-run; não conecta ao Neon nem publica. |
+| Testes finais pertinentes | **47 passaram** | Navegação 19, pontuação 5, sessão 3, API errors 10, serialização 1, request tracing 3, logger 3, contexto DB 2 e wrapper de conexão 1. |
+| `/api/zero3/me` autorizado no Cloudflare | **Pendente** | Requer publicação e sessão válida da organização; nenhum login real nem log Cloudflare foi acessado. |
+
+O erro Cloudflare de 02/11/2026 não teve causa comprovada nesta rodada. Não houve publicação, push, alteração remota, leitura/escrita de dados oficiais ou alteração de permissões.
+
+## Login/admin — Bloco 1/4: redirect_url
+
+- Projeto: `wrangler.toml` declara Worker `zero3-podio` com entrada `artifacts/api-server/src/worker.ts`; o frontend é o artefato ZERO3 PRO do workspace.
+- Fonte verificado: `artifacts/zero3-pro/src/lib/auth-redirect.ts` usa `URLSearchParams` para produzir uma query canônica sem `?`; `App.tsx` deriva tanto a busca atual quanto a busca saneada de `window.location.search`. Wouter apenas assina mudanças. Se já for canônica, o formulário renderiza imediatamente; caso contrário, aplica um único `replace`.
+- Evidência publicada: o HTML público aponta para `/assets/index-CEGL0GJt.js` (518.182 bytes, SHA-256 `eb95c1f8…`). O trecho minificado compara a busca atual e a sanitizada após normalização; não é o bundle antigo `index-DTH9Rbge.js` do relatório. O build local atual usa `index-fe-BWbIe.js` (SHA-256 diferente), portanto não afirmo que o bundle inteiro nem o commit publicado sejam idênticos ao workspace.
+- Capturas do Preview: `/sign-in` e `/sign-in?redirect_url=%2Fadmin` exibem o formulário; destino de evento com parâmetros codificados e hash também; redirect externo mantém o formulário e cai no destino interno seguro. `/sign-up?redirect_url=%2Fadmin` exibe o formulário de cadastro, usando o guard compartilhado.
+- `pnpm --filter @workspace/zero3-pro run test:navigation`: **19/19 passaram**. Inclui query com/sem `?`, codificações equivalentes, idempotência, parâmetros extras, hash, evento protegido, fallback e rejeição de URL externa. `typecheck` do frontend passou.
+- Console do Preview não mostrou erro Clerk de renderização; o aviso de chaves de desenvolvimento é esperado nesse ambiente. O navegador não autenticou usuário.
+- Não houve alteração de fonte neste bloco: a correção já estava presente e a evidência pública atual também contém a comparação canônica. Não houve login real, commit, push ou deploy; nenhum bloco posterior foi iniciado.
+
+## Login/admin — Bloco 2/4: inicialização e acesso Clerk
+
+- `@clerk/react` 6.18.4, `@clerk/express` 2.1.86 e `@clerk/shared` 4.43.1; um único provider. `/sign-in/*?` e `/sign-up/*?` usam o roteamento compatível com callbacks. `/admin` sem sessão mostrou o formulário no Preview sem consulta protegida como requisito para renderizá-lo.
+- Preview Console: somente aviso de chave de desenvolvimento e aviso DOM de autocomplete; sem erro visível de SDK, domínio, CSP ou Turnstile. O recurso de captura não expõe a aba Network/HAR. Não fiz login com uma conta real.
+- Bundle público: modo `test`; `proxyUrl` não configurado e sem referência ao caminho `/api/__clerk`. Isso é coerente com a instância de teste mantida e com a ausência de proxy no ambiente de Development. Não fiz troca de instância.
+- Fonte backend: `clerkMiddleware` vem antes das rotas e obtém sessão Clerk via cookies same-origin; o frontend não envia Bearer token. `/api/zero3/me` valida sessão e depois autorização, retornando 401 sem sessão, 403 sem função ativa ou 200 para membro autorizado.
+- Cloudflare anônimo: `/api/zero3/me` → **401 JSON `SESSION_INVALID`**, com requestId; `/sign-in?redirect_url=%2Fadmin` → **200 HTML**. Esse 401 esperado não prova correspondência da instância Clerk nem login autenticado.
+- `pnpm --filter @workspace/api-server run test:auth-session`: **3/3 passaram**. `pnpm --filter @workspace/api-server run test:api-errors`: **10/10 passaram**. Typecheck da API e do frontend passaram.
+- Pendência de autorização: a tabela `zero3_members` não contém ID Clerk; a associação atual do papel é por e-mail primário verificado, após resolver o `userId` via Clerk. Logo, não é possível afirmar vínculo persistente por ID. É necessária decisão/migração aditiva para armazenar e reconciliar o ID sem trocar papéis existentes. A correspondência exata entre a publishable key pública test e a secret key do runtime Cloudflare também não é inspecionável pelo workspace.
+- Não houve alteração de código/schema/usuários/papéis, commit, push ou deploy. Não foi executado login de conta autorizada nem teste real de 403; ficam pendentes para uma sessão autenticada válida.
+
+## Login/admin — Bloco 3/4: Cloudflare build, roteamento e banco
+
+- `pnpm run check:cloudflare`: **passou** (Wrangler 4.156.0, geração de tipos, typecheck, Vite e dry-run). Vite gerou `artifacts/zero3-pro/dist/public/`; Wrangler dry-run reconheceu o Worker `zero3-podio`, os assets e o binding Hyperdrive configurado. Avisos não fatais: source map de `tooltip.tsx` e bundle JS >500 kB.
+- Build/config: raiz `/`; `packageManager` `pnpm@10.26.1`; Workers Builds deve compilar com `pnpm run build`, e `wrangler.toml` descreve a entrada/asset output. O build atual contém chave Clerk de modo test, logo a variável pública estava disponível ao Vite. O JS local não é o mesmo asset do domínio Cloudflare, mas as rotas públicas servidas usam, entre si, o mesmo par de JS/CSS. Sem `.github/workflows` local; variáveis de build e Workers Builds não podem ser inspecionadas no painel pelo workspace.
+- Smoke tests publicados: `/`, `/sign-in`, `/admin` → **200 text/html**, mesmos assets; `/api/healthz` → **200 JSON**; `/api/zero3/me` sem sessão → **401 JSON `SESSION_INVALID`**; `/api/zero3/public-board` → **200 JSON com dados**; `/api/not-a-route` → **404 Express**, body “Cannot GET…”, não o shell SPA. Endpoints API consultados responderam `Cache-Control: private, no-store`.
+- Roteamento Wrangler: `assets.not_found_handling = "single-page-application"` e `run_worker_first = ["/api/*"]`; assim, rotas de frontend recebem o shell e APIs válidas chegam ao Worker antes do fallback. Não foi encontrado service worker.
+- Banco: `HYPERDRIVE` → PostgreSQL via `pg`/Drizzle, separado do Node/Replit `DATABASE_URL`. O Worker serviu o placar com dados via `/api/zero3/public-board`, provando leitura pública real através do deployment. Não prova identidade administrativa Clerk nem qual branch Neon está atrás do binding. Neon Auth não é usado para login ou papéis; o schema `neon_auth` existente é preservado.
+- Tentativa read-only para identificar o destino: `pnpm exec wrangler hyperdrive get 794b0f4bf3534892be7b89be1613c7bc --config wrangler.toml` → falhou porque Wrangler exige `CLOUDFLARE_API_TOKEN` em ambiente não interativo. A API de Get Hyperdrive documenta permissão **Hyperdrive Read** (ou Write); somente Read é necessária. Não alterei recurso remoto. Referência: [Cloudflare Get Hyperdrive](https://developers.cloudflare.com/api/resources/hyperdrive/subresources/configs/methods/get/).
+- Não houve migração, escrita de banco, alteração de conta, commit, push ou deploy. A leitura do placar foi sem sessão; leitura administrativa autenticada e confirmação exata de projeto/branch seguem pendentes.
+
+## Login/admin — Bloco 4/4: regressão final
+
+- `pnpm run check:cloudflare`: **passou** — typegen, typecheck, build Vite e dry-run Wrangler. Saída local: `artifacts/zero3-pro/dist/public/`; Worker dry-run reconheceu o binding `HYPERDRIVE` configurado. Não é publicação.
+- `pnpm run build`: **passou** — typecheck e builds dos pacotes da workspace, incluindo interface ZERO3 PRO e API. Não executou deploy.
+- `pnpm --filter @workspace/zero3-pro run test:navigation`: **19/19**.
+- `pnpm --filter @workspace/api-server run test:auth-session`: **3/3**; `test:api-errors`: **10/10**; `test:scoring`: **5/5**; `test:worker-logger`: **3/3**; `test:request-tracing`: **3/3**; `test:safe-error`: **1/1**; `test:db-context`: **2/2**; `test:db-connection-error`: **1/1**. Total: **47 testes passaram**.
+- Browser Preview sem sessão: `/` e `/admin` renderizaram o formulário de login; `/tv` renderizou a única TV SC/RX com fixture demo. Console sem falha Clerk/JS; apenas aviso esperado de chave Development e autocomplete. O navegador de captura não permite autenticar uma conta real.
+- Produção: `/sign-in`, `/sign-in?redirect_url=%2Fadmin`, `/admin`, `/operacao`, `/tv` → **200 HTML**, mesmos assets publicados `index-CEGL0GJt.js` e `index-V5VQ3x77.css`. O bundle local final é `index-fe-BWbIe.js`, não publicado.
+- `/api/zero3/me` anônimo → **401 JSON**. Duas leituras consecutivas de `/api/zero3/public-board` divergiram: primeira **500 `API_INTERNAL_ERROR`**, requestId `336f064e-cd0b-4dc9-8f99-317dcaf2afd6`, cf-ray `a546f4e1a893d5a9-YYZ`; segunda **200**, cf-ray `a546f5419f1cb7cd-ORD`. Isso confirma uma falha 5xx intermitente no Worker, não a causa dela. Logs Cloudflare não estavam disponíveis; os logs do API Server do Replit são de outro ambiente e não comprovam a causa Cloudflare.
+- Login autorizado, `/api/zero3/me` 200, leitura administrativa de eventos, 403 real, logout, refresh/nova aba autenticados, expiração de sessão e lançamentos/correções isolados: **pendentes**, por dependerem de uma sessão Clerk legítima e/ou correlação com logs do Worker. Testes SDK/helpers não foram tratados como prova real.
+- Nenhum dado, papel, chave, instância Clerk ou binding foi alterado; não houve commit/push/deploy. A causa do 500, o branch Neon remoto e o acesso administrativo real permanecem pendentes.

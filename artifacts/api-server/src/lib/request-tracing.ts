@@ -43,13 +43,21 @@ export function platformRayIdOf(req: Request): string | undefined {
 }
 
 export function shouldTraceAuthorizationRequest(req: Request): boolean {
-  return req.path === "/api/zero3/me";
+  const originalPath = req.originalUrl?.split(/[?#]/, 1)[0];
+  if (originalPath === "/api/zero3/me") return true;
+
+  const mountedPath = `${req.baseUrl ?? ""}${req.path ?? ""}`.split(
+    /[?#]/,
+    1,
+  )[0];
+  return mountedPath === "/api/zero3/me";
 }
 
 export function beginRequestStage(
   req: Request,
   stage: RequestStageName,
   metadata: SafeStageMetadata = {},
+  options: { stalledAfterMs?: number } = {},
 ): (error?: unknown, finalMetadata?: SafeStageMetadata) => void {
   if (!shouldTraceAuthorizationRequest(req)) return () => {};
   const startedAt = performance.now();
@@ -61,9 +69,24 @@ export function beginRequestStage(
   );
 
   let finished = false;
+  const stalledAfterMs = options.stalledAfterMs ?? 5_000;
+  const diagnosticTimer = setTimeout(() => {
+    if (finished) return;
+    workerLogger.info(
+      {
+        requestId,
+        cfRayId,
+        stage,
+        stageEvent: "still_running",
+        durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      },
+      `${stage} still running`,
+    );
+  }, stalledAfterMs);
   return (error, finalMetadata = {}) => {
     if (finished) return;
     finished = true;
+    clearTimeout(diagnosticTimer);
     const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
     workerLogger[error === undefined ? "info" : "error"](
       {

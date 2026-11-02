@@ -5,6 +5,7 @@ import {
   clerkLocationWithSearch,
   clerkRedirectDestination,
   defaultAdminRedirect,
+  endCurrentSessionForReauthentication,
   safeProtectedRedirect,
   sanitizeClerkRedirectSearch,
   signInHrefForProtectedPath,
@@ -154,6 +155,26 @@ test("builds a sign-in link that carries only a protected in-app path", () => {
     signInHrefForProtectedPath("/tv", "", origin),
     "/sign-in",
   );
+});
+
+test("re-authentication ends the current session once and redirects to safe sign-in", async () => {
+  const calls: Array<{ redirectUrl: string }> = [];
+  const redirectTo = signInHrefForProtectedPath(
+    "/admin/events/event-123?tab=results",
+    "",
+    origin,
+  );
+
+  await endCurrentSessionForReauthentication(async (options) => {
+    calls.push(options);
+  }, redirectTo);
+
+  assert.deepEqual(calls, [
+    {
+      redirectUrl:
+        "/sign-in?redirect_url=%2Fadmin%2Fevents%2Fevent-123%3Ftab%3Dresults",
+    },
+  ]);
 });
 
 test("uses the valid protected route first and defaults safely to admin", () => {

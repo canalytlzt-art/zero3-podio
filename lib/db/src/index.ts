@@ -5,6 +5,7 @@ import {
   getRequestDatabaseContext,
   withRequestDatabaseContext,
 } from "./request-context";
+import { DatabaseConnectionUnavailableError } from "./database-connection-error";
 
 const { Pool } = pg;
 
@@ -105,7 +106,9 @@ export async function withCurrentDatabaseClient<TResult>(
     throw new Error("No database pool is available in the current request context.");
   }
 
-  const client = await activePool.connect();
+  const client = await activePool.connect().catch((cause: unknown) => {
+    throw new DatabaseConnectionUnavailableError(cause);
+  });
   try {
     onConnected?.();
     const database = drizzle(client, { schema }) as Database;

@@ -62,6 +62,45 @@ test("classifies PostgreSQL connectivity errors as dependency failures", () => {
   );
 });
 
+test("classifies PostgreSQL authentication SQLSTATE as a database failure", () => {
+  for (const code of ["28000", "28P01"]) {
+    const error = Object.assign(new Error("database authentication failed"), {
+      code,
+    });
+    const response = capturedApiFailure(error);
+    assert.equal(isDatabaseUnavailable(error), true);
+    assert.equal(response.status, 503);
+    assert.equal(
+      (response.body as { code: string }).code,
+      "DATABASE_UNAVAILABLE",
+    );
+    assert.notEqual(
+      (response.body as { code: string }).code,
+      "SESSION_INVALID",
+    );
+  }
+});
+
+test("classifies a failed PostgreSQL connection acquisition as a database failure", () => {
+  const originalCause = new Error("connection attempt failed");
+  const error = Object.assign(
+    new Error("Could not acquire a PostgreSQL connection.", {
+      cause: originalCause,
+    }),
+    { code: "DATABASE_CONNECTION_UNAVAILABLE" },
+  );
+  const response = capturedApiFailure(error);
+
+  assert.equal(error.cause, originalCause);
+  assert.equal(isDatabaseUnavailable(error), true);
+  assert.equal(response.status, 503);
+  assert.equal(
+    (response.body as { code: string }).code,
+    "DATABASE_UNAVAILABLE",
+  );
+  assert.match(response.logs.join("\n"), /connection attempt failed/);
+});
+
 test("classifies authorization-provider outages as dependency failures", () => {
   const providerError = new AuthorizationProviderUnavailableError();
   assert.equal(isDependencyUnavailable(providerError), true);

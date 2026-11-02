@@ -144,6 +144,17 @@ export function signInHrefForProtectedPath(
   return `/sign-in?${new URLSearchParams({ redirect_url: destination })}`;
 }
 
+export type CurrentSessionSignOut = (options: {
+  redirectUrl: string;
+}) => Promise<unknown>;
+
+export function endCurrentSessionForReauthentication(
+  signOut: CurrentSessionSignOut,
+  redirectTo: string,
+): Promise<unknown> {
+  return signOut({ redirectUrl: redirectTo });
+}
+
 export function defaultAdminRedirect(basePath: string): string {
   const base = basePath.replace(/\/+$/, "");
   return `${base}/admin` || "/admin";

@@ -13,8 +13,10 @@ type WorkerLogContext = {
   requestId?: string | number;
   cfRayId?: string;
   stage?: string;
-  stageEvent?: "start" | "finish";
+  stageEvent?: "start" | "still_running" | "finish";
   responseStatusCode?: number;
+  cookiePresent?: boolean;
+  authorizationPresent?: boolean;
   clerkPublishableKeyConfigured?: boolean;
   clerkSecretKeyConfigured?: boolean;
   clerkKeyModesMatch?: boolean;
@@ -56,6 +58,8 @@ function writeLog(
     stage: context.stage,
     stageEvent: context.stageEvent,
     responseStatusCode: context.responseStatusCode,
+    cookiePresent: context.cookiePresent,
+    authorizationPresent: context.authorizationPresent,
     clerkPublishableKeyConfigured: context.clerkPublishableKeyConfigured,
     clerkSecretKeyConfigured: context.clerkSecretKeyConfigured,
     clerkKeyModesMatch: context.clerkKeyModesMatch,
@@ -115,6 +119,8 @@ export function workerRequestLogger(): RequestHandler {
           stageEvent: "start",
           method: request.method,
           path: request.path,
+          cookiePresent: Boolean(request.headers.cookie),
+          authorizationPresent: Boolean(request.headers.authorization),
         },
         "request started",
       );

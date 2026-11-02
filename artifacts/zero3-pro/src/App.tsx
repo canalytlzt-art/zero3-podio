@@ -17,6 +17,7 @@ import {
   canonicalClerkSearch,
   clerkLocationWithSearch,
   clerkRedirectDestination,
+  endCurrentSessionForReauthentication,
   sanitizeClerkRedirectSearch,
   signInHrefForProtectedPath,
 } from '@/lib/auth-redirect';
@@ -126,7 +127,7 @@ function RetryButton({retry}:{retry:()=>void}){return <button className="button"
 function ReauthenticateButton({redirectTo}:{redirectTo:string}){
   const {signOut}=useClerk();
   const [error,setError]=useState(false);
-  return <><button className="button primary" style={{marginTop:12}} onClick={()=>{setError(false);void signOut({redirectUrl:redirectTo}).catch(()=>setError(true));}}>Encerrar sessão e entrar novamente</button>{error&&<p role="alert" className="lede" style={{marginTop:10}}>Não foi possível encerrar a sessão agora. Recarregue e tente novamente.</p>}</>;
+  return <><button className="button primary" style={{marginTop:12}} onClick={()=>{setError(false);void endCurrentSessionForReauthentication(signOut,redirectTo).catch(()=>setError(true));}}>Encerrar sessão e entrar novamente</button>{error&&<p role="alert" className="lede" style={{marginTop:10}}>Não foi possível encerrar a sessão agora. Recarregue e tente novamente.</p>}</>;
 }
 
 function useSanitizedClerkRedirects(){

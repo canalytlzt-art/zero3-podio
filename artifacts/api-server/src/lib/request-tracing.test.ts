@@ -6,7 +6,9 @@ import { beginRequestStage } from "./request-tracing";
 test("times authorization stages and correlates them to request and Cloudflare Ray IDs", () => {
   const request = {
     id: "request-fixture",
-    path: "/api/zero3/me",
+    path: "/me",
+    baseUrl: "/api/zero3",
+    originalUrl: "/api/zero3/me?probe=1",
     headers: { "cf-ray": "ray-fixture-XYZ" },
   } as unknown as Request;
   const lines: string[] = [];
@@ -33,7 +35,9 @@ test("times authorization stages and correlates them to request and Cloudflare R
 test("does not emit authorization stage logs for unrelated requests", () => {
   const request = {
     id: "request-fixture",
-    path: "/api/zero3/events",
+    path: "/events",
+    baseUrl: "/api/zero3",
+    originalUrl: "/api/zero3/events",
     headers: {},
   } as unknown as Request;
   const lines: string[] = [];
@@ -48,4 +52,37 @@ test("does not emit authorization stage logs for unrelated requests", () => {
   }
 
   assert.equal(lines.length, 0);
+});
+
+test("marks a long-running stage without cancelling it, then logs its completion", async () => {
+  const request = {
+    id: "request-stalled-fixture",
+    path: "/me",
+    baseUrl: "/api/zero3",
+    originalUrl: "/api/zero3/me",
+    headers: { "cf-ray": "ray-stalled-fixture" },
+  } as unknown as Request;
+  const lines: string[] = [];
+  const originalConsoleInfo = console.info;
+  console.info = (message?: unknown) => lines.push(String(message));
+
+  try {
+    const finish = beginRequestStage(
+      request,
+      "authorization_role_query",
+      {},
+      { stalledAfterMs: 5 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    finish();
+  } finally {
+    console.info = originalConsoleInfo;
+  }
+
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /"stageEvent":"start"/);
+  assert.match(lines[1], /"stageEvent":"still_running"/);
+  assert.match(lines[1], /"requestId":"request-stalled-fixture"/);
+  assert.match(lines[2], /"stageEvent":"finish"/);
+  assert.match(lines[2], /"durationMs":\d+/);
 });

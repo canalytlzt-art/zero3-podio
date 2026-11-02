@@ -33,7 +33,7 @@ test("worker logs include safe error metadata but omit credentials", () => {
   assert.doesNotMatch(lines[0], /fake-token|fake-session|authorization|cookie/);
 });
 
-test("assigns a response correlation ID without logging request credentials", () => {
+test("records protected-request credential presence without logging values", () => {
   const headers = new Map<string, string>();
   const lines: string[] = [];
   const request = {
@@ -74,11 +74,13 @@ test("assigns a response correlation ID without logging request credentials", ()
   assert.equal(lines.length, 2);
   assert.match(lines[0], /"stageEvent":"start"/);
   assert.match(lines[1], /"stageEvent":"finish"/);
+  assert.match(lines[0], /"cookiePresent":true/);
+  assert.match(lines[0], /"authorizationPresent":true/);
   assert.match(lines[0], new RegExp(requestId));
   assert.match(lines[1], new RegExp(requestId));
   assert.doesNotMatch(
     lines.join("\n"),
-    /sensitive-session-cookie|sensitive-token|authorization|cookie/,
+    /sensitive-session-cookie|sensitive-token/,
   );
 });
 
