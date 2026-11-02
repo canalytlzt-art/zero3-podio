@@ -6,6 +6,22 @@ export const CLERK_REDIRECT_QUERY_KEYS = [
   "sign_up_fallback_redirect_url",
 ] as const;
 
+/**
+ * Returns a canonical query representation without a leading question mark.
+ * URLSearchParams handles equivalent percent encodings, spaces, and Unicode.
+ */
+export function canonicalClerkSearch(search: string): string {
+  return new URLSearchParams(search).toString();
+}
+
+export function clerkLocationWithSearch(
+  pathname: string,
+  search: string,
+  hash: string,
+): string {
+  return `${pathname}${search ? `?${search}` : ""}${hash}`;
+}
+
 const protectedRoutes = new Set([
   "/admin",
   "/admin/events",
@@ -74,13 +90,11 @@ export function sanitizeClerkRedirectSearch(
   origin: string,
 ): string {
   const params = new URLSearchParams(search);
-  let hasRedirectParams = false;
 
   for (const key of CLERK_REDIRECT_QUERY_KEYS) {
     const values = params.getAll(key);
     if (values.length === 0) continue;
 
-    hasRedirectParams = true;
     const safeDestination = values
       .map((value) => safeProtectedRedirect(value, basePath, origin))
       .find((value): value is string => value !== null);
@@ -89,9 +103,7 @@ export function sanitizeClerkRedirectSearch(
     if (safeDestination) params.set(key, safeDestination);
   }
 
-  if (!hasRedirectParams) return search;
-  const sanitized = params.toString();
-  return sanitized ? `?${sanitized}` : "";
+  return params.toString();
 }
 
 export function clerkRedirectDestination(

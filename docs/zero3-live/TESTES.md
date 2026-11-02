@@ -4,6 +4,32 @@
 
 Validação técnica executada em Development; nenhuma publicação foi feita. O placar público e o bloqueio de operação sem autorização foram conferidos. A tela autenticada, a captura real por usuário logado e dispositivos físicos ainda exigem ensaio operacional.
 
+## Sessão e entrada administrativa — validação final local
+
+- `/admin` sem sessão foi conferido no navegador do Preview: redireciona para `/sign-in?redirect_url=%2Fadmin`; o formulário Clerk é exibido sem consulta administrativa prévia.
+- `/sign-in?redirect_url=%2Fadmin` foi carregado no Preview e exibiu o formulário Clerk. A URL permaneceu com destino interno; sem interação, não foi possível confirmar o redirecionamento pós-login.
+- O Preview usa uma instância Clerk de desenvolvimento, conforme aviso do próprio SDK. Isso não comprova a instância nem o comportamento do domínio Cloudflare.
+- Login real, retorno pós-autenticação, autorização por papel, carregamento de eventos, nova aba, logout, expiração de sessão e acesso negado para conta autenticada não foram executados: requerem uma sessão válida da organização.
+- Nenhuma rota autenticada foi testada por bypass. A TV e as checagens públicas anteriores permanecem não autenticadas.
+
+## Checks finais de código e API
+
+| Check | Resultado | Evidência/limite |
+|---|---|---|
+| `pnpm install --frozen-lockfile` | **Passou** | pnpm 10.26.1; lockfile permaneceu sincronizado. |
+| `pnpm --filter @workspace/zero3-pro run test:navigation` | **16 passaram** | Sanitização Clerk, destino protegido/seguro, parâmetros aninhados e link da TV com/sem evento. |
+| `pnpm --filter @workspace/api-server run test:scoring` | **5 passaram** | Regras de pontuação existentes; sem mudanças de regras. |
+| `pnpm --filter @workspace/api-server run test:api-errors` | **7 passaram** | 401 de sessão, falhas do provedor/banco e erro interno continuam distintas. |
+| `pnpm --filter @workspace/api-server run test:auth-session` | **3 passaram** | Estado de sessão exige usuário e identificador verificados. |
+| `pnpm --filter @workspace/api-server run test:worker-logger` | **1 passou** | Metadados de erro sem credenciais nos logs. |
+| `pnpm --filter @workspace/api-server run test:db-context` | **2 passaram** | Contextos PostgreSQL de requisições concorrentes/sequenciais isolados. |
+| `pnpm run build` | **Passou** | Typecheck e builds workspace; interface em `artifacts/zero3-pro/dist/public/`. Avisos Vite: sourcemap em `tooltip.tsx` e bundle principal >500 kB. |
+| `pnpm run check:cloudflare` | **Passou** | Wrangler 4.156.0; typegen, typecheck e dry-run do Worker/assets. Não é deploy nem teste de login real. |
+| GET `/api/healthz`, `/api/zero3/me`, `/api/zero3/public-board` no Preview | **200 / 401 / 200** | Sem sessão, `/me` retorna `SESSION_INVALID`; placar público usou o evento de demonstração Development. |
+| `git diff --check` | **Passou** | Nenhum erro de whitespace. |
+
+Os checks acima não provam login na instância Clerk do domínio Cloudflare, autorização de uma conta específica, sessão persistente após recarregar, logout/expiração ou conectividade ao banco Neon do Worker publicado.
+
 ## Checks executados
 
 | Check | Resultado | Evidência/limite |

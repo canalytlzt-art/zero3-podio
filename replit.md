@@ -16,8 +16,8 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 
 ## Source map
 
-- `artifacts/zero3-pro/src/App.tsx` — public routes, Clerk sign-in, and role-protected operations.
-- `artifacts/zero3-pro/src/pages/PublicTV.tsx` — read-only, combined 16:9 TV page at `/` and `/tv`.
+- `artifacts/zero3-pro/src/App.tsx` — `/` and `/inicio` enter `/admin`; Clerk sign-in routes to `/sign-in`; `/tv` is public and `/admin` plus `/operacao` require a Clerk session and an active server-verified role.
+- `artifacts/zero3-pro/src/pages/PublicTV.tsx` — read-only, combined 16:9 TV page at `/tv`.
 - `artifacts/zero3-pro/src/pages/PublicEntry.tsx` — optional public navigation at `/inicio`.
 - `artifacts/zero3-pro/src/pages/OperationPage.tsx` — proof setup, provisional scoring inputs, review, and corrections at protected `/operacao`.
 - `artifacts/zero3-pro/src/pages/AdminPages.tsx` — existing events, roster, registrations, heats, timer, and manual podium workflow.
@@ -43,4 +43,11 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - `seed:demo` is idempotent for its named test event and refuses to run unless `NODE_ENV=development`.
 - Use the OpenAPI contract as the source of truth and regenerate clients after changing it.
 - Do not bypass Clerk or server-side role checks to make a preview appear signed in.
+- An unauthenticated visit to a protected page redirects to `/sign-in` with a sanitized, internal return destination; after Clerk sign-in the API still authorizes the member role. The browser capture environment cannot validate a real organization login.
+
+## Cloudflare publication boundary
+
+- Build the static UI with `pnpm run build`; the Cloudflare asset directory is `artifacts/zero3-pro/dist/public/`.
+- The Worker deploy command is `pnpm run deploy:cloudflare`, configured in `wrangler.toml` and using Hyperdrive. Do not run it as part of local validation; publish through the GitHub-connected Cloudflare pipeline when explicitly approved.
+- A local build or dry-run does not prove the currently published Worker revision, a real Clerk session, role authorization, or production database access. Verify those on the published `zero3-podio` URL after the Cloudflare GitHub deployment completes.
 - The demo proof definitions are test fixtures only; official proof descriptions, units, directions, tie rules, and participants remain to be supplied.

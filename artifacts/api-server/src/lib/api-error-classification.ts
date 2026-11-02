@@ -47,11 +47,23 @@ function getErrorChain(error: unknown): Array<Error & { code?: string }> {
 }
 
 export function isDependencyUnavailable(error: unknown): boolean {
+  return (
+    isAuthorizationProviderUnavailable(error) ||
+    isDatabaseUnavailable(error)
+  );
+}
+
+export function isAuthorizationProviderUnavailable(error: unknown): boolean {
+  return getErrorChain(error).some(
+    (item) => item instanceof AuthorizationProviderUnavailableError,
+  );
+}
+
+export function isDatabaseUnavailable(error: unknown): boolean {
   return getErrorChain(error).some(
     (item) =>
-      item instanceof AuthorizationProviderUnavailableError ||
-      (typeof item.code === "string" &&
-        DATABASE_UNAVAILABLE_CODES.has(item.code)),
+      typeof item.code === "string" &&
+      DATABASE_UNAVAILABLE_CODES.has(item.code),
   );
 }
 

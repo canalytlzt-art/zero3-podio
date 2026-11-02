@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from '@clerk/react';
-import { publishableKeyFromHost } from '@clerk/shared/keys';
+import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -14,6 +14,8 @@ import { DashboardPage, EventDetailPage, EventsPage, MembersPage, RosterPage } f
 import { PublicTV } from '@/pages/PublicTV';
 import { OperationPage } from '@/pages/OperationPage';
 import {
+  canonicalClerkSearch,
+  clerkLocationWithSearch,
   clerkRedirectDestination,
   sanitizeClerkRedirectSearch,
   signInHrefForProtectedPath,
@@ -81,7 +83,7 @@ function Protected({children}:{children:ReactNode}){
   const {isLoaded,isSignedIn}=useAuth();
   const signInHref=signInHrefForProtectedPath(`${window.location.pathname}${window.location.search}${window.location.hash}`,basePath,window.location.origin);
   if(!isLoaded)return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/></div></div>;
-  if(!isSignedIn)return <div className="auth-shell"><section className="auth-brand"><Link href="/" className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></Link><div className="auth-copy"><div className="eyebrow">Acesso restrito</div><h1>Precisão começa no controle.</h1><p>Entre para operar provas, equipes, cronômetro e resultados. A transmissão pública permanece separada.</p></div><span className="auth-hint">ZERO3 PRO · OPERAÇÃO</span></section><section className="auth-form"><div style={{maxWidth:440,textAlign:'center'}}><h2 style={{fontSize:22,letterSpacing:'-.05em'}}>Acesso da equipe</h2><p className="lede" style={{marginBottom:18}}>Entre com sua conta para abrir o painel de controle.</p><Link href={signInHref} className="button primary">Entrar na operação</Link><div style={{marginTop:18}}><Link href="/tv" className="button">Voltar para a TV pública</Link></div></div></section></div>;
+  if(!isSignedIn)return <Redirect to={signInHref} replace/>;
   return <RoleProtected>{children}</RoleProtected>;
 }
 function RoleProtected({children}:{children:ReactNode}){
@@ -89,27 +91,49 @@ function RoleProtected({children}:{children:ReactNode}){
   if(me.isLoading)return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/></div></div>;
   if(me.isError){
     const status='status' in me.error&&typeof me.error.status==='number'?me.error.status:undefined;
-    const sessionInvalid=status===401;
-    const noRole=status===403;
-    const dependencyFailure=status===503||status===502||status===504||status===undefined;
-    const title=sessionInvalid?'Sua sessão precisa ser confirmada.':noRole?'Acesso operacional não habilitado.':dependencyFailure?'Serviço de operação indisponível.':'Falha interna da API.';
-    const detail=sessionInvalid?'Entre novamente com a conta da organização para abrir o painel.':noRole?'Esta conta está autenticada, mas não possui uma função ativa no ZERO3. Peça a um administrador para revisar o acesso.':dependencyFailure?'Não foi possível conectar ao serviço de autorização ou aos dados. Tente novamente em instantes; isso não significa que sua conta perdeu permissões.':'A API encontrou um erro ao processar a autorização. Tente novamente; este erro não indica falta de permissão.';
-    return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">{sessionInvalid?'Sessão inválida':noRole?'Acesso restrito':dependencyFailure?'Falha de conexão':'Erro da API'}</div><h1>{title}</h1><p>{detail}</p></div><span className="auth-hint">ZERO3 PRO · ACESSO</span></section><section className="auth-form"><div>{sessionInvalid?<Link href="/sign-in" className="button primary">Entrar novamente</Link>:<RetryButton retry={()=>me.refetch()}/>}</div></section></div>;
+    const code=apiErrorCode(me.error);
+    const sessionInvalid=status===401||code==='SESSION_INVALID';
+    const noRole=status===403||code==='ZERO3_ROLE_INACTIVE'||code==='ZERO3_ROLE_INSUFFICIENT';
+    const providerFailure=code==='AUTH_PROVIDER_UNAVAILABLE';
+    const databaseFailure=code==='DATABASE_UNAVAILABLE';
+    const dependencyFailure=providerFailure||databaseFailure||status===503||status===502||status===504||status===undefined;
+    const title=sessionInvalid?'Sua sessão precisa ser confirmada.':noRole?'Acesso operacional não habilitado.':providerFailure?'Provedor de autenticação indisponível.':databaseFailure?'Banco de dados indisponível.':dependencyFailure?'Serviço de operação indisponível.':'Falha interna da API.';
+    const detail=sessionInvalid?'Entre novamente com a conta da organização para abrir o painel.':noRole?'Esta conta está autenticada, mas não possui uma função ativa no ZERO3. Peça a um administrador para revisar o acesso.':providerFailure?'Não foi possível validar sua sessão com o Clerk. Tente novamente; este erro não altera sua função.':databaseFailure?'Não foi possível consultar os dados de autorização. Tente novamente; isso não significa que sua conta perdeu permissões.':dependencyFailure?'Um serviço necessário está temporariamente indisponível. Tente novamente; isso não significa que sua conta perdeu permissões.':'A API encontrou um erro ao processar a autorização. Tente novamente; este erro não indica falta de permissão.';
+    return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">{sessionInvalid?'Sessão inválida':noRole?'Acesso restrito':providerFailure?'Falha do Clerk':databaseFailure?'Falha do banco':dependencyFailure?'Falha de conexão':'Erro da API'}</div><h1>{title}</h1><p>{detail}</p></div><span className="auth-hint">ZERO3 PRO · ACESSO</span></section><section className="auth-form"><div>{sessionInvalid?<Link href="/sign-in" className="button primary">Entrar novamente</Link>:<RetryButton retry={()=>me.refetch()}/>}</div></section></div>;
   }
   if(![Zero3Role.ADMIN,Zero3Role.JUIZ_CHEFE,Zero3Role.JUIZ].includes(me.data?.role as typeof Zero3Role[keyof typeof Zero3Role]))return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">Acesso restrito</div><h1>Operação autorizada somente.</h1><p>Esta conta não possui uma função ativa para acessar o painel.</p></div><span className="auth-hint">ZERO3 PRO · CONTROLE</span></section><section className="auth-form"><p className="notice">Função atual: {me.data?.role||'indisponível'}</p><RetryButton retry={()=>me.refetch()}/></section></div>;
   return <>{children}</>;
+}
+function apiErrorCode(error:unknown):string|undefined{
+  if(typeof error!=='object'||error===null||!('data' in error))return undefined;
+  const data=(error as {data?:unknown}).data;
+  if(typeof data!=='object'||data===null||!('code' in data))return undefined;
+  const code=(data as {code?:unknown}).code;
+  return typeof code==='string'?code:undefined;
 }
 function RetryButton({retry}:{retry:()=>void}){return <button className="button" style={{marginTop:12}} onClick={retry}>Verificar autorização novamente</button>}
 
 function useSanitizedClerkRedirects(){
   const [,setLocation]=useLocation();
-  const currentSearch=useSearch();
-  const safeSearch=sanitizeClerkRedirectSearch(currentSearch,basePath,window.location.origin);
+  // Wouter's useSearch subscribes to navigation but removes the leading "?"
+  // (and unescapes some characters). Use the browser's raw search as input.
+  const wouterSearch=useSearch();
+  const rawSearch=window.location.search;
+  const currentSearch=canonicalClerkSearch(rawSearch);
+  const safeSearch=sanitizeClerkRedirectSearch(rawSearch,basePath,window.location.origin);
+  const redirectsReady=safeSearch===currentSearch;
   useEffect(()=>{
-    if(safeSearch===currentSearch)return;
-    setLocation(`${stripBase(window.location.pathname)}${safeSearch}${window.location.hash}`,{replace:true});
-  },[currentSearch,safeSearch,setLocation]);
-  return safeSearch===currentSearch;
+    if(redirectsReady)return;
+    setLocation(
+      clerkLocationWithSearch(
+        stripBase(window.location.pathname),
+        safeSearch,
+        window.location.hash,
+      ),
+      {replace:true},
+    );
+  },[wouterSearch,rawSearch,safeSearch,redirectsReady,setLocation]);
+  return redirectsReady;
 }
 
 function AuthLoading(){return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/></div></div>}
