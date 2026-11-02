@@ -14,3 +14,9 @@ For Worker requests, carry the Drizzle handle in `AsyncLocalStorage` so concurre
 **Why:** Cloudflare reuses Worker isolates across requests, and request-scoped state must remain isolated while the underlying pool safely multiplexes connections.
 
 **How to apply:** Wrap each Worker request in its own async database context. Do not mutate a module-global Drizzle handle or allow the Replit and Hyperdrive connection targets to share a pool.
+
+Treat a GitHub push as source delivery, not proof of Cloudflare publication. A public health response can still come from an older Worker revision.
+
+**Why:** The repository's GitHub main advanced while the public Worker continued serving older assets and behavior.
+
+**How to apply:** After an authorized push, verify a distinctive changed behavior or build marker on the Cloudflare URL; do not infer deployment from GitHub main alone.
