@@ -7,6 +7,7 @@ import {
   AuthorizationProviderUnavailableError,
   AuthorizationSessionInvalidError,
 } from "./api-error-classification";
+import { hasSignedInUserSession } from "./auth-session";
 
 export type Zero3Role = "ADMIN" | "JUIZ_CHEFE" | "JUIZ";
 export type Zero3MemberContext = {
@@ -21,7 +22,9 @@ export type Zero3Request = Request & {
 export async function resolveZero3Member(
   req: Request,
 ): Promise<{ userId: string; member: Zero3MemberContext } | null> {
-  const { userId } = getAuth(req);
+  const auth = getAuth(req);
+  if (!hasSignedInUserSession(auth)) return null;
+  const { userId } = auth;
   if (!userId) return null;
 
   let user: Awaited<ReturnType<typeof clerkClient.users.getUser>>;
@@ -78,10 +81,10 @@ export function requireZero3Roles(
     void resolveZero3Member(req)
       .then((resolved) => {
         if (!resolved) {
-          const { userId } = getAuth(req);
-          res.status(userId ? 403 : 401).json({
-            code: userId ? "ZERO3_ROLE_INACTIVE" : "SESSION_INVALID",
-            error: userId
+          const authenticatedUser = hasSignedInUserSession(getAuth(req));
+          res.status(authenticatedUser ? 403 : 401).json({
+            code: authenticatedUser ? "ZERO3_ROLE_INACTIVE" : "SESSION_INVALID",
+            error: authenticatedUser
               ? "Acesso ZERO3 não autorizado."
               : "Sessão inválida.",
           });

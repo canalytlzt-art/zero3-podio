@@ -75,6 +75,7 @@ import {
 } from "@workspace/db";
 import { resolveZero3Member, requireZero3Roles, type Zero3Request } from "../lib/zero3-auth";
 import { writeApiFailure } from "../lib/api-errors";
+import { hasSignedInUserSession } from "../lib/auth-session";
 import {
   calculateAllResultPlacements,
   type ResultPlacement,
@@ -515,8 +516,8 @@ router.get(
   "/zero3/me",
   async (req, res): Promise<void> => {
     try {
-      const { userId } = getAuth(req);
-      if (!userId) {
+      const auth = getAuth(req);
+      if (!hasSignedInUserSession(auth)) {
         res.status(401).json({
           code: "SESSION_INVALID",
           error: "Sessão inválida.",
