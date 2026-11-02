@@ -78,7 +78,7 @@ function Field({label,name,type='text',required=false,placeholder,defaultValue,m
  export function EventDetailPage() {
  const {eventId=''}=useParams<{eventId:string}>(); const [tab,setTab]=useState<'heats'|'registrations'|'timer'|'results'|'podium'>('heats');
  const events=useListZero3Events(); const event=events.data?.find(e=>e.id===eventId);
-  return <AdminShell><PageHeading eyebrow="Operação do evento" title={event?.name||'Evento'} detail={event?`${event.proofName} · ID ${event.id}`:`ID ${eventId}`}><Link href="/admin/events" className="button"><ArrowLeft size={14}/> Eventos</Link><Link href="/tv" className="button"><Radio size={14}/> Abrir TV</Link></PageHeading>
+  return <AdminShell><PageHeading eyebrow="Operação do evento" title={event?.name||'Evento'} detail={event?`${event.proofName} · ID ${event.id}`:`ID ${eventId}`}><Link href="/admin/events" className="button"><ArrowLeft size={14}/> Eventos</Link><Link href="/tv" target="_blank" rel="noopener noreferrer" className="button"><Radio size={14}/> Abrir TV</Link></PageHeading>
   <div className="tabs">{(['heats','registrations','timer','results','podium'] as const).map(t=><button className={`tab ${tab===t?'active':''}`} onClick={()=>setTab(t)} key={t}>{({heats:'Baterias',registrations:'Inscrições',timer:'Cronômetro',results:'Resultados',podium:'Pódio'})[t]}</button>)}</div>
   {tab==='heats'&&<Heats eventId={eventId}/>}
   {tab==='registrations'&&<Registrations eventId={eventId}/>}

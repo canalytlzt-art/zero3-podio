@@ -7,7 +7,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { Link, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 import { getGetZero3MeQueryKey, useGetZero3Me } from '@workspace/api-client-react';
 import { Zero3Role } from '@workspace/api-client-react';
 import { DashboardPage, EventDetailPage, EventsPage, MembersPage, RosterPage } from '@/pages/AdminPages';
@@ -78,20 +78,33 @@ function Protected({children}:{children:ReactNode}){
 function RoleProtected({children}:{children:ReactNode}){
   const me=useGetZero3Me({query:{queryKey:getGetZero3MeQueryKey(),refetchOnWindowFocus:true}});
   if(me.isLoading)return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/></div></div>;
-  if(me.isError)return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">Acesso pendente</div><h1>Seu perfil ainda não está habilitado.</h1><p>Peça a um administrador do ZERO3 PRO para conceder uma função operacional ao seu e-mail.</p></div><span className="auth-hint">ZERO3 PRO · ACESSO</span></section><section className="auth-form"><div><p className="notice">A sessão está ativa, mas a autorização de operação não foi confirmada.</p><RetryButton retry={()=>me.refetch()}/></div></section></div>;
+  if(me.isError){
+    const status='status' in me.error&&typeof me.error.status==='number'?me.error.status:undefined;
+    const sessionInvalid=status===401;
+    const noRole=status===403;
+    const title=sessionInvalid?'Sua sessão precisa ser confirmada.':noRole?'Acesso operacional não habilitado.':'Serviço de operação indisponível.';
+    const detail=sessionInvalid?'Entre novamente com a conta da organização para abrir o painel.':noRole?'Esta conta está autenticada, mas não possui uma função ativa no ZERO3. Peça a um administrador para revisar o acesso.':'Não foi possível consultar a autorização agora. Isso não significa que sua conta perdeu permissões.';
+    return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">{sessionInvalid?'Sessão inválida':noRole?'Acesso restrito':'Falha na API'}</div><h1>{title}</h1><p>{detail}</p></div><span className="auth-hint">ZERO3 PRO · ACESSO</span></section><section className="auth-form"><div>{sessionInvalid?<Link href="/sign-in" className="button primary">Entrar novamente</Link>:<RetryButton retry={()=>me.refetch()}/>}</div></section></div>;
+  }
   if(![Zero3Role.ADMIN,Zero3Role.JUIZ_CHEFE,Zero3Role.JUIZ].includes(me.data?.role as typeof Zero3Role[keyof typeof Zero3Role]))return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">Acesso restrito</div><h1>Operação autorizada somente.</h1><p>Esta conta não possui uma função ativa para acessar o painel.</p></div><span className="auth-hint">ZERO3 PRO · CONTROLE</span></section><section className="auth-form"><p className="notice">Função atual: {me.data?.role||'indisponível'}</p><RetryButton retry={()=>me.refetch()}/></section></div>;
   return <>{children}</>;
 }
 function RetryButton({retry}:{retry:()=>void}){return <button className="button" style={{marginTop:12}} onClick={retry}>Verificar autorização novamente</button>}
 
-function SignInPage(){return <div className="auth-shell"><section className="auth-brand"><Link href="/" className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></Link><div className="auth-copy"><div className="eyebrow">Controle de competição</div><h1>O placar vê o esforço. Você mantém o ritmo.</h1><p>Uma superfície precisa para operar crews de funcional fitness em Santa Catarina.</p></div><span className="auth-hint">ZERO3 PRO · SC / RX</span></section><section className="auth-form"><div style={{width:'100%',maxWidth:460}}><div className="eyebrow">Bem-vindo de volta</div><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`}/></div></section></div>}
-function SignUpPage(){return <div className="auth-shell"><section className="auth-brand"><Link href="/" className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></Link><div className="auth-copy"><div className="eyebrow">Equipe de operação</div><h1>Entre no ritmo da competição.</h1><p>Crie sua conta para solicitar acesso operacional ao ZERO3 PRO.</p></div><span className="auth-hint">ZERO3 PRO · SC / RX</span></section><section className="auth-form"><div style={{width:'100%',maxWidth:460}}><div className="eyebrow">Criar conta</div><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`}/></div></section></div>}
+function SignInPage(){return <div className="auth-shell"><section className="auth-brand"><Link href="/" className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></Link><div className="auth-copy"><div className="eyebrow">Controle de competição</div><h1>O placar vê o esforço. Você mantém o ritmo.</h1><p>Uma superfície precisa para operar crews de funcional fitness em Santa Catarina.</p></div><span className="auth-hint">ZERO3 PRO · SC / RX</span></section><section className="auth-form"><div style={{width:'100%',maxWidth:460}}><div className="eyebrow">Bem-vindo de volta</div><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} forceRedirectUrl={`${basePath}/admin`} fallbackRedirectUrl={`${basePath}/admin`}/></div></section></div>}
+function SignUpPage(){return <div className="auth-shell"><section className="auth-brand"><Link href="/" className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></Link><div className="auth-copy"><div className="eyebrow">Equipe de operação</div><h1>Entre no ritmo da competição.</h1><p>Crie sua conta para solicitar acesso operacional ao ZERO3 PRO.</p></div><span className="auth-hint">ZERO3 PRO · SC / RX</span></section><section className="auth-form"><div style={{width:'100%',maxWidth:460}}><div className="eyebrow">Criar conta</div><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} forceRedirectUrl={`${basePath}/admin`} fallbackRedirectUrl={`${basePath}/admin`}/></div></section></div>}
+
+function HomeRoute(){
+  const {isLoaded,isSignedIn}=useAuth();
+  if(!isLoaded)return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/></div></div>;
+  return <Redirect to={isSignedIn?'/admin':'/sign-in'}/>;
+}
 
 function AppRoutes(){
   const [,setLocation]=useLocation();
   return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={clerkAppearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{signIn:{start:{title:'Acessar ZERO3 PRO',subtitle:'Entre para operar a competição'}},signUp:{start:{title:'Criar acesso ZERO3 PRO',subtitle:'Solicite acesso à equipe de operação'}}}} routerPush={(to:string)=>setLocation(stripBase(to))} routerReplace={(to:string)=>setLocation(stripBase(to),{replace:true})}>
     <QueryClientProvider client={queryClient}><CacheInvalidator/><TooltipProvider><RoutedErrorBoundary><Switch>
-      <Route path="/" component={PublicTV}/>
+      <Route path="/" component={HomeRoute}/>
       <Route path="/inicio" component={PublicEntry}/>
       <Route path="/tv" component={PublicTV}/>
       <Route path="/operacao"><Protected><OperationPage/></Protected></Route>

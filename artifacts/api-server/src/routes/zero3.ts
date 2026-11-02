@@ -57,6 +57,7 @@ import {
   inArray,
 } from "drizzle-orm";
 import { Router, type IRouter } from "express";
+import { getAuth } from "@clerk/express";
 import {
   db,
   zero3ActiveHeatsTable,
@@ -467,6 +468,11 @@ async function publicPodiums(eventId: string) {
 router.get(
   "/zero3/me",
   async (req, res): Promise<void> => {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Sessão inválida." });
+      return;
+    }
     const resolved = await resolveZero3Member(req);
     if (!resolved) {
       res.status(403).json({ error: "Acesso ZERO3 não autorizado." });

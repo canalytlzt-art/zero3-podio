@@ -22,7 +22,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <div className="nav-label">Operação</div>
       {nav.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`nav-link ${location === href || (href !== '/admin' && location.startsWith(href)) ? 'active' : ''}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{label}</span></Link>)}
       <div className="nav-label">Transmissão</div>
-       <Link href="/tv" className="nav-link"><Radio size={16}/><span>TV pública</span></Link>
+       <Link href="/tv" target="_blank" rel="noopener noreferrer" className="nav-link"><Radio size={16}/><span>TV pública</span></Link>
       <div className="side-foot">SISTEMA DE COMPETIÇÃO<br/>SANTA CATARINA · BR</div>
     </aside>
     <div className="workspace">

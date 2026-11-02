@@ -8,3 +8,9 @@ Replit-managed PostgreSQL is for application access inside Replit and does not e
 **Why:** Replit documentation confirmed the managed database has no public IP/firewall configuration. A separate Neon test database allows Cloudflare testing without moving or changing Replit data. Its existing `neon_auth.project_config` row was preserved when the ZERO3 schema was added. The user specified Cloudflare publication through the GitHub integration.
 
 **How to apply:** Keep Replit's API on its current `DATABASE_URL`; use Hyperdrive only for the separate Neon test database. Inspect before schema changes and preserve `neon_auth` relations. Use Wrangler for local checks only; do not deploy or push from this workspace unless explicitly asked. Do not copy or migrate Replit records, bind Hyperdrive to the Replit-managed database, or use a tunnel/personal proxy.
+
+For Worker requests, carry the Drizzle handle in `AsyncLocalStorage` so concurrent requests never depend on a mutable global current-database pointer. A concurrency-safe pool may be shared within the isolate only while it remains bound to that isolate's single Hyperdrive connection string; keep Node/Replit's `DATABASE_URL` pool separate.
+
+**Why:** Cloudflare reuses Worker isolates across requests, and request-scoped state must remain isolated while the underlying pool safely multiplexes connections.
+
+**How to apply:** Wrap each Worker request in its own async database context. Do not mutate a module-global Drizzle handle or allow the Replit and Hyperdrive connection targets to share a pool.

@@ -2,6 +2,7 @@ import { clerkClient, getAuth } from "@clerk/express";
 import { eq } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
 import { db, zero3MembersTable } from "@workspace/db";
+import { logger } from "./logger";
 
 export type Zero3Role = "ADMIN" | "JUIZ_CHEFE" | "JUIZ";
 export type Zero3MemberContext = {
@@ -12,6 +13,21 @@ export type Zero3MemberContext = {
 export type Zero3Request = Request & {
   zero3Member?: Zero3MemberContext;
 };
+
+function logRoleResolutionFailure(req: Request, error: unknown): void {
+  const details =
+    error instanceof Error
+      ? { name: error.name, code: (error as Error & { code?: string }).code }
+      : { name: "UnknownError" };
+  const requestLog = (req as Request & {
+    log?: { error: (context: unknown, message: string) => void };
+  }).log;
+  if (requestLog) {
+    requestLog.error({ error: details }, "Unable to resolve ZERO3 role");
+  } else {
+    logger.error({ error: details }, "Unable to resolve ZERO3 role");
+  }
+}
 
 export async function resolveZero3Member(
   req: Request,
@@ -60,7 +76,12 @@ export function requireZero3Roles(
     void resolveZero3Member(req)
       .then((resolved) => {
         if (!resolved) {
-          res.status(403).json({ error: "Acesso ZERO3 não autorizado." });
+          const { userId } = getAuth(req);
+          res.status(userId ? 403 : 401).json({
+            error: userId
+              ? "Acesso ZERO3 não autorizado."
+              : "Sessão inválida.",
+          });
           return;
         }
         if (!roles.includes(resolved.member.role)) {
@@ -71,8 +92,10 @@ export function requireZero3Roles(
         next();
       })
       .catch((error: unknown) => {
-        req.log.error({ err: error }, "Unable to resolve ZERO3 role");
-        res.status(401).json({ error: "Sessão inválida." });
+        logRoleResolutionFailure(req, error);
+        res.status(503).json({
+          error: "Não foi possível verificar a autorização agora.",
+        });
       });
   };
 }
