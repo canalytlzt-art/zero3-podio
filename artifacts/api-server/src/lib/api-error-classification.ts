@@ -23,15 +23,21 @@ const DATABASE_UNAVAILABLE_CODES = new Set([
 ]);
 
 export class AuthorizationProviderUnavailableError extends Error {
-  constructor() {
-    super("The authorization provider could not be reached.");
+  constructor(cause?: unknown) {
+    super(
+      "The authorization provider could not be reached.",
+      cause === undefined ? undefined : { cause },
+    );
     this.name = "AuthorizationProviderUnavailableError";
   }
 }
 
 export class AuthorizationSessionInvalidError extends Error {
-  constructor() {
-    super("The authenticated user no longer exists.");
+  constructor(cause?: unknown) {
+    super(
+      "The authenticated user no longer exists.",
+      cause === undefined ? undefined : { cause },
+    );
     this.name = "AuthorizationSessionInvalidError";
   }
 }

@@ -16,6 +16,7 @@ let defaultDatabase: Database | undefined;
 let activeConnectionString: string | undefined;
 let hyperdrivePool: InstanceType<typeof Pool> | undefined;
 let hyperdriveConnectionString: string | undefined;
+const requestDatabasePools = new WeakMap<object, InstanceType<typeof Pool>>();
 
 function createPool(
   connectionString: string,
@@ -80,7 +81,38 @@ export function createRequestDatabase(
     throw new Error("The Hyperdrive binding changed within a Worker isolate.");
   }
 
-  return drizzle(hyperdrivePool, { schema });
+  const database = drizzle(hyperdrivePool, { schema });
+  requestDatabasePools.set(database, hyperdrivePool);
+  return database;
+}
+
+/**
+ * Acquires one pooled client and runs the callback through a Drizzle handle
+ * bound to that client. This lets callers measure connection acquisition
+ * separately from the SQL work without adding a probe query.
+ */
+export async function withCurrentDatabaseClient<TResult>(
+  callback: (database: Database) => Promise<TResult>,
+  onConnected?: () => void,
+): Promise<TResult> {
+  const requestDatabase = getRequestDatabaseContext<Database>();
+  const requestPool = requestDatabase
+    ? requestDatabasePools.get(requestDatabase)
+    : undefined;
+  const activePool = requestPool ?? pool;
+
+  if (!activePool) {
+    throw new Error("No database pool is available in the current request context.");
+  }
+
+  const client = await activePool.connect();
+  try {
+    onConnected?.();
+    const database = drizzle(client, { schema }) as Database;
+    return await callback(database);
+  } finally {
+    client.release();
+  }
 }
 
 export function withDatabaseContext<T>(

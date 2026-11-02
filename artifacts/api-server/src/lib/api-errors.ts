@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { workerLogger } from "./worker-logger";
+import { platformRayIdOf, requestIdOf } from "./request-tracing";
 import {
   isAuthorizationProviderUnavailable,
   isDependencyUnavailable,
@@ -32,20 +33,16 @@ export function writeApiFailure(
       : databaseUnavailable
         ? "Não foi possível consultar o banco de dados agora."
         : fallbackMessage;
-  const details =
-    error instanceof Error
-      ? {
-          name: error.name,
-          code: (error as Error & { code?: string }).code,
-        }
-      : { name: "UnknownError" };
-  const requestId = (req as Request & { id?: string }).id;
+  const requestId = requestIdOf(req);
 
   workerLogger.error(
     {
-      error: details,
+      error,
       requestId,
+      cfRayId: platformRayIdOf(req),
       statusCode,
+      stage: "api_failure",
+      stageEvent: "finish",
     },
     invalidSession
       ? "Authenticated user no longer exists"

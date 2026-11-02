@@ -71,9 +71,15 @@ test("assigns a response correlation ID without logging request credentials", ()
   assert.ok(requestId);
   assert.match(requestId, /^[\da-f-]{36}$/i);
   assert.equal(headers.get("x-request-id"), requestId);
-  assert.equal(lines.length, 1);
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /"stageEvent":"start"/);
+  assert.match(lines[1], /"stageEvent":"finish"/);
   assert.match(lines[0], new RegExp(requestId));
-  assert.doesNotMatch(lines[0], /sensitive-session-cookie|sensitive-token|authorization|cookie/);
+  assert.match(lines[1], new RegExp(requestId));
+  assert.doesNotMatch(
+    lines.join("\n"),
+    /sensitive-session-cookie|sensitive-token|authorization|cookie/,
+  );
 });
 
 test("records auth-header presence only as booleans", () => {

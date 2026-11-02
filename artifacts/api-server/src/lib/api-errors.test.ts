@@ -11,9 +11,16 @@ import {
   isInvalidAuthorizationSession,
 } from "./api-error-classification";
 
-function capturedApiFailure(error: unknown): { status: number; body: unknown } {
+function capturedApiFailure(
+  error: unknown,
+  cfRayId?: string,
+): { status: number; body: unknown; logs: string[] } {
   const result: { status: number; body: unknown } = { status: 0, body: null };
-  const req = { id: "auth-error-test" } as unknown as Request;
+  const logs: string[] = [];
+  const req = {
+    id: "auth-error-test",
+    headers: cfRayId ? { "cf-ray": cfRayId } : {},
+  } as unknown as Request;
   const res = {
     status(status: number) {
       result.status = status;
@@ -25,13 +32,13 @@ function capturedApiFailure(error: unknown): { status: number; body: unknown } {
     },
   } as unknown as Response;
   const originalError = console.error;
-  console.error = () => {};
+  console.error = (message?: unknown) => logs.push(String(message));
   try {
     writeApiFailure(req, res, error);
   } finally {
     console.error = originalError;
   }
-  return result;
+  return { ...result, logs };
 }
 
 test("classifies PostgreSQL connectivity errors as dependency failures", () => {
@@ -105,4 +112,30 @@ test("finds connection failures wrapped as an error cause", () => {
     cause: Object.assign(new Error("socket reset"), { code: "ECONNRESET" }),
   });
   assert.equal(isDependencyUnavailable(wrapped), true);
+});
+
+test("logs the sanitized original cause and correlates the API response", () => {
+  const nested = Object.assign(
+    new Error(
+      "socket error for test@example.com at postgresql://operator:secret-pass@db.example/zero3 Authorization: Bearer fake-token",
+    ),
+    { code: "ECONNRESET" },
+  );
+  const failure = capturedApiFailure(
+    new Error("role lookup failed", { cause: nested }),
+    "ray-fixture-123",
+  );
+  const logged = failure.logs.join("\n");
+
+  assert.equal(failure.status, 503);
+  assert.equal((failure.body as { code: string }).code, "DATABASE_UNAVAILABLE");
+  assert.match(logged, /"requestId":"auth-error-test"/);
+  assert.match(logged, /"cfRayId":"ray-fixture-123"/);
+  assert.match(logged, /"message":"role lookup failed"/);
+  assert.match(logged, /"code":"ECONNRESET"/);
+  assert.match(logged, /"stack":/);
+  assert.match(logged, /\[REDACTED_DATABASE_URL\]/);
+  assert.match(logged, /\[REDACTED_EMAIL\]/);
+  assert.match(logged, /\[REDACTED_AUTH_HEADER\]/);
+  assert.doesNotMatch(logged, /secret-pass|fake-token|test@example\.com/);
 });

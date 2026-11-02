@@ -1,13 +1,17 @@
 import { clerkClient, getAuth } from "@clerk/express";
 import { eq } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
-import { db, zero3MembersTable } from "@workspace/db";
+import {
+  withCurrentDatabaseClient,
+  zero3MembersTable,
+} from "@workspace/db";
 import { writeApiFailure } from "./api-errors";
 import {
   AuthorizationProviderUnavailableError,
   AuthorizationSessionInvalidError,
 } from "./api-error-classification";
 import { hasSignedInUserSession } from "./auth-session";
+import { beginRequestStage } from "./request-tracing";
 
 export type Zero3Role = "ADMIN" | "JUIZ_CHEFE" | "JUIZ";
 export type Zero3MemberContext = {
@@ -28,43 +32,76 @@ export async function resolveZero3Member(
   if (!userId) return null;
 
   let user: Awaited<ReturnType<typeof clerkClient.users.getUser>>;
+  const finishClerkLookup = beginRequestStage(req, "clerk_user_lookup");
   try {
     user = await clerkClient.users.getUser(userId);
+    finishClerkLookup(undefined, {
+      primaryEmailPresent: Boolean(user.primaryEmailAddressId),
+    });
   } catch (error) {
+    finishClerkLookup(error);
     const status =
       error instanceof Error
         ? (error as Error & { status?: number; statusCode?: number }).status ??
           (error as Error & { statusCode?: number }).statusCode
         : undefined;
     if (status === 404) {
-      throw new AuthorizationSessionInvalidError();
+      throw new AuthorizationSessionInvalidError(error);
     }
-    throw new AuthorizationProviderUnavailableError();
+    throw new AuthorizationProviderUnavailableError(error);
   }
   const email = user.emailAddresses
     .find((address) => address.id === user.primaryEmailAddressId)
     ?.emailAddress.toLowerCase();
   if (!email) return null;
 
-  let [member] = await db
-    .select()
-    .from(zero3MembersTable)
-    .where(eq(zero3MembersTable.email, email))
-    .limit(1);
+  let connectionAcquired = false;
+  const finishConnection = beginRequestStage(req, "hyperdrive_connection");
+  let member: typeof zero3MembersTable.$inferSelect | undefined;
+  try {
+    member = await withCurrentDatabaseClient(async (database) => {
+      const finishRoleQuery = beginRequestStage(
+        req,
+        "authorization_role_query",
+      );
+      try {
+        let [currentMember] = await database
+          .select()
+          .from(zero3MembersTable)
+          .where(eq(zero3MembersTable.email, email))
+          .limit(1);
 
-  const initialAdminEmail = process.env.ZERO3_INITIAL_ADMIN_EMAIL
-    ?.trim()
-    .toLowerCase();
-  if (!member && initialAdminEmail && email === initialAdminEmail) {
-    await db
-      .insert(zero3MembersTable)
-      .values({ email, role: "ADMIN", active: true })
-      .onConflictDoNothing();
-    [member] = await db
-      .select()
-      .from(zero3MembersTable)
-      .where(eq(zero3MembersTable.email, email))
-      .limit(1);
+        const initialAdminEmail = process.env.ZERO3_INITIAL_ADMIN_EMAIL
+          ?.trim()
+          .toLowerCase();
+        if (!currentMember && initialAdminEmail && email === initialAdminEmail) {
+          await database
+            .insert(zero3MembersTable)
+            .values({ email, role: "ADMIN", active: true })
+            .onConflictDoNothing();
+          [currentMember] = await database
+            .select()
+            .from(zero3MembersTable)
+            .where(eq(zero3MembersTable.email, email))
+            .limit(1);
+        }
+
+        finishRoleQuery(undefined, {
+          memberFound: Boolean(currentMember),
+          memberActive: Boolean(currentMember?.active),
+        });
+        return currentMember;
+      } catch (error) {
+        finishRoleQuery(error);
+        throw error;
+      }
+    }, () => {
+      connectionAcquired = true;
+      finishConnection();
+    });
+  } catch (error) {
+    if (!connectionAcquired) finishConnection(error);
+    throw error;
   }
 
   if (!member || !member.active) return null;

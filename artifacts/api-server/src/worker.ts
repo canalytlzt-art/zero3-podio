@@ -5,8 +5,9 @@ import {
   withDatabaseContext,
 } from "@workspace/db";
 import type { RequestHandler } from "express";
-import { workerLogger, workerRequestLogger } from "./lib/worker-logger";
+import { workerRequestLogger } from "./lib/worker-logger";
 import { createApp } from "./app";
+import { beginRequestStage, requestIdOf } from "./lib/request-tracing";
 
 const databaseMiddleware: RequestHandler = (request, response, next) => {
   if (request.path === "/api/healthz") {
@@ -14,26 +15,21 @@ const databaseMiddleware: RequestHandler = (request, response, next) => {
     return;
   }
 
+  const finishContext = beginRequestStage(request, "hyperdrive_context", {
+    hyperdriveBindingConfigured: Boolean(env.HYPERDRIVE?.connectionString),
+  });
   try {
     const database = createRequestDatabase(env.HYPERDRIVE.connectionString, {
       max: 2,
     });
+    finishContext(undefined, { databaseContextReady: true });
     withDatabaseContext(database, next);
   } catch (error) {
-    workerLogger.error(
-      {
-        error: error instanceof Error
-          ? {
-              name: error.name,
-              code: (error as Error & { code?: string }).code,
-            }
-          : { name: "UnknownError" },
-      },
-      "Unable to initialize request database context",
-    );
+    finishContext(error, { databaseContextReady: false });
     response.status(503).json({
-      code: "DEPENDENCY_UNAVAILABLE",
+      code: "DATABASE_UNAVAILABLE",
       error: "Banco da operação indisponível.",
+      ...(requestIdOf(request) ? { requestId: requestIdOf(request) } : {}),
     });
   }
 };

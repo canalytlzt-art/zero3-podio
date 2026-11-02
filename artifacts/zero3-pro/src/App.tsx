@@ -8,7 +8,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useSearch } from 'wouter';
-import { getGetZero3MeQueryKey, setAuthTokenGetter, useGetZero3Me } from '@workspace/api-client-react';
+import { getGetZero3MeQueryKey, useGetZero3Me } from '@workspace/api-client-react';
 import { Zero3Role } from '@workspace/api-client-react';
 import { DashboardPage, EventDetailPage, EventsPage, MembersPage, RosterPage } from '@/pages/AdminPages';
 import { PublicTV } from '@/pages/PublicTV';
@@ -76,29 +76,22 @@ function CacheInvalidator(){
   return null;
 }
 
-function ApiAuthBridge(){
-  const {getToken,isLoaded,isSignedIn}=useAuth();
-  useEffect(()=>{
-    setAuthTokenGetter(isLoaded&&isSignedIn?options=>getToken(options):null);
-    return ()=>setAuthTokenGetter(null);
-  },[getToken,isLoaded,isSignedIn]);
-  return null;
-}
-
 function RoutedErrorBoundary({children}:{children:ReactNode}){
   const [location]=useLocation();return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
 function Protected({children}:{children:ReactNode}){
   const {isLoaded,isSignedIn}=useAuth();
+  const initializationTimedOut=usePendingTimeout(!isLoaded,15_000);
   const signInHref=signInHrefForProtectedPath(`${window.location.pathname}${window.location.search}${window.location.hash}`,basePath,window.location.origin);
-  if(!isLoaded)return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/></div></div>;
+  if(!isLoaded)return initializationTimedOut?<ClerkStartupFailure/>:<AuthLoading message="Inicializando o Clerk…"/>;
   if(!isSignedIn)return <Redirect to={signInHref} replace/>;
   return <RoleProtected>{children}</RoleProtected>;
 }
 function RoleProtected({children}:{children:ReactNode}){
   const reloginHref=signInHrefForProtectedPath(`${window.location.pathname}${window.location.search}${window.location.hash}`,basePath,window.location.origin);
   const me=useGetZero3Me({query:{queryKey:getGetZero3MeQueryKey(),refetchOnWindowFocus:true,retry:false}});
-  if(me.isLoading)return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/></div></div>;
+  const requestTimedOut=usePendingTimeout(me.isLoading,15_000);
+  if(me.isLoading)return requestTimedOut?<ApiRequestTimeout retry={()=>me.refetch()}/>:<AuthLoading message="Consultando sessão e permissões…"/>;
   if(me.isError){
     const status='status' in me.error&&typeof me.error.status==='number'?me.error.status:undefined;
     const code=apiErrorCode(me.error);
@@ -138,8 +131,9 @@ function ReauthenticateButton({redirectTo}:{redirectTo:string}){
 
 function useSanitizedClerkRedirects(){
   const [,setLocation]=useLocation();
-  // Wouter's useSearch subscribes to navigation but removes the leading "?"
-  // (and unescapes some characters). Use the browser's raw search as input.
+  // Use Wouter's hook only to subscribe to navigation changes. Canonicalize
+  // both compared values from the browser's raw search, independent of how
+  // a Wouter version represents its search string.
   const wouterSearch=useSearch();
   const rawSearch=window.location.search;
   const currentSearch=canonicalClerkSearch(rawSearch);
@@ -159,16 +153,39 @@ function useSanitizedClerkRedirects(){
   return redirectsReady;
 }
 
-function AuthLoading(){return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/></div></div>}
+function usePendingTimeout(pending:boolean,timeoutMs:number){
+  const [timedOut,setTimedOut]=useState(false);
+  useEffect(()=>{
+    if(!pending){setTimedOut(false);return;}
+    const timer=window.setTimeout(()=>setTimedOut(true),timeoutMs);
+    return ()=>window.clearTimeout(timer);
+  },[pending,timeoutMs]);
+  return timedOut;
+}
+function AuthLoading({message='Preparando o endereço de acesso…'}:{message?:string}){
+  return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/><p role="status" aria-live="polite">{message}</p></div></div>;
+}
+function ClerkStartupFailure(){
+  return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">Falha do Clerk</div><h1>O login não foi inicializado.</h1><p>O serviço de autenticação não respondeu no tempo esperado. Tente recarregar; este estado não altera sua sessão ou permissão.</p></div><span className="auth-hint">ZERO3 PRO · ACESSO</span></section><section className="auth-form"><button className="button primary" onClick={()=>window.location.reload()}>Recarregar login</button></section></div>;
+}
+function ApiRequestTimeout({retry}:{retry:()=>void}){
+  return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">Falha da API</div><h1>A autorização não respondeu.</h1><p>A API não concluiu a consulta em 15 segundos. Isso não indica falta de permissão; tente novamente.</p></div><span className="auth-hint">ZERO3 PRO · CONTROLE</span></section><section className="auth-form"><RetryButton retry={retry}/></section></div>;
+}
 
 function SignInPage(){
+  const {isLoaded}=useAuth();
   const redirectsReady=useSanitizedClerkRedirects();
+  const initializationTimedOut=usePendingTimeout(!isLoaded,15_000);
   if(!redirectsReady)return <AuthLoading/>;
+  if(!isLoaded)return initializationTimedOut?<ClerkStartupFailure/>:<AuthLoading message="Inicializando o login…"/>;
   return <div className="auth-shell"><section className="auth-brand"><Link href="/" className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></Link><div className="auth-copy"><div className="eyebrow">Controle de competição</div><h1>O placar vê o esforço. Você mantém o ritmo.</h1><p>Uma superfície precisa para operar crews de funcional fitness em Santa Catarina.</p></div><span className="auth-hint">ZERO3 PRO · SC / RX</span></section><section className="auth-form"><div style={{width:'100%',maxWidth:460}}><div className="eyebrow">Bem-vindo de volta</div><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} forceRedirectUrl={clerkRedirectDestination(window.location.search,'sign-in',basePath,window.location.origin)}/></div></section></div>;
 }
 function SignUpPage(){
+  const {isLoaded}=useAuth();
   const redirectsReady=useSanitizedClerkRedirects();
+  const initializationTimedOut=usePendingTimeout(!isLoaded,15_000);
   if(!redirectsReady)return <AuthLoading/>;
+  if(!isLoaded)return initializationTimedOut?<ClerkStartupFailure/>:<AuthLoading message="Inicializando o cadastro…"/>;
   return <div className="auth-shell"><section className="auth-brand"><Link href="/" className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></Link><div className="auth-copy"><div className="eyebrow">Equipe de operação</div><h1>Entre no ritmo da competição.</h1><p>Crie sua conta para solicitar acesso operacional ao ZERO3 PRO.</p></div><span className="auth-hint">ZERO3 PRO · SC / RX</span></section><section className="auth-form"><div style={{width:'100%',maxWidth:460}}><div className="eyebrow">Criar conta</div><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} forceRedirectUrl={clerkRedirectDestination(window.location.search,'sign-up',basePath,window.location.origin)}/></div></section></div>;
 }
 
@@ -179,7 +196,7 @@ function AdminEntryRedirect(){
 function AppRoutes(){
   const [,setLocation]=useLocation();
   return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={clerkAppearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{signIn:{start:{title:'Acessar ZERO3 PRO',subtitle:'Entre para operar a competição'}},signUp:{start:{title:'Criar acesso ZERO3 PRO',subtitle:'Solicite acesso à equipe de operação'}}}} routerPush={(to:string)=>setLocation(stripBase(to))} routerReplace={(to:string)=>setLocation(stripBase(to),{replace:true})}>
-    <QueryClientProvider client={queryClient}><ApiAuthBridge/><CacheInvalidator/><TooltipProvider><RoutedErrorBoundary><Switch>
+    <QueryClientProvider client={queryClient}><CacheInvalidator/><TooltipProvider><RoutedErrorBoundary><Switch>
       <Route path="/" component={AdminEntryRedirect}/>
       <Route path="/inicio" component={AdminEntryRedirect}/>
       <Route path="/tv" component={PublicTV}/>

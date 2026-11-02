@@ -44,13 +44,27 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - Use the OpenAPI contract as the source of truth and regenerate clients after changing it.
 - Do not bypass Clerk or server-side role checks to make a preview appear signed in.
 - An unauthenticated visit to a protected page redirects to `/sign-in` with a sanitized, internal return destination; after Clerk sign-in the API still authorizes the member role. “Entrar novamente” signs out through Clerk before returning to the internal sign-in URL.
+- The sign-in/sign-up query guard uses `useSearch()` only as a Wouter navigation subscription. Compare canonical queries derived from `window.location.search`; preserve extras/hash and replace only unsafe or noncanonical redirects.
+- Browser API requests use Clerk's same-origin session cookie; do not register `getToken()`/`setAuthTokenGetter()` for this web app. Keep Bearer-token support limited to clients without a browser cookie jar.
+- For Cloudflare builds, verify the published Clerk key mode and explicitly configure the public `VITE_CLERK_PROXY_URL` when using the first-party `/api/__clerk` proxy. Replit's managed-key swapping is not a substitute for Cloudflare Build configuration. Never derive or rotate Clerk keys from the `workers.dev` hostname.
+- `zero3_members` currently authorizes by the Clerk-verified primary email; it does not persist a Clerk user ID. Do not silently remap or elevate existing members. Any provider-ID migration must be additive and based on verified account identity.
 - Protected ZERO3 API requests use same-origin credentials and may attach a Clerk session token only to this app’s own protected `/api/zero3/*` endpoints. A stale-token recovery retries a GET at most once; never replay score writes.
-- API responses are private/no-store and ETags are disabled to avoid stale 304 responses across session changes. Worker auth logs contain only request IDs and boolean header/session-presence flags, never cookie or token values.
+- API responses are private/no-store and ETags are disabled to avoid stale 304 responses across session changes. For `/api/zero3/me`, Worker diagnostics correlate `requestId` with Cloudflare `cf-ray` and time Clerk configuration/validation/user lookup, Hyperdrive context/connection, role query, and response. Server-side exceptions retain sanitized message/cause/code/stack; cookies, JWTs, keys, connection strings, and emails must never be logged or returned to clients.
 - The browser capture environment cannot validate a real organization login. A local anonymous 401 is not evidence of the reported post-login failure; correlate a real attempt with its response `requestId` before diagnosing Cloudflare/Clerk settings.
+
+## Acesso rápido
+
+- Operadores: abra `/admin` (ou `/`) e autentique-se pela instância Clerk de teste já escolhida. A sessão, sozinha, não concede acesso: o servidor valida o papel ativo existente.
+- Operação de resultados: `/operacao`, protegida por sessão e papel operacional.
+- Transmissão: `/tv`, pública e somente leitura; participantes não precisam de conta. O endpoint do placar público é GET; lançamentos e alterações permanecem protegidos.
+- `/sign-in?redirect_url=%2Fadmin` é um destino interno válido. Não use endereços de login externos nem crie outra instância Clerk. O vínculo atual de papéis usa e-mail primário verificado; não altere ou eleve papéis para contornar erros.
+- O login real no domínio Cloudflare ainda precisa ser validado com uma sessão autorizada. A tela local e respostas anônimas não substituem esse teste.
 
 ## Cloudflare publication boundary
 
-- Build the static UI with `pnpm run build`; the Cloudflare asset directory is `artifacts/zero3-pro/dist/public/`.
-- The Worker deploy command is `pnpm run deploy:cloudflare`, configured in `wrangler.toml` and using Hyperdrive. Do not run it as part of local validation; publish through the GitHub-connected Cloudflare pipeline when explicitly approved.
+- Root build command `pnpm run build` runs typecheck and workspace builds. Cloudflare's static output is `artifacts/zero3-pro/dist/public/`; the Worker entry is `artifacts/api-server/src/worker.ts`.
+- `pnpm run build:cloudflare` builds the Vite assets then runs a Wrangler dry-run; it does not publish. `pnpm run deploy:cloudflare` performs a real Wrangler deploy with `--keep-vars` but does not build first. Do not use either to claim a GitHub Workers Build was published.
+- Cloudflare Workers Builds settings are managed outside the repository. Keep root directory `/`, pnpm 10.26.1, and ensure the pipeline builds the assets before Wrangler deploys `wrangler.toml`. Set `VITE_CLERK_PUBLISHABLE_KEY` in Build Variables; set `VITE_CLERK_PROXY_URL` only after `/api/__clerk` is repaired and tested. Keep `CLERK_SECRET_KEY` and `ZERO3_INITIAL_ADMIN_EMAIL` in runtime Secrets, never in the bundle.
+- Do not run `pnpm run deploy:cloudflare` from Replit. Publish only through the GitHub-connected Cloudflare pipeline when explicitly approved.
 - A local build or dry-run does not prove the currently published Worker revision, a real Clerk session, role authorization, or production database access. Verify those on the published `zero3-podio` URL after the Cloudflare GitHub deployment completes.
 - The demo proof definitions are test fixtures only; official proof descriptions, units, directions, tie rules, and participants remain to be supplied.

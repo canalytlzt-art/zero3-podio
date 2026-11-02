@@ -22,6 +22,35 @@ test("uses a query representation without a leading question mark", () => {
   assert.equal(sanitizeClerkRedirectSearch(safeSearch, "", origin), safeSearch);
 });
 
+test("canonicalizes query values with or without a leading question mark", () => {
+  // Current Wouter returns location.search; the reported bundle exposed a
+  // query-only value. Both representations must normalize to the same string.
+  const wouterSearch = "redirect_url=%2Fadmin";
+  const currentWouterSearch = "?redirect_url=%2Fadmin";
+  const rawLocationSearch = "?redirect_url=%2Fadmin";
+  const wouterCanonical = canonicalClerkSearch(wouterSearch);
+  const currentWouterCanonical = canonicalClerkSearch(currentWouterSearch);
+  const locationCanonical = canonicalClerkSearch(rawLocationSearch);
+  const safeSearch = sanitizeClerkRedirectSearch(
+    rawLocationSearch,
+    "",
+    origin,
+  );
+
+  assert.equal(wouterCanonical, "redirect_url=%2Fadmin");
+  assert.equal(currentWouterCanonical, wouterCanonical);
+  assert.equal(locationCanonical, wouterCanonical);
+  assert.equal(safeSearch, wouterCanonical);
+  assert.equal(sanitizeClerkRedirectSearch(safeSearch, "", origin), safeSearch);
+});
+
+test("canonicalizes equivalent spaces, Unicode, and literal percent encodings", () => {
+  const encoded = "?label=caf%C3%A9&note=hello%20world&value=%25";
+  const decoded = "label=café&note=hello+world&value=%";
+
+  assert.equal(canonicalClerkSearch(encoded), canonicalClerkSearch(decoded));
+});
+
 test("renders a bare sign-in route without waiting for query normalization", () => {
   const rawSearch = "";
   assert.equal(

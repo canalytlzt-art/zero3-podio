@@ -1,12 +1,8 @@
 import type { RequestHandler } from "express";
-
-type SafeErrorDetails = {
-  name?: string;
-  code?: string;
-};
+import { serializeSafeError } from "./safe-error";
 
 type WorkerLogContext = {
-  error?: SafeErrorDetails;
+  error?: unknown;
   authState?: {
     isAuthenticated: boolean;
     hasUserId: boolean;
@@ -14,7 +10,25 @@ type WorkerLogContext = {
     cookiePresent: boolean;
     authorizationPresent: boolean;
   };
-  requestId?: string;
+  requestId?: string | number;
+  cfRayId?: string;
+  stage?: string;
+  stageEvent?: "start" | "finish";
+  responseStatusCode?: number;
+  clerkPublishableKeyConfigured?: boolean;
+  clerkSecretKeyConfigured?: boolean;
+  clerkKeyModesMatch?: boolean;
+  publishableKeyMode?: "test" | "live" | "unknown";
+  secretKeyMode?: "test" | "live" | "unknown";
+  clerkOriginHeaderPresent?: boolean;
+  clerkProxyHostPresent?: boolean;
+  clerkOriginHost?: string;
+  clerkProxyHost?: string;
+  primaryEmailPresent?: boolean;
+  hyperdriveBindingConfigured?: boolean;
+  databaseContextReady?: boolean;
+  memberFound?: boolean;
+  memberActive?: boolean;
   statusCode?: number;
   method?: string;
   path?: string;
@@ -32,13 +46,30 @@ function writeLog(
     ...(context.error
       ? {
           error: {
-            name: context.error.name,
-            code: context.error.code,
+            ...serializeSafeError(context.error),
           },
         }
       : {}),
     ...(context.authState ? { authState: context.authState } : {}),
     requestId: context.requestId,
+    cfRayId: context.cfRayId,
+    stage: context.stage,
+    stageEvent: context.stageEvent,
+    responseStatusCode: context.responseStatusCode,
+    clerkPublishableKeyConfigured: context.clerkPublishableKeyConfigured,
+    clerkSecretKeyConfigured: context.clerkSecretKeyConfigured,
+    clerkKeyModesMatch: context.clerkKeyModesMatch,
+    publishableKeyMode: context.publishableKeyMode,
+    secretKeyMode: context.secretKeyMode,
+    clerkOriginHeaderPresent: context.clerkOriginHeaderPresent,
+    clerkProxyHostPresent: context.clerkProxyHostPresent,
+    clerkOriginHost: context.clerkOriginHost,
+    clerkProxyHost: context.clerkProxyHost,
+    primaryEmailPresent: context.primaryEmailPresent,
+    hyperdriveBindingConfigured: context.hyperdriveBindingConfigured,
+    databaseContextReady: context.databaseContextReady,
+    memberFound: context.memberFound,
+    memberActive: context.memberActive,
     statusCode: context.statusCode,
     method: context.method,
     path: context.path,
@@ -64,16 +95,42 @@ export const workerLogger = {
 export function workerRequestLogger(): RequestHandler {
   return (request, response, next) => {
     const requestId = crypto.randomUUID();
+    const rawRayId = request.headers["cf-ray"];
+    const candidateRayId = Array.isArray(rawRayId) ? rawRayId[0] : rawRayId;
+    const cfRayId =
+      typeof candidateRayId === "string" &&
+      /^[A-Za-z0-9-]{1,100}$/.test(candidateRayId)
+        ? candidateRayId
+        : undefined;
     (request as typeof request & { id?: string }).id = requestId;
     response.setHeader("x-request-id", requestId);
     const startedAt = Date.now();
+    const traceAuthorization = request.path === "/api/zero3/me";
+    if (traceAuthorization) {
+      workerLogger.info(
+        {
+          requestId,
+          cfRayId,
+          stage: "response",
+          stageEvent: "start",
+          method: request.method,
+          path: request.path,
+        },
+        "request started",
+      );
+    }
     response.on("finish", () => {
       workerLogger.info(
         {
           requestId,
+          cfRayId,
+          ...(traceAuthorization
+            ? { stage: "response", stageEvent: "finish" as const }
+            : {}),
           method: request.method,
           path: request.path,
           statusCode: response.statusCode,
+          responseStatusCode: response.statusCode,
           durationMs: Date.now() - startedAt,
         },
         "request completed",
