@@ -95,6 +95,7 @@ test("keeps invalid sessions, inactive roles, and internal errors distinct", () 
 
   assert.equal(session.status, 401);
   assert.equal((session.body as { code: string }).code, "SESSION_INVALID");
+  assert.equal((session.body as { requestId: string }).requestId, "auth-error-test");
   assert.equal(internal.status, 500);
   assert.equal((internal.body as { code: string }).code, "API_INTERNAL_ERROR");
 });

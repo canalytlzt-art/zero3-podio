@@ -22,9 +22,17 @@ interface AppOptions {
 export function createApp(options: AppOptions = {}): Express {
   const app: Express = express();
 
+  // API responses carry session-specific data; do not emit ETags that can
+  // trigger stale 304 revalidation across Clerk session changes.
+  app.set("etag", false);
+
   if (options.beforeMiddleware) {
     app.use(options.beforeMiddleware);
   }
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    next();
+  });
   app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
   app.use(cors({ credentials: true, origin: true }));
   app.use(

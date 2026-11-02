@@ -82,18 +82,22 @@ export function requireZero3Roles(
       .then((resolved) => {
         if (!resolved) {
           const authenticatedUser = hasSignedInUserSession(getAuth(req));
+          const requestId = (req as Request & { id?: string }).id;
           res.status(authenticatedUser ? 403 : 401).json({
             code: authenticatedUser ? "ZERO3_ROLE_INACTIVE" : "SESSION_INVALID",
             error: authenticatedUser
               ? "Acesso ZERO3 não autorizado."
               : "Sessão inválida.",
+            ...(requestId ? { requestId } : {}),
           });
           return;
         }
         if (!roles.includes(resolved.member.role)) {
+          const requestId = (req as Request & { id?: string }).id;
           res.status(403).json({
             code: "ZERO3_ROLE_INSUFFICIENT",
             error: "Permissão insuficiente.",
+            ...(requestId ? { requestId } : {}),
           });
           return;
         }

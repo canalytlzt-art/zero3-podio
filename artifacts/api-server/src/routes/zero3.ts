@@ -76,6 +76,7 @@ import {
 import { resolveZero3Member, requireZero3Roles, type Zero3Request } from "../lib/zero3-auth";
 import { writeApiFailure } from "../lib/api-errors";
 import { hasSignedInUserSession } from "../lib/auth-session";
+import { workerLogger } from "../lib/worker-logger";
 import {
   calculateAllResultPlacements,
   type ResultPlacement,
@@ -518,9 +519,25 @@ router.get(
     try {
       const auth = getAuth(req);
       if (!hasSignedInUserSession(auth)) {
+        const requestId = (req as typeof req & { id?: string }).id;
+        workerLogger.info(
+          {
+            requestId,
+            statusCode: 401,
+            authState: {
+              isAuthenticated: auth.isAuthenticated === true,
+              hasUserId: Boolean(auth.userId),
+              hasSessionId: Boolean(auth.sessionId),
+              cookiePresent: Boolean(req.headers.cookie),
+              authorizationPresent: Boolean(req.headers.authorization),
+            },
+          },
+          "No valid Clerk user session for current-member request",
+        );
         res.status(401).json({
           code: "SESSION_INVALID",
           error: "Sessão inválida.",
+          ...(requestId ? { requestId } : {}),
         });
         return;
       }
@@ -529,6 +546,9 @@ router.get(
         res.status(403).json({
           code: "ZERO3_ROLE_INACTIVE",
           error: "Acesso ZERO3 não autorizado.",
+          ...((req as typeof req & { id?: string }).id
+            ? { requestId: (req as typeof req & { id?: string }).id }
+            : {}),
         });
         return;
       }

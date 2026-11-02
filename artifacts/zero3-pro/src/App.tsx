@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
@@ -8,7 +8,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useSearch } from 'wouter';
-import { getGetZero3MeQueryKey, useGetZero3Me } from '@workspace/api-client-react';
+import { getGetZero3MeQueryKey, setAuthTokenGetter, useGetZero3Me } from '@workspace/api-client-react';
 import { Zero3Role } from '@workspace/api-client-react';
 import { DashboardPage, EventDetailPage, EventsPage, MembersPage, RosterPage } from '@/pages/AdminPages';
 import { PublicTV } from '@/pages/PublicTV';
@@ -21,7 +21,7 @@ import {
   signInHrefForProtectedPath,
 } from '@/lib/auth-redirect';
 
-const queryClient = new QueryClient({defaultOptions:{queries:{staleTime:1500,refetchOnWindowFocus:true,retry:1}}});
+const queryClient = new QueryClient({defaultOptions:{queries:{staleTime:1500,refetchOnWindowFocus:true,retry:(failureCount,error)=>{const status=typeof error==='object'&&error!==null&&'status' in error&&typeof error.status==='number'?error.status:undefined;if(status===401||status===403)return false;return failureCount<1;}}}});
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -76,6 +76,15 @@ function CacheInvalidator(){
   return null;
 }
 
+function ApiAuthBridge(){
+  const {getToken,isLoaded,isSignedIn}=useAuth();
+  useEffect(()=>{
+    setAuthTokenGetter(isLoaded&&isSignedIn?options=>getToken(options):null);
+    return ()=>setAuthTokenGetter(null);
+  },[getToken,isLoaded,isSignedIn]);
+  return null;
+}
+
 function RoutedErrorBoundary({children}:{children:ReactNode}){
   const [location]=useLocation();return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
@@ -87,7 +96,8 @@ function Protected({children}:{children:ReactNode}){
   return <RoleProtected>{children}</RoleProtected>;
 }
 function RoleProtected({children}:{children:ReactNode}){
-  const me=useGetZero3Me({query:{queryKey:getGetZero3MeQueryKey(),refetchOnWindowFocus:true}});
+  const reloginHref=signInHrefForProtectedPath(`${window.location.pathname}${window.location.search}${window.location.hash}`,basePath,window.location.origin);
+  const me=useGetZero3Me({query:{queryKey:getGetZero3MeQueryKey(),refetchOnWindowFocus:true,retry:false}});
   if(me.isLoading)return <div className="app-shell"><div className="content" style={{margin:'auto',width:'100%'}}><div className="skeleton"/></div></div>;
   if(me.isError){
     const status='status' in me.error&&typeof me.error.status==='number'?me.error.status:undefined;
@@ -99,7 +109,8 @@ function RoleProtected({children}:{children:ReactNode}){
     const dependencyFailure=providerFailure||databaseFailure||status===503||status===502||status===504||status===undefined;
     const title=sessionInvalid?'Sua sessão precisa ser confirmada.':noRole?'Acesso operacional não habilitado.':providerFailure?'Provedor de autenticação indisponível.':databaseFailure?'Banco de dados indisponível.':dependencyFailure?'Serviço de operação indisponível.':'Falha interna da API.';
     const detail=sessionInvalid?'Entre novamente com a conta da organização para abrir o painel.':noRole?'Esta conta está autenticada, mas não possui uma função ativa no ZERO3. Peça a um administrador para revisar o acesso.':providerFailure?'Não foi possível validar sua sessão com o Clerk. Tente novamente; este erro não altera sua função.':databaseFailure?'Não foi possível consultar os dados de autorização. Tente novamente; isso não significa que sua conta perdeu permissões.':dependencyFailure?'Um serviço necessário está temporariamente indisponível. Tente novamente; isso não significa que sua conta perdeu permissões.':'A API encontrou um erro ao processar a autorização. Tente novamente; este erro não indica falta de permissão.';
-    return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">{sessionInvalid?'Sessão inválida':noRole?'Acesso restrito':providerFailure?'Falha do Clerk':databaseFailure?'Falha do banco':dependencyFailure?'Falha de conexão':'Erro da API'}</div><h1>{title}</h1><p>{detail}</p></div><span className="auth-hint">ZERO3 PRO · ACESSO</span></section><section className="auth-form"><div>{sessionInvalid?<Link href="/sign-in" className="button primary">Entrar novamente</Link>:<RetryButton retry={()=>me.refetch()}/>}</div></section></div>;
+    const requestId=apiErrorRequestId(me.error);
+    return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">{sessionInvalid?'Sessão inválida':noRole?'Acesso restrito':providerFailure?'Falha do Clerk':databaseFailure?'Falha do banco':dependencyFailure?'Falha de conexão':'Erro da API'}</div><h1>{title}</h1><p>{detail}</p>{requestId&&<p className="lede" style={{marginTop:12}}>Referência: {requestId}</p>}</div><span className="auth-hint">ZERO3 PRO · ACESSO</span></section><section className="auth-form"><div>{sessionInvalid?<ReauthenticateButton redirectTo={reloginHref}/>:<RetryButton retry={()=>me.refetch()}/>}</div></section></div>;
   }
   if(![Zero3Role.ADMIN,Zero3Role.JUIZ_CHEFE,Zero3Role.JUIZ].includes(me.data?.role as typeof Zero3Role[keyof typeof Zero3Role]))return <div className="auth-shell"><section className="auth-brand"><div className="brand"><span className="brand-mark">03</span><span>ZERO3<small> PRO</small></span></div><div className="auth-copy"><div className="eyebrow">Acesso restrito</div><h1>Operação autorizada somente.</h1><p>Esta conta não possui uma função ativa para acessar o painel.</p></div><span className="auth-hint">ZERO3 PRO · CONTROLE</span></section><section className="auth-form"><p className="notice">Função atual: {me.data?.role||'indisponível'}</p><RetryButton retry={()=>me.refetch()}/></section></div>;
   return <>{children}</>;
@@ -111,7 +122,19 @@ function apiErrorCode(error:unknown):string|undefined{
   const code=(data as {code?:unknown}).code;
   return typeof code==='string'?code:undefined;
 }
+function apiErrorRequestId(error:unknown):string|undefined{
+  if(typeof error!=='object'||error===null||!('data' in error))return undefined;
+  const data=(error as {data?:unknown}).data;
+  if(typeof data!=='object'||data===null||!('requestId' in data))return undefined;
+  const requestId=(data as {requestId?:unknown}).requestId;
+  return typeof requestId==='string'||typeof requestId==='number'?String(requestId):undefined;
+}
 function RetryButton({retry}:{retry:()=>void}){return <button className="button" style={{marginTop:12}} onClick={retry}>Verificar autorização novamente</button>}
+function ReauthenticateButton({redirectTo}:{redirectTo:string}){
+  const {signOut}=useClerk();
+  const [error,setError]=useState(false);
+  return <><button className="button primary" style={{marginTop:12}} onClick={()=>{setError(false);void signOut({redirectUrl:redirectTo}).catch(()=>setError(true));}}>Encerrar sessão e entrar novamente</button>{error&&<p role="alert" className="lede" style={{marginTop:10}}>Não foi possível encerrar a sessão agora. Recarregue e tente novamente.</p>}</>;
+}
 
 function useSanitizedClerkRedirects(){
   const [,setLocation]=useLocation();
@@ -156,7 +179,7 @@ function AdminEntryRedirect(){
 function AppRoutes(){
   const [,setLocation]=useLocation();
   return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={clerkAppearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{signIn:{start:{title:'Acessar ZERO3 PRO',subtitle:'Entre para operar a competição'}},signUp:{start:{title:'Criar acesso ZERO3 PRO',subtitle:'Solicite acesso à equipe de operação'}}}} routerPush={(to:string)=>setLocation(stripBase(to))} routerReplace={(to:string)=>setLocation(stripBase(to),{replace:true})}>
-    <QueryClientProvider client={queryClient}><CacheInvalidator/><TooltipProvider><RoutedErrorBoundary><Switch>
+    <QueryClientProvider client={queryClient}><ApiAuthBridge/><CacheInvalidator/><TooltipProvider><RoutedErrorBoundary><Switch>
       <Route path="/" component={AdminEntryRedirect}/>
       <Route path="/inicio" component={AdminEntryRedirect}/>
       <Route path="/tv" component={PublicTV}/>

@@ -6,7 +6,9 @@ export type ErrorType<T = unknown> = ApiError<T>;
 
 export type BodyType<T> = T;
 
-export type AuthTokenGetter = () => Promise<string | null> | string | null;
+export type AuthTokenGetter = (
+  options?: { skipCache?: boolean },
+) => Promise<string | null> | string | null;
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
@@ -34,11 +36,12 @@ export function setBaseUrl(url: string | null): void {
  * the getter is invoked; when it returns a non-null string, an
  * `Authorization: Bearer <token>` header is attached to the request.
  *
- * Useful for Expo bundles making token-gated API calls.
+ * Useful for first-party ZERO3 API calls that need a bearer token in addition
+ * to same-origin session cookies.
  * Pass `null` to clear the getter.
  *
- * NOTE: This function should never be used in web applications where session
- * token cookies are automatically associated with API calls by the browser.
+ * The request guard below restricts tokens to protected ZERO3 API paths on
+ * this app's own origin; do not broaden it to arbitrary URLs.
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
@@ -76,6 +79,35 @@ function resolveUrl(input: RequestInfo | URL): string {
   if (typeof input === "string") return input;
   if (isUrl(input)) return input.toString();
   return input.url;
+}
+
+function isProtectedZero3ApiRequest(input: RequestInfo | URL): boolean {
+  const rawUrl = resolveUrl(input);
+  let pathname: string;
+
+  if (rawUrl.startsWith("/") && !rawUrl.startsWith("//")) {
+    pathname = rawUrl.split(/[?#]/, 1)[0];
+  } else {
+    const expectedOrigin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : _baseUrl
+          ? new URL(_baseUrl).origin
+          : null;
+    if (!expectedOrigin) return false;
+    try {
+      const url = new URL(rawUrl, expectedOrigin);
+      if (url.origin !== expectedOrigin) return false;
+      pathname = url.pathname;
+    } catch {
+      return false;
+    }
+  }
+
+  return (
+    pathname.startsWith("/api/zero3/") &&
+    pathname !== "/api/zero3/public-board"
+  );
 }
 
 function mergeHeaders(...sources: Array<HeadersInit | undefined>): Headers {
@@ -330,12 +362,15 @@ export async function customFetch<T = unknown>(
   const { responseType = "auto", headers: headersInit, ...init } = options;
 
   const method = resolveMethod(input, init.method);
+  const authenticatedApiRequest = isProtectedZero3ApiRequest(input);
 
   if (init.body != null && (method === "GET" || method === "HEAD")) {
     throw new TypeError(`customFetch: ${method} requests cannot have a body.`);
   }
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
+  const explicitAuthorization = headers.has("authorization");
+  let initialAuthToken: string | null = null;
 
   if (
     typeof init.body === "string" &&
@@ -349,18 +384,44 @@ export async function customFetch<T = unknown>(
     headers.set("accept", DEFAULT_JSON_ACCEPT);
   }
 
-  // Attach bearer token when an auth getter is configured and no
-  // Authorization header has been explicitly provided.
-  if (_authTokenGetter && !headers.has("authorization")) {
-    const token = await _authTokenGetter();
-    if (token) {
-      headers.set("authorization", `Bearer ${token}`);
+  // Only attach a Clerk bearer token to this app's protected API routes.
+  if (_authTokenGetter && authenticatedApiRequest && !explicitAuthorization) {
+    initialAuthToken = await _authTokenGetter();
+    if (initialAuthToken) {
+      headers.set("authorization", `Bearer ${initialAuthToken}`);
     }
   }
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const requestInit: RequestInit = {
+    ...init,
+    method,
+    headers,
+    ...(authenticatedApiRequest
+      ? {
+          credentials: init.credentials ?? "same-origin",
+          cache: init.cache ?? "no-store",
+        }
+      : {}),
+  };
+
+  let response = await fetch(input, requestInit);
+
+  // A read may recover once from a stale session token. Never replay writes.
+  if (
+    response.status === 401 &&
+    method === "GET" &&
+    authenticatedApiRequest &&
+    _authTokenGetter &&
+    !explicitAuthorization
+  ) {
+    const refreshedToken = await _authTokenGetter({ skipCache: true });
+    if (refreshedToken && refreshedToken !== initialAuthToken) {
+      headers.set("authorization", `Bearer ${refreshedToken}`);
+      response = await fetch(input, requestInit);
+    }
+  }
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

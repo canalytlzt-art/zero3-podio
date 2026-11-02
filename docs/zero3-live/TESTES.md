@@ -21,14 +21,26 @@ Validação técnica executada em Development; nenhuma publicação foi feita. O
 | `pnpm --filter @workspace/api-server run test:scoring` | **5 passaram** | Regras de pontuação existentes; sem mudanças de regras. |
 | `pnpm --filter @workspace/api-server run test:api-errors` | **7 passaram** | 401 de sessão, falhas do provedor/banco e erro interno continuam distintas. |
 | `pnpm --filter @workspace/api-server run test:auth-session` | **3 passaram** | Estado de sessão exige usuário e identificador verificados. |
-| `pnpm --filter @workspace/api-server run test:worker-logger` | **1 passou** | Metadados de erro sem credenciais nos logs. |
+| `pnpm --filter @workspace/api-server run test:worker-logger` | **3 passaram** | Metadados de erro sem credenciais, IDs de correlação e log de presença de cabeçalho somente como booleano. |
 | `pnpm --filter @workspace/api-server run test:db-context` | **2 passaram** | Contextos PostgreSQL de requisições concorrentes/sequenciais isolados. |
 | `pnpm run build` | **Passou** | Typecheck e builds workspace; interface em `artifacts/zero3-pro/dist/public/`. Avisos Vite: sourcemap em `tooltip.tsx` e bundle principal >500 kB. |
 | `pnpm run check:cloudflare` | **Passou** | Wrangler 4.156.0; typegen, typecheck e dry-run do Worker/assets. Não é deploy nem teste de login real. |
 | GET `/api/healthz`, `/api/zero3/me`, `/api/zero3/public-board` no Preview | **200 / 401 / 200** | Sem sessão, `/me` retorna `SESSION_INVALID`; placar público usou o evento de demonstração Development. |
 | `git diff --check` | **Passou** | Nenhum erro de whitespace. |
 
-Os checks acima não provam login na instância Clerk do domínio Cloudflare, autorização de uma conta específica, sessão persistente após recarregar, logout/expiração ou conectividade ao banco Neon do Worker publicado.
+## Recuperação de sessão — Development
+
+| Check | Resultado | Evidência/limite |
+|---|---|---|
+| `pnpm run test:auth-transport` | **3 passaram** | Token somente para rota protegida da API própria; recuperação de GET com token novo limitada a uma tentativa; POST não é repetido. |
+| `pnpm --filter @workspace/api-server run test:worker-logger` | **3 passaram** | Inclui ID de correlação no header/log e flags de sessão booleanas; credenciais não aparecem. |
+| `pnpm run typecheck` | **Passou** | API, interface, bibliotecas e scripts. |
+| `pnpm run check:cloudflare` | **Passou** | Wrangler 4.156.0; build e dry-run somente. Não testa login, banco remoto nem a publicação real. |
+| GET `/api/healthz`, `/api/zero3/me`, `/api/zero3/public-board` | **200 / 401 / 200** | Requisições anônimas em Development; todas sem cache. `/me` incluiu `requestId`. Não reproduz o erro após login. |
+| Clerk Express adapter | **Inspecionado no pacote instalado** | Copia os cabeçalhos da requisição recebida para a Fetch Request de autenticação; isso não prova quais cabeçalhos chegaram ao Worker Cloudflare no caso real. |
+| Preview `/admin` e `/tv` | **Capturado** | Formulário Clerk de Development e TV continuam acessíveis; não houve interação de login. |
+
+Os checks acima não provam login na instância Clerk do domínio Cloudflare, autorização de uma conta específica, sessão persistente após recarregar, logout/expiração ou conectividade ao banco Neon do Worker publicado. Nenhuma tentativa autenticada com Network e logs Cloudflare correlacionados foi executada; o `401` acima foi deliberadamente anônimo.
 
 ## Checks executados
 

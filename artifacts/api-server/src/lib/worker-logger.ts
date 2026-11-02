@@ -7,6 +7,13 @@ type SafeErrorDetails = {
 
 type WorkerLogContext = {
   error?: SafeErrorDetails;
+  authState?: {
+    isAuthenticated: boolean;
+    hasUserId: boolean;
+    hasSessionId: boolean;
+    cookiePresent: boolean;
+    authorizationPresent: boolean;
+  };
   requestId?: string;
   statusCode?: number;
   method?: string;
@@ -30,6 +37,7 @@ function writeLog(
           },
         }
       : {}),
+    ...(context.authState ? { authState: context.authState } : {}),
     requestId: context.requestId,
     statusCode: context.statusCode,
     method: context.method,
@@ -55,11 +63,14 @@ export const workerLogger = {
 
 export function workerRequestLogger(): RequestHandler {
   return (request, response, next) => {
+    const requestId = crypto.randomUUID();
+    (request as typeof request & { id?: string }).id = requestId;
+    response.setHeader("x-request-id", requestId);
     const startedAt = Date.now();
     response.on("finish", () => {
       workerLogger.info(
         {
-          requestId: (request as typeof request & { id?: string }).id,
+          requestId,
           method: request.method,
           path: request.path,
           statusCode: response.statusCode,

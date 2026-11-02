@@ -30,7 +30,7 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 
 ## Product rules
 
-- `/` and `/tv` show the same read-only public TV; `/inicio` is optional navigation. The civil clock uses `America/Sao_Paulo` and remains independent from sports-timer state.
+- `/` redirects to the administrative entry; `/tv` is the single public read-only TV. `/inicio` does not replace the primary flow. The civil clock uses `America/Sao_Paulo` and remains independent from sports-timer state.
 - A single TV displays SC and RX together, proof results, progress, scores, and only manually published podiums. Admin menus/forms stay off the TV.
 - Events have four proof slots. Configure official names, units, metric direction, and tie handling only from confirmed event rules.
 - For configured proofs, validated results receive 1, 2, 3… points by placement; the lower overall sum wins. The server recalculates from stored results after corrections. Provisional results earn no official points; missing proofs are not zero; incomplete entries are not final champions. Do not invent tie-breakers.
@@ -43,7 +43,10 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - `seed:demo` is idempotent for its named test event and refuses to run unless `NODE_ENV=development`.
 - Use the OpenAPI contract as the source of truth and regenerate clients after changing it.
 - Do not bypass Clerk or server-side role checks to make a preview appear signed in.
-- An unauthenticated visit to a protected page redirects to `/sign-in` with a sanitized, internal return destination; after Clerk sign-in the API still authorizes the member role. The browser capture environment cannot validate a real organization login.
+- An unauthenticated visit to a protected page redirects to `/sign-in` with a sanitized, internal return destination; after Clerk sign-in the API still authorizes the member role. “Entrar novamente” signs out through Clerk before returning to the internal sign-in URL.
+- Protected ZERO3 API requests use same-origin credentials and may attach a Clerk session token only to this app’s own protected `/api/zero3/*` endpoints. A stale-token recovery retries a GET at most once; never replay score writes.
+- API responses are private/no-store and ETags are disabled to avoid stale 304 responses across session changes. Worker auth logs contain only request IDs and boolean header/session-presence flags, never cookie or token values.
+- The browser capture environment cannot validate a real organization login. A local anonymous 401 is not evidence of the reported post-login failure; correlate a real attempt with its response `requestId` before diagnosing Cloudflare/Clerk settings.
 
 ## Cloudflare publication boundary
 
