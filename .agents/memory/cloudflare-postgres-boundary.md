@@ -20,3 +20,9 @@ Treat a GitHub push as source delivery, not proof of Cloudflare publication. A p
 **Why:** The repository's GitHub main advanced while the public Worker continued serving older assets and behavior.
 
 **How to apply:** After an authorized push, verify a distinctive changed behavior or build marker on the Cloudflare URL; do not infer deployment from GitHub main alone.
+
+Keep Node/Replit logging out of the Cloudflare Worker import graph. The Node logger may use `pino-http` and transports; Worker request and API-error logging should use a Worker-compatible logger that emits only allowlisted metadata.
+
+**Why:** The Workers runtime can reject Node logger internals during initialization even when the bundle passes a dry-run.
+
+**How to apply:** Check transitive imports from `worker.ts`, then test a real `wrangler dev --local` startup and HTTP request. For local Hyperdrive emulation, Wrangler requires a local connection string for each binding; use a disposable placeholder only for routes that do not query the database.
