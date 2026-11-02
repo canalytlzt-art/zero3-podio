@@ -10,7 +10,8 @@ import {
 } from '@workspace/api-client-react';
 import type { Zero3Proof, Zero3Registration, Zero3Result } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
-import { ArrowUpRight, Check, Save } from 'lucide-react';
+import { ArrowUpRight, Check, Radio, Save } from 'lucide-react';
+import { tvHrefForEvent } from '@/lib/tv-navigation';
 
 const message = (error: unknown) => error instanceof Error ? error.message : 'Não foi possível salvar. Tente novamente.';
 const statusName = (status: string) => ({ PROVISIONAL: 'Provisório', VALIDATED: 'Validado', DNS: 'DNS', DNF: 'DNF', PARTIAL: 'Parcial', FINAL: 'Final' } as Record<string,string>)[status] || status;
@@ -77,8 +78,9 @@ export function OperationPage() {
   };
   const metricFor = (proof: Zero3Proof) => proof.metricType === 'TIME' ? 'Valor real · segundos' : `Valor real${proof.unit ? ` · ${proof.unit}` : ''}`;
 
-  return <AdminShell>
+  return <AdminShell tvEventId={selectedEventId}>
     <PageHeading eyebrow="ZERO3 PRO · controle" title="Operação e resultados" detail="Lance a métrica oficial. Colocação e pontos vêm exclusivamente do servidor.">
+      <Link href={tvHrefForEvent(selectedEventId)} target="_blank" rel="noopener noreferrer" className="button"><Radio size={14}/> Abrir TV</Link>
       <Link href="/admin/events" className="button" data-testid="link-event-modules">Módulos do evento <ArrowUpRight size={14}/></Link>
     </PageHeading>
     {events.isLoading ? <LoadingRows/> : events.isError ? <QueryError retry={()=>events.refetch()}/> : !events.data?.length ?

@@ -101,11 +101,11 @@ O Worker usa o mesmo app Express por `httpServerHandler` e mantém `/api/*` no W
 ```sh
 pnpm run build:cloudflare
 pnpm run check:cloudflare
-# Publicação manual somente depois de resolver os pré-requisitos:
-pnpm exec wrangler deploy --config wrangler.toml
+# Deploy command da integração Cloudflare, somente depois de restaurar as variáveis:
+pnpm run deploy:cloudflare
 ```
 
-`build:cloudflare` gera a interface em `artifacts/zero3-pro/dist/public/` e compila o Worker por meio de `wrangler deploy --dry-run`, salvando a saída em `.wrangler/build/`. `check:cloudflare` gera os tipos do Worker, executa os typechecks e chama esse build; não publica nada. Para `wrangler dev --local`, use a variável `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` com uma conexão PostgreSQL local de teste e as variáveis Clerk do ambiente de teste.
+`build:cloudflare` gera a interface em `artifacts/zero3-pro/dist/public/` e compila o Worker por meio de `wrangler deploy --dry-run`, salvando a saída em `.wrangler/build/`. `check:cloudflare` gera os tipos do Worker, executa os typechecks e chama esse build; não publica nada. Mantenha `pnpm run build` como Build command da integração e configure `pnpm run deploy:cloudflare` como Deploy command: ele usa o `wrangler.toml` e passa `--keep-vars` explicitamente. Para `wrangler dev --local`, use a variável `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` com uma conexão PostgreSQL local de teste e as variáveis Clerk do ambiente de teste.
 
 ### Banco do ambiente Cloudflare
 
@@ -122,9 +122,12 @@ Confirme que a URL aponta para o banco Neon de testes antes de aceitar as altera
 ### Configuração Cloudflare
 
 - Binding: `HYPERDRIVE` (PostgreSQL, configuração com `--caching-disabled`).
-- Segredos runtime do Clerk: `CLERK_SECRET_KEY` e `CLERK_PUBLISHABLE_KEY`, configurados no ambiente Cloudflare; nunca os grave neste repositório.
-- Variável runtime: `ZERO3_INITIAL_ADMIN_EMAIL`.
-- Build frontend: `VITE_CLERK_PUBLISHABLE_KEY` (pública, incorporada no build) e, se necessário, `VITE_CLERK_PROXY_URL`.
+- `keep_vars = true` está no `wrangler.toml`; Wrangler 4.156.0 também aceita `--keep-vars`. Isso preserva variáveis runtime configuradas no painel que não estão no arquivo. Secrets já são aditivos e não são removidos por deploys Wrangler. O Build command `pnpm run build` sozinho não envia o Worker; use o Deploy command `pnpm run deploy:cloudflare`.
+- Runtime variable `CLERK_PUBLISHABLE_KEY`: chave pública da mesma instância Clerk usada pelo frontend. Mantenha o valor idêntico a `VITE_CLERK_PUBLISHABLE_KEY`.
+- Runtime secret `CLERK_SECRET_KEY`: segredo da mesma instância Clerk; nunca o grave neste repositório.
+- Runtime secret `ZERO3_INITIAL_ADMIN_EMAIL`: e-mail principal da conta Clerk autorizada a receber o bootstrap inicial; nunca grave o valor no código.
+- Runtime variable `NODE_ENV`: `production`; também consta em `[vars]` no `wrangler.toml`.
+- Build variable `VITE_CLERK_PUBLISHABLE_KEY`: chave pública da mesma instância Clerk, incorporada no bundle frontend; se necessário, `VITE_CLERK_PROXY_URL`.
 - O domínio de produção/teste do Worker também precisa estar autorizado nas configurações do Clerk. `DATABASE_URL` continua sendo o caminho local/Replit da API Node; no Worker, a conexão vem do binding Hyperdrive.
 - Referências Cloudflare: [Express on Workers](https://developers.cloudflare.com/workers/framework-guides/web-apps/more-web-frameworks/express/), [Node.js HTTP server API](https://developers.cloudflare.com/workers/runtime-apis/nodejs/http/), [Hyperdrive query caching](https://developers.cloudflare.com/hyperdrive/concepts/query-caching/).
 

@@ -5,7 +5,7 @@ import {
   withDatabaseContext,
 } from "@workspace/db";
 import type { RequestHandler } from "express";
-import { requestLogger } from "./lib/logger";
+import { logger, requestLogger } from "./lib/logger";
 import { createApp } from "./app";
 
 const databaseMiddleware: RequestHandler = (request, response, next) => {
@@ -20,11 +20,19 @@ const databaseMiddleware: RequestHandler = (request, response, next) => {
     });
     withDatabaseContext(database, next);
   } catch (error) {
-    request.log.error(
-      { error: error instanceof Error ? { name: error.name } : { name: "UnknownError" } },
+    logger.error(
+      {
+        error: error instanceof Error
+          ? {
+              name: error.name,
+              code: (error as Error & { code?: string }).code,
+            }
+          : { name: "UnknownError" },
+      },
       "Unable to initialize request database context",
     );
     response.status(503).json({
+      code: "DEPENDENCY_UNAVAILABLE",
       error: "Banco da operação indisponível.",
     });
   }

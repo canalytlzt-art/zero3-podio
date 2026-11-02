@@ -7,7 +7,9 @@
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:auth-redirect": "node --experimental-strip-types --test src/lib/auth-redirect.test.ts",
+    "test:navigation": "node --experimental-strip-types --test src/lib/auth-redirect.test.ts src/lib/tv-navigation.test.ts"
   },
   "devDependencies": {
     "@clerk/react": "^6.18.4",

@@ -74,6 +74,7 @@ import {
   zero3TimersTable,
 } from "@workspace/db";
 import { resolveZero3Member, requireZero3Roles, type Zero3Request } from "../lib/zero3-auth";
+import { writeApiFailure } from "../lib/api-errors";
 import {
   calculateAllResultPlacements,
   type ResultPlacement,
@@ -235,15 +236,48 @@ async function resultDto(
 }
 
 async function eventResults(
-  eventId: string,
-  placements: Map<string, ResultPlacement> = new Map(),
+  rows: ResultRow[],
+  registrations: Awaited<ReturnType<typeof registrationDtos>>,
+  placements: Map<string, ResultPlacement>,
 ) {
-  const rows = await db
-    .select()
-    .from(zero3ResultsTable)
-    .where(eq(zero3ResultsTable.eventId, eventId))
-    .orderBy(desc(zero3ResultsTable.capturedAt));
-  return Promise.all(rows.map((row) => resultDto(row, placements.get(row.id))));
+  const orderedRows = [...rows].sort(
+    (left, right) => right.capturedAt.getTime() - left.capturedAt.getTime(),
+  );
+  const heatIds = [...new Set(orderedRows.flatMap((row) => row.heatId ?? []))];
+  const heats = heatIds.length
+    ? await db
+        .select()
+        .from(zero3HeatsTable)
+        .where(inArray(zero3HeatsTable.id, heatIds))
+    : [];
+  const registrationById = new Map(registrations.map((row) => [row.id, row]));
+  const heatNameById = new Map(heats.map((heat) => [heat.id, heat.name]));
+
+  return orderedRows.map((row) => {
+    const registration = registrationById.get(row.registrationId);
+    const placement = placements.get(row.id);
+    return {
+      id: row.id,
+      eventId: row.eventId,
+      registrationId: row.registrationId,
+      heatId: row.heatId,
+      category: row.category,
+      laneLabel: row.laneLabel,
+      elapsedMs: row.elapsedMs,
+      proofId: row.proofId,
+      rawValue: row.rawValue === null ? null : Number(row.rawValue),
+      placement: placement?.placement ?? null,
+      points: placement?.points ?? null,
+      tieRulePending: placement?.tiePending ?? false,
+      syncErrorMs: row.syncErrorMs,
+      status: row.status,
+      capturedAt: row.capturedAt,
+      revision: row.revision,
+      names: registration?.athleteNames ?? [],
+      teamName: registration?.teamName ?? null,
+      heatName: row.heatId ? heatNameById.get(row.heatId) ?? null : null,
+    };
+  });
 }
 
 async function eventScoring(event: EventRow) {
@@ -291,6 +325,7 @@ async function eventScoring(event: EventRow) {
         athleteNames,
       }),
     ),
+    registrationRows: registrations,
     resultRows,
     leaderboards: calculated.leaderboards,
     placements: calculated.placements,
@@ -302,21 +337,22 @@ async function activeHeatDtos(eventId: string) {
     .select()
     .from(zero3ActiveHeatsTable)
     .where(eq(zero3ActiveHeatsTable.eventId, eventId));
+  const heatIds = [...new Set(rows.flatMap((row) => row.heatId ?? []))];
+  const heats = heatIds.length
+    ? await db
+        .select()
+        .from(zero3HeatsTable)
+        .where(inArray(zero3HeatsTable.id, heatIds))
+    : [];
+  const heatNameById = new Map(heats.map((heat) => [heat.id, heat.name]));
   return Promise.all(
     (["SC", "RX"] as const).map(async (category) => {
       const active = rows.find((row) => row.category === category);
-      const [heat] = active?.heatId
-        ? await db
-            .select()
-            .from(zero3HeatsTable)
-            .where(eq(zero3HeatsTable.id, active.heatId))
-            .limit(1)
-        : [];
       return {
         eventId,
         category,
         heatId: active?.heatId ?? null,
-        heatName: heat?.name ?? null,
+        heatName: active?.heatId ? heatNameById.get(active.heatId) ?? null : null,
         updatedAt: active?.updatedAt ?? new Date(0),
       };
     }),
@@ -435,29 +471,39 @@ async function publicPodiums(eventId: string) {
       latestByCategory.set(version.category, version);
     }
   }
-  const podiums = [];
-  for (const [category, podium] of latestByCategory) {
-    const places = [];
-    for (const [index, registrationId] of podium.registrationIds.entries()) {
-      if (!registrationId) continue;
-      const [registration] = await db
+  const podiumVersions = [...latestByCategory.entries()];
+  const registrationIds = [
+    ...new Set(
+      podiumVersions.flatMap(([, podium]) =>
+        podium.registrationIds.filter((id): id is string => Boolean(id)),
+      ),
+    ),
+  ];
+  const registrationRows = registrationIds.length
+    ? await db
         .select()
         .from(zero3RegistrationsTable)
         .where(
           and(
-            eq(zero3RegistrationsTable.id, registrationId),
+            inArray(zero3RegistrationsTable.id, registrationIds),
             eq(zero3RegistrationsTable.eventId, eventId),
-            eq(zero3RegistrationsTable.category, category),
           ),
         )
-        .limit(1);
-      if (!registration) continue;
-      const dto = await registrationDto(registration);
+    : [];
+  const registrationInfo = await registrationDtos(registrationRows);
+  const registrationById = new Map(registrationInfo.map((item) => [item.id, item]));
+  const podiums = [];
+  for (const [category, podium] of podiumVersions) {
+    const places = [];
+    for (const [index, registrationId] of podium.registrationIds.entries()) {
+      if (!registrationId) continue;
+      const registration = registrationById.get(registrationId);
+      if (!registration || registration.category !== category) continue;
       places.push({
         place: index + 1,
         registrationId,
-        teamName: dto.teamName,
-        athleteNames: dto.athleteNames,
+        teamName: registration.teamName,
+        athleteNames: registration.athleteNames,
       });
     }
     podiums.push({ category, places });
@@ -468,23 +514,33 @@ async function publicPodiums(eventId: string) {
 router.get(
   "/zero3/me",
   async (req, res): Promise<void> => {
-    const { userId } = getAuth(req);
-    if (!userId) {
-      res.status(401).json({ error: "Sessão inválida." });
-      return;
+    try {
+      const { userId } = getAuth(req);
+      if (!userId) {
+        res.status(401).json({
+          code: "SESSION_INVALID",
+          error: "Sessão inválida.",
+        });
+        return;
+      }
+      const resolved = await resolveZero3Member(req);
+      if (!resolved) {
+        res.status(403).json({
+          code: "ZERO3_ROLE_INACTIVE",
+          error: "Acesso ZERO3 não autorizado.",
+        });
+        return;
+      }
+      res.json(
+        GetZero3MeResponse.parse({
+          userId: resolved.userId,
+          email: resolved.member.email,
+          role: resolved.member.role,
+        }),
+      );
+    } catch (error) {
+      writeApiFailure(req, res, error, "Não foi possível consultar a autorização.");
     }
-    const resolved = await resolveZero3Member(req);
-    if (!resolved) {
-      res.status(403).json({ error: "Acesso ZERO3 não autorizado." });
-      return;
-    }
-    res.json(
-      GetZero3MeResponse.parse({
-        userId: resolved.userId,
-        email: resolved.member.email,
-        role: resolved.member.role,
-      }),
-    );
   },
 );
 
@@ -1168,8 +1224,7 @@ router.put(
         res.status(400).json({ error: "Este comando não é válido para o estado atual." });
         return;
       }
-      req.log.error({ err: error }, "Unable to update ZERO3 timer");
-      res.status(500).json({ error: "Não foi possível atualizar o cronômetro." });
+      writeApiFailure(req, res, error, "Não foi possível atualizar o cronômetro.");
       return;
     }
     const current = timerDto(result, event.preparationSeconds, now);
@@ -1745,11 +1800,17 @@ router.get(
       );
       return;
     }
-    const timer = await getTimerDto(event);
-    const scoring = await eventScoring(event);
-    const results = await eventResults(event.id, scoring.placements);
-    const podiums = await publicPodiums(event.id);
-    const activeHeats = await activeHeatDtos(event.id);
+    const [timer, scoring, podiums, activeHeats] = await Promise.all([
+      getTimerDto(event),
+      eventScoring(event),
+      publicPodiums(event.id),
+      activeHeatDtos(event.id),
+    ]);
+    const results = await eventResults(
+      scoring.resultRows,
+      scoring.registrationRows,
+      scoring.placements,
+    );
     res.json(
       GetZero3PublicBoardResponse.parse({
         serverTime: new Date(),

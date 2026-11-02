@@ -6,7 +6,7 @@ export function PublicEntry(){
   const board=useGetZero3PublicBoard(undefined,{query:{refetchInterval:5000,retry:1}});
   const event=board.data?.event;
   return <main className="entry-root">
-    <header className="entry-header"><Link href="/" className="entry-brand"><img src="/logo.svg" alt="ZERO3 PRO"/></Link><span className={`entry-live ${board.isError?'offline':event?.status==='ACTIVE'?'is-live':''}`}><i/>{board.isError?'DADOS INDISPONÍVEIS':event?.status==='ACTIVE'?'COMPETIÇÃO AO VIVO':'SISTEMA DE COMPETIÇÃO'}</span></header>
+    <header className="entry-header"><Link href="/tv" className="entry-brand"><img src="/logo.svg" alt="ZERO3 PRO"/></Link><span className={`entry-live ${board.isError?'offline':event?.status==='ACTIVE'?'is-live':''}`}><i/>{board.isError?'DADOS INDISPONÍVEIS':event?.status==='ACTIVE'?'COMPETIÇÃO AO VIVO':'SISTEMA DE COMPETIÇÃO'}</span></header>
     <section className="entry-hero">
       <div className="entry-kicker"><span/> CONTROLE DE COMPETIÇÃO · SC / RX</div>
       <h1>O ritmo da prova.<br/><em>O controle da operação.</em></h1>

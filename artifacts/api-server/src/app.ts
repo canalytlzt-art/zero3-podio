@@ -7,7 +7,7 @@ import cors from "cors";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
-import { logger } from "./lib/logger";
+import { writeApiFailure } from "./lib/api-errors";
 import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
@@ -53,22 +53,5 @@ const apiErrorHandler: ErrorRequestHandler = (error, req, res, next) => {
     return;
   }
 
-  const details =
-    error instanceof Error
-      ? { name: error.name, code: (error as Error & { code?: string }).code }
-      : { name: "UnknownError" };
-  const requestId = (req as typeof req & { id?: string }).id;
-  const requestLog = (req as typeof req & {
-    log?: { error: (context: unknown, message: string) => void };
-  }).log;
-  if (requestLog) {
-    requestLog.error({ error: details }, "Unhandled API request error");
-  } else {
-    logger.error({ error: details, requestId }, "Unhandled API request error");
-  }
-
-  res.status(500).json({
-    error: "Falha interna da API.",
-    ...(requestId ? { requestId } : {}),
-  });
+  writeApiFailure(req, res, error);
 };

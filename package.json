@@ -5,9 +5,10 @@
   "packageManager": "pnpm@10.26.1",
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "build": "pnpm run typecheck && PORT=5000 BASE_PATH=/ pnpm -r --if-present run build",
     "build:cloudflare": "PORT=5000 BASE_PATH=/ pnpm --filter @workspace/zero3-pro run build && pnpm exec wrangler deploy --dry-run --config wrangler.toml --outdir .wrangler/build",
     "check:cloudflare": "pnpm run cf-typegen && pnpm run typecheck && pnpm run build:cloudflare",
+    "deploy:cloudflare": "pnpm exec wrangler deploy --config wrangler.toml --keep-vars",
     "cf-typegen": "pnpm exec wrangler types artifacts/api-server/src/worker-configuration.d.ts --config wrangler.toml",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

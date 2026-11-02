@@ -21,13 +21,22 @@ function createPool(
   connectionString: string,
   options: { max?: number } = {},
 ): InstanceType<typeof Pool> {
-  return new Pool({
+  const pool = new Pool({
     connectionString,
     max: options.max ?? 10,
     connectionTimeoutMillis: 8_000,
     idleTimeoutMillis: 30_000,
     query_timeout: 15_000,
   });
+  pool.on("error", (error: Error & { code?: string }) => {
+    // pg emits idle-client errors on the pool. A listener prevents them from
+    // becoming unhandled Worker-isolate errors; never log connection details.
+    console.error("[db] Idle PostgreSQL client error", {
+      name: error.name,
+      code: error.code,
+    });
+  });
+  return pool;
 }
 
 export function configureDatabase(

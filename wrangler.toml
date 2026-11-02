@@ -5,6 +5,7 @@ compatibility_flags = [
   "nodejs_compat",
   "nodejs_compat_populate_process_env",
 ]
+# Preserve runtime variables added in the Cloudflare dashboard during Wrangler deploys.
 keep_vars = true
 
 [vars]

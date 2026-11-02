@@ -18,6 +18,7 @@ import {
 } from '@workspace/api-client-react';
 import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
+import { tvHrefForEvent } from '@/lib/tv-navigation';
 
 const pillTone = (status: string) => status === 'ACTIVE' || status === 'VALIDATED' ? '' : status === 'PLANNED' || status === 'PROVISIONAL' ? 'warn' : 'neutral';
 const pretty = (s: string) => ({PLANNED:'Planejado',ACTIVE:'Em andamento',FINISHED:'Finalizado',PROVISIONAL:'Provisório',VALIDATED:'Validado',DNS:'DNS',DNF:'DNF'} as Record<string,string>)[s] || s;
@@ -29,7 +30,7 @@ export function DashboardPage() {
   const health = useHealthCheck({query:{refetchInterval:15000}});
   const events = useListZero3Events({query:{refetchInterval:15000}});
   const dashboard = q.data;
-  return <AdminShell><PageHeading eyebrow="Central de controle" title="Bom trabalho." detail="A operação começa aqui. Estado real do sistema, atualizado automaticamente."><Link href="/admin/events" className="button primary"><Plus size={15}/> Criar evento</Link></PageHeading>
+  return <AdminShell tvEventId={dashboard?.activeEvent?.id}><PageHeading eyebrow="Central de controle" title="Bom trabalho." detail="A operação começa aqui. Estado real do sistema, atualizado automaticamente."><Link href={tvHrefForEvent(dashboard?.activeEvent?.id)} target="_blank" rel="noopener noreferrer" className="button"><Radio size={14}/> Abrir TV</Link><Link href="/admin/events" className="button primary"><Plus size={15}/> Criar evento</Link></PageHeading>
     {q.isLoading ? <LoadingRows/> : q.isError ? <QueryError retry={() => {q.refetch();events.refetch();}}/> : <>
       <section className="stats-grid">
         <div className="panel stat"><div className="stat-kicker">Eventos cadastrados</div><div className="stat-value">{dashboard?.eventCount ?? '—'}</div><div className="stat-detail">No espaço ZERO3 PRO</div></div>
@@ -78,7 +79,7 @@ function Field({label,name,type='text',required=false,placeholder,defaultValue,m
  export function EventDetailPage() {
  const {eventId=''}=useParams<{eventId:string}>(); const [tab,setTab]=useState<'heats'|'registrations'|'timer'|'results'|'podium'>('heats');
  const events=useListZero3Events(); const event=events.data?.find(e=>e.id===eventId);
-  return <AdminShell><PageHeading eyebrow="Operação do evento" title={event?.name||'Evento'} detail={event?`${event.proofName} · ID ${event.id}`:`ID ${eventId}`}><Link href="/admin/events" className="button"><ArrowLeft size={14}/> Eventos</Link><Link href="/tv" target="_blank" rel="noopener noreferrer" className="button"><Radio size={14}/> Abrir TV</Link></PageHeading>
+   return <AdminShell tvEventId={eventId}><PageHeading eyebrow="Operação do evento" title={event?.name||'Evento'} detail={event?`${event.proofName} · ID ${event.id}`:`ID ${eventId}`}><Link href="/admin/events" className="button"><ArrowLeft size={14}/> Eventos</Link><Link href={tvHrefForEvent(eventId)} target="_blank" rel="noopener noreferrer" className="button"><Radio size={14}/> Abrir TV</Link></PageHeading>
   <div className="tabs">{(['heats','registrations','timer','results','podium'] as const).map(t=><button className={`tab ${tab===t?'active':''}`} onClick={()=>setTab(t)} key={t}>{({heats:'Baterias',registrations:'Inscrições',timer:'Cronômetro',results:'Resultados',podium:'Pódio'})[t]}</button>)}</div>
   {tab==='heats'&&<Heats eventId={eventId}/>}
   {tab==='registrations'&&<Registrations eventId={eventId}/>}

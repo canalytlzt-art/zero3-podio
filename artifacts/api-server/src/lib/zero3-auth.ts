@@ -2,7 +2,11 @@ import { clerkClient, getAuth } from "@clerk/express";
 import { eq } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
 import { db, zero3MembersTable } from "@workspace/db";
-import { logger } from "./logger";
+import { writeApiFailure } from "./api-errors";
+import {
+  AuthorizationProviderUnavailableError,
+  AuthorizationSessionInvalidError,
+} from "./api-error-classification";
 
 export type Zero3Role = "ADMIN" | "JUIZ_CHEFE" | "JUIZ";
 export type Zero3MemberContext = {
@@ -14,28 +18,26 @@ export type Zero3Request = Request & {
   zero3Member?: Zero3MemberContext;
 };
 
-function logRoleResolutionFailure(req: Request, error: unknown): void {
-  const details =
-    error instanceof Error
-      ? { name: error.name, code: (error as Error & { code?: string }).code }
-      : { name: "UnknownError" };
-  const requestLog = (req as Request & {
-    log?: { error: (context: unknown, message: string) => void };
-  }).log;
-  if (requestLog) {
-    requestLog.error({ error: details }, "Unable to resolve ZERO3 role");
-  } else {
-    logger.error({ error: details }, "Unable to resolve ZERO3 role");
-  }
-}
-
 export async function resolveZero3Member(
   req: Request,
 ): Promise<{ userId: string; member: Zero3MemberContext } | null> {
   const { userId } = getAuth(req);
   if (!userId) return null;
 
-  const user = await clerkClient.users.getUser(userId);
+  let user: Awaited<ReturnType<typeof clerkClient.users.getUser>>;
+  try {
+    user = await clerkClient.users.getUser(userId);
+  } catch (error) {
+    const status =
+      error instanceof Error
+        ? (error as Error & { status?: number; statusCode?: number }).status ??
+          (error as Error & { statusCode?: number }).statusCode
+        : undefined;
+    if (status === 404) {
+      throw new AuthorizationSessionInvalidError();
+    }
+    throw new AuthorizationProviderUnavailableError();
+  }
   const email = user.emailAddresses
     .find((address) => address.id === user.primaryEmailAddressId)
     ?.emailAddress.toLowerCase();
@@ -78,6 +80,7 @@ export function requireZero3Roles(
         if (!resolved) {
           const { userId } = getAuth(req);
           res.status(userId ? 403 : 401).json({
+            code: userId ? "ZERO3_ROLE_INACTIVE" : "SESSION_INVALID",
             error: userId
               ? "Acesso ZERO3 não autorizado."
               : "Sessão inválida.",
@@ -85,17 +88,17 @@ export function requireZero3Roles(
           return;
         }
         if (!roles.includes(resolved.member.role)) {
-          res.status(403).json({ error: "Permissão insuficiente." });
+          res.status(403).json({
+            code: "ZERO3_ROLE_INSUFFICIENT",
+            error: "Permissão insuficiente.",
+          });
           return;
         }
         (req as Zero3Request).zero3Member = resolved.member;
         next();
       })
       .catch((error: unknown) => {
-        logRoleResolutionFailure(req, error);
-        res.status(503).json({
-          error: "Não foi possível verificar a autorização agora.",
-        });
+        writeApiFailure(req, res, error, "Não foi possível verificar a autorização.");
       });
   };
 }

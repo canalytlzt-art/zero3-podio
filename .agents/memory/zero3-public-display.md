@@ -12,3 +12,9 @@ Final podiums remain manually selected and published, and appear inside the same
 **Why:** The user replaced the earlier split-screen plan with one TV, and the latest scoring scope supersedes the earlier instruction not to calculate points. Official proof names, metrics, tie rules, and the SC-to-SCALE mapping must come from the user or existing records, not be inferred.
 
 **How to apply:** Keep operation and result editing authenticated and separate from the read-only TV. Preserve registration IDs and earlier results when heats change; use `America/Sao_Paulo` for the civil clock; never auto-publish podiums or score provisional results.
+
+The primary entry flow is administrative: `/` and `/inicio` lead to `/admin`; `/tv` is the sole public, read-only TV route. Keep extra modules disabled and preserve the simplified event-operation flow.
+
+**Why:** the user explicitly asked to keep those ZERO3 Games scope decisions intact while changing entry routing.
+
+**How to apply:** When adjusting navigation or operation pages, do not restore a public landing route that prioritizes TV or activate disabled modules.

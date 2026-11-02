@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearch } from 'wouter';
 import { getGetZero3PublicBoardQueryKey, useGetZero3PublicBoard } from '@workspace/api-client-react';
 import type { Zero3CategoryLeaderboard, Zero3LeaderboardEntry, Zero3Proof, Zero3PublicBoard, Zero3PublicRegistration } from '@workspace/api-client-react';
 import { RotateCw } from 'lucide-react';
@@ -65,10 +66,13 @@ function CategoryPanel({category, registrations, board, proofs, freshResultIds}:
 }
 export function PublicTV(){
   const [now,setNow]=useState(()=>new Date());
+  const search=useSearch();
+  const requestedEventId=new URLSearchParams(search).get('eventId')||undefined;
+  const boardParams=requestedEventId?{eventId:requestedEventId}:undefined;
   const [freshResultIds,setFreshResultIds]=useState<Set<string>>(new Set());
   const lastSnapshot=useRef<{eventId:string;values:Map<string,string>}|null>(null);
   const highlightTimer=useRef<number|null>(null);
-  const boardQuery=useGetZero3PublicBoard(undefined,{query:{queryKey:getGetZero3PublicBoardQueryKey(),refetchInterval:2000,refetchOnWindowFocus:true,retry:2}});
+  const boardQuery=useGetZero3PublicBoard(boardParams,{query:{queryKey:boardParams?getGetZero3PublicBoardQueryKey(boardParams):getGetZero3PublicBoardQueryKey(),refetchInterval:2000,refetchOnWindowFocus:true,retry:2}});
   const data=boardQuery.data;
   useEffect(()=>{const t=window.setInterval(()=>setNow(new Date()),1000);return()=>window.clearInterval(t);},[]);
   useEffect(()=>{

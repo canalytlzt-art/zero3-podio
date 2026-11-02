@@ -2,6 +2,7 @@ import { Activity, ClipboardList, Users, UserRound, LayoutDashboard, LogOut, Rad
 import { Link, useLocation } from 'wouter';
 import { useClerk, useUser } from '@clerk/react';
 import type { ReactNode } from 'react';
+import { tvHrefForEvent } from '@/lib/tv-navigation';
 
 const nav = [
   { href: '/admin', label: 'Visão geral', icon: LayoutDashboard },
@@ -11,7 +12,7 @@ const nav = [
   { href: '/admin/members', label: 'Equipe de operação', icon: Users },
 ];
 
-export function AdminShell({ children }: { children: ReactNode }) {
+export function AdminShell({ children, tvEventId }: { children: ReactNode; tvEventId?: string | null }) {
   const [location] = useLocation();
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -22,7 +23,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <div className="nav-label">Operação</div>
       {nav.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`nav-link ${location === href || (href !== '/admin' && location.startsWith(href)) ? 'active' : ''}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{label}</span></Link>)}
       <div className="nav-label">Transmissão</div>
-       <Link href="/tv" target="_blank" rel="noopener noreferrer" className="nav-link"><Radio size={16}/><span>TV pública</span></Link>
+       <Link href={tvHrefForEvent(tvEventId)} target="_blank" rel="noopener noreferrer" className="nav-link"><Radio size={16}/><span>TV pública</span></Link>
       <div className="side-foot">SISTEMA DE COMPETIÇÃO<br/>SANTA CATARINA · BR</div>
     </aside>
     <div className="workspace">
