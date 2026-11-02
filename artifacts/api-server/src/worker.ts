@@ -5,7 +5,7 @@ import {
   withDatabaseContext,
 } from "@workspace/db";
 import type { RequestHandler } from "express";
-import { logger, requestLogger } from "./lib/logger";
+import { workerLogger, workerRequestLogger } from "./lib/worker-logger";
 import { createApp } from "./app";
 
 const databaseMiddleware: RequestHandler = (request, response, next) => {
@@ -20,7 +20,7 @@ const databaseMiddleware: RequestHandler = (request, response, next) => {
     });
     withDatabaseContext(database, next);
   } catch (error) {
-    logger.error(
+    workerLogger.error(
       {
         error: error instanceof Error
           ? {
@@ -39,7 +39,7 @@ const databaseMiddleware: RequestHandler = (request, response, next) => {
 };
 
 const app = createApp({
-  beforeMiddleware: requestLogger(),
+  beforeMiddleware: workerRequestLogger(),
   beforeRoutes: databaseMiddleware,
 });
 app.listen(8080);

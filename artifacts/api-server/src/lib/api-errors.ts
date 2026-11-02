@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { logger } from "./logger";
+import { workerLogger } from "./worker-logger";
 import {
   isDependencyUnavailable,
   isInvalidAuthorizationSession,
@@ -22,7 +22,7 @@ export function writeApiFailure(
       : { name: "UnknownError" };
   const requestId = (req as Request & { id?: string }).id;
 
-  logger.error(
+  workerLogger.error(
     {
       error: details,
       requestId,
