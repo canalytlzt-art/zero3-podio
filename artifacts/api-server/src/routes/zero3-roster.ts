@@ -36,6 +36,7 @@ import {
 import { requireZero3Roles, type Zero3Request } from "../lib/zero3-auth";
 import { writeApiFailure } from "../lib/api-errors";
 import { parseZero3TeamName } from "../lib/zero3-team-name";
+import { describeRosterAuditChange } from "../lib/zero3-roster-audit";
 import {
   buildRosterImportPlan,
   rosterIdentityChanged,
@@ -401,6 +402,15 @@ router.put(
           if (conflict) throw new RosterConflictError(conflict);
         }
 
+        const auditAthleteIds = [...new Set(editedRegistrations.flatMap(({ edit, registration }) =>
+          [...registration.athleteIds, ...edit.athleteIds],
+        ))];
+        const auditAthletes = await tx
+          .select({ id: zero3AthletesTable.id, fullName: zero3AthletesTable.fullName })
+          .from(zero3AthletesTable)
+          .where(inArray(zero3AthletesTable.id, auditAthleteIds));
+        const athleteNames = new Map(auditAthletes.map((athlete) => [athlete.id, athlete.fullName]));
+
         await tx.delete(zero3RegistrationMembersTable)
           .where(inArray(zero3RegistrationMembersTable.registrationId, editIds));
         for (const { edit, registration } of editedRegistrations) {
@@ -434,7 +444,7 @@ router.put(
             eventId: params.data.eventId,
             registrationId: registration.id,
             actorId,
-            reason: edit.reason,
+            reason: describeRosterAuditChange(beforeState, afterState, athleteNames),
             beforeState,
             afterState,
           });

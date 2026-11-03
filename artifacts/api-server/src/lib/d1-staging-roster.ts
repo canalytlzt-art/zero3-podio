@@ -23,6 +23,7 @@ import {
 } from "./zero3-roster-import";
 import { rosterSourcePeople, ZERO3_ROSTER_SOURCE } from "./zero3-roster-source";
 import { parseZero3TeamName } from "./zero3-team-name";
+import { describeRosterAuditChange } from "./zero3-roster-audit";
 import {
   d1ApiError,
   d1Date,
@@ -300,10 +301,10 @@ export async function handleD1StagingRoster(
       if (new Set(chosenAthletes).size !== chosenAthletes.length || chosenAthletes.some((id) => occupiedElsewhere.includes(id))) {
         res.status(409).json({ error: "Um atleta não pode ocupar duas vagas nesta edição." }); return true;
       }
-      const athleteRows = chosenAthletes.length
-        ? await DB.prepare(`SELECT id FROM zero3_athletes WHERE id IN (${chosenAthletes.map(() => "?").join(",")})`).bind(...chosenAthletes).all<{ id: string }>()
-        : { results: [] };
-      const athleteSet = new Set(athleteRows.results.map((row) => row.id));
+      const athleteRows = await DB.prepare("SELECT id,full_name FROM zero3_athletes")
+        .all<{ id: string; full_name: string }>();
+      const athleteNames = new Map(athleteRows.results.map((row) => [row.id, row.full_name]));
+      const athleteSet = new Set(athleteNames.keys());
       for (const edit of edits) {
         const validation = validateRosterManagementEdit({ athleteIds: edit.athleteIds, existingAthleteIds: athleteSet });
         if (validation) { res.status(400).json({ error: validation }); return true; }
@@ -432,7 +433,8 @@ export async function handleD1StagingRoster(
           (id,event_id,registration_id,actor_id,reason,before_state,after_state,created_at)
           SELECT ?,?,?,?,?,?,?,? WHERE ${afterGuard.sql}`)
           .bind(newD1Id(), params.data.eventId, item.edit.registrationId, getAuth(req).userId ?? member.clerk_user_id,
-            item.edit.reason, JSON.stringify(before), JSON.stringify(afterState), stamp, ...afterGuard.values));
+            describeRosterAuditChange(before, afterState, athleteNames),
+            JSON.stringify(before), JSON.stringify(afterState), stamp, ...afterGuard.values));
       }
       try { await DB.batch(statements); }
       catch {

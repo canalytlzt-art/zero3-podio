@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CreateZero3RegistrationBody } from "@workspace/api-zod";
+import {
+  CreateZero3RegistrationBody,
+  UpdateZero3RosterManagementBody,
+} from "@workspace/api-zod";
 import {
   buildRosterImportPlan,
   rosterIdentityChanged,
@@ -183,5 +186,18 @@ describe("ZERO3 registration creation contract", () => {
     assert.equal(CreateZero3RegistrationBody.safeParse({ category: "SC", athleteIds: ["a"] }).success, false);
     assert.equal(CreateZero3RegistrationBody.safeParse({ category: "SC", athleteIds: ["a", "b"] }).success, true);
     assert.equal(CreateZero3RegistrationBody.safeParse({ category: "SC", athleteIds: ["a", "b", "c"] }).success, false);
+  });
+
+  it("accepts an athlete replacement without a user-entered reason", () => {
+    const payload = {
+      edits: [{
+        registrationId: "registration-1",
+        category: "RX",
+        athleteIds: ["athlete-a", "athlete-c"],
+        confirmationStatus: "PENDING",
+        paymentStatus: "UNVERIFIED",
+      }],
+    };
+    assert.equal(UpdateZero3RosterManagementBody.safeParse(payload).success, true);
   });
 });

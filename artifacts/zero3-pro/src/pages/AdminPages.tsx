@@ -4,24 +4,28 @@ import { Link, useParams } from 'wouter';
 import { ArrowLeft, Plus, Radio, RotateCw, Save, Timer as TimerIcon, Trophy, Users, Play, Pause, Square, RotateCcw, Pencil, Trash2, X } from 'lucide-react';
 import {
   Zero3EventStatus, Zero3ResultStatus, Zero3Role, Zero3TimerCommandAction,
+  Zero3RegistrationConfirmationStatus, Zero3RegistrationPaymentStatus,
   getGetZero3DashboardQueryKey, getGetZero3MeQueryKey, getListZero3EventsQueryKey, getListZero3AthletesQueryKey,
   getListZero3MembersQueryKey, getListZero3HeatsQueryKey, getListZero3RegistrationsQueryKey,
-  getGetZero3PublicBoardQueryKey, getGetZero3PodiumStateQueryKey, useGetZero3PodiumState,
+  getGetZero3PublicBoardQueryKey, getGetZero3PodiumStateQueryKey, getGetZero3RosterManagementQueryKey,
+  useGetZero3RosterManagement, useGetZero3PodiumState,
   useHealthCheck, useGetZero3Me, useGetZero3Dashboard, useListZero3Events, useCreateZero3Event,
   useUpdateZero3Event, useListZero3Athletes, useCreateZero3Athlete, useListZero3Members,
   useSetZero3MemberRole, useListZero3Heats, useCreateZero3Heat, useListZero3Registrations,
   useCreateZero3Registration, useControlZero3Timer, useCaptureZero3Result, useUpdateZero3Result,
-  useUpdateZero3Registration,
+  useUpdateZero3Registration, useUpdateZero3RosterManagement,
   useSetZero3ActiveHeat,
   useSaveZero3PodiumDraft, usePublishZero3Podium,
   useGetZero3PublicBoard,
    getZero3EventDeletionBackup, useDeleteZero3Event, useRestoreZero3EventBackup,
 } from '@workspace/api-client-react';
-import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType } from '@workspace/api-client-react';
+import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType, Zero3RosterManagementEntry } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
+import { AthletePicker } from '@/components/AthletePicker';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { pollingIntervalAfterError, shouldRefetchAfterError } from '@/lib/api-error-policy';
 import { normalizeTeamNameInput, teamNameInputError } from '@/lib/roster-management';
+import { describeAthleteReplacement, normalizeAthleteSearch } from '@/lib/athlete-search';
 
 const pillTone = (status: string) => status === 'ACTIVE' || status === 'VALIDATED' ? '' : status === 'PLANNED' || status === 'PROVISIONAL' ? 'warn' : 'neutral';
 const pretty = (s: string) => ({PLANNED:'Planejado',ACTIVE:'Em andamento',FINISHED:'Finalizado',PROVISIONAL:'Provisório',VALIDATED:'Validado',DNS:'DNS',DNF:'DNF'} as Record<string,string>)[s] || s;
@@ -32,6 +36,12 @@ const orderCategories = (items: readonly string[]) => [
   ...items.filter(category => category !== 'SC' && category !== 'RX'),
 ];
 const categoryName = (category: string) => category === 'SC' ? 'SC / Scale' : category;
+const registrationConfirmationLabels: Record<string,string> = {
+  INTERESTED:'Interessada',PENDING:'Pendente',CONFIRMED:'Confirmada',CANCELLED:'Cancelada',
+};
+const registrationPaymentLabels: Record<string,string> = {
+  UNVERIFIED:'Não verificado',PENDING:'Pendente',PAID:'Pago',NOT_PAID:'Não pago',
+};
 
 export function DashboardPage() {
   const q = useGetZero3Dashboard({query:{refetchInterval:10000}});
@@ -185,60 +195,177 @@ function CategorySelect(){
 
 function Registrations({eventId}:{eventId:string}) {
  const regs=useListZero3Registrations(eventId,{query:{refetchInterval:12000,queryKey:getListZero3RegistrationsQueryKey(eventId)}});
- const athletes=useListZero3Athletes();
+ const athletes=useListZero3Athletes({query:{retry:false}});
+ const events=useListZero3Events();
+ const me=useGetZero3Me({query:{queryKey:getGetZero3MeQueryKey(),retry:false}});
+ const isAdmin=me.data?.role===Zero3Role.ADMIN;
+ const managed=useGetZero3RosterManagement(eventId,{query:{queryKey:getGetZero3RosterManagementQueryKey(eventId),enabled:isAdmin}});
  const create=useCreateZero3Registration();
- const update=useUpdateZero3Registration();
+ const updateName=useUpdateZero3Registration();
+ const updateManaged=useUpdateZero3RosterManagement();
  const qc=useQueryClient();
  const [error,setError]=useState('');
+ const [search,setSearch]=useState('');
  const [editingId,setEditingId]=useState<string|null>(null);
+ const [nameEditingId,setNameEditingId]=useState<string|null>(null);
+ const [editingName,setEditingName]=useState('');
+ const [newAthleteIds,setNewAthleteIds]=useState<[string,string]>(['','']);
+ const [editDraft,setEditDraft]=useState<{
+  registrationId:string;teamName:string;category:Zero3RosterManagementEntry['category'];athleteIds:[string,string];
+  confirmationStatus:Zero3RosterManagementEntry['confirmationStatus'];
+  paymentStatus:Zero3RosterManagementEntry['paymentStatus'];
+ }|null>(null);
  const refreshTeamDisplays=()=>{
   void qc.invalidateQueries({queryKey:getListZero3RegistrationsQueryKey(eventId)});
+  void qc.invalidateQueries({queryKey:getGetZero3RosterManagementQueryKey(eventId)});
   void qc.invalidateQueries({queryKey:getListZero3HeatsQueryKey(eventId)});
   void qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})});
  };
+ const currentRegistrations=isAdmin?(managed.data||[]):(regs.data||[]);
+ const normalizedSearch=normalizeAthleteSearch(search);
+ const visibleRegistrations=currentRegistrations.filter(registration=>
+  !normalizedSearch||normalizeAthleteSearch([registration.teamName||'',...registration.athleteNames].join(' ')).includes(normalizedSearch),
+ );
+ const editConflicts=editDraft?editDraft.athleteIds.filter(Boolean).flatMap(athleteId=>
+  currentRegistrations.filter(registration=>registration.id!==editDraft.registrationId&&registration.athleteIds.includes(athleteId)),
+ ): [];
  const saveTeamName=(registrationId:string,rawName:string,onSuccess?:()=>void)=>{
   const invalid=teamNameInputError(rawName);
   if(invalid){setError(invalid);return;}
   setError('');
-  update.mutate({eventId,registrationId,data:{teamName:normalizeTeamNameInput(rawName)}},{
+  updateName.mutate({eventId,registrationId,data:{teamName:normalizeTeamNameInput(rawName)}},{
    onSuccess:()=>{onSuccess?.();refreshTeamDisplays();},
    onError:err=>setError(feedback(err)),
   });
  };
+ const startEdit=(registration:Zero3RosterManagementEntry)=>{
+  setError('');
+  setEditingId(registration.id);
+  setEditDraft({
+   registrationId:registration.id,
+   teamName:registration.teamName||'',
+   category:registration.category,
+   athleteIds:[registration.athleteIds[0]||'',registration.athleteIds[1]||''],
+   confirmationStatus:registration.confirmationStatus,
+   paymentStatus:registration.paymentStatus,
+  });
+ };
+ const saveRegistrationEdit=(event:FormEvent)=>{
+  event.preventDefault();
+  if(!editDraft)return;
+  const invalid=teamNameInputError(editDraft.teamName);
+  if(invalid){setError(invalid);return;}
+  const athleteIds=editDraft.athleteIds.filter(Boolean);
+  if(!athleteIds.length||athleteIds.length>2||new Set(athleteIds).size!==athleteIds.length){
+   setError('Selecione um ou dois atletas diferentes.');return;
+  }
+  const original=managed.data?.find(registration=>registration.id===editDraft.registrationId);
+  if(!original){setError('A inscrição mudou ou não está mais disponível. Atualize a lista.');return;}
+  const confirmation=describeAthleteReplacement(original.athleteIds,athleteIds,athletes.data||[]);
+  if(confirmation&&!window.confirm(confirmation))return;
+  setError('');
+  updateManaged.mutate({eventId,data:{edits:[{
+   registrationId:editDraft.registrationId,
+   teamName:normalizeTeamNameInput(editDraft.teamName),
+   category:editDraft.category,
+   athleteIds,
+   confirmationStatus:editDraft.confirmationStatus,
+   paymentStatus:editDraft.paymentStatus,
+  }]}},{
+   onSuccess:()=>{setEditingId(null);setEditDraft(null);refreshTeamDisplays();},
+   onError:err=>setError(feedback(err)),
+  });
+ };
+ const createRegistration=(event:FormEvent<HTMLFormElement>)=>{
+  event.preventDefault();setError('');
+  if(!newAthleteIds[0]||!newAthleteIds[1]){setError('Selecione os dois atletas da dupla.');return;}
+  if(newAthleteIds[0]===newAthleteIds[1]){setError('A dupla precisa ter dois atletas diferentes.');return;}
+  const conflicts=newAthleteIds.flatMap(id=>currentRegistrations.filter(registration=>registration.athleteIds.includes(id)));
+  if(conflicts.length){
+   setError(`Não foi possível inscrever: ${[...new Set(conflicts)].map(item=>item.teamName||item.athleteNames.join(' / ')).join('; ')} já usa um destes atletas neste evento.`);
+   return;
+  }
+  const form=new FormData(event.currentTarget);
+  const rawName=String(form.get('teamName')??'');
+  const invalid=teamNameInputError(rawName);
+  if(invalid){setError(invalid);return;}
+  const formElement=event.currentTarget;
+  create.mutate({eventId,data:{
+   category:String(form.get('category')),
+   teamName:normalizeTeamNameInput(rawName),
+   athleteIds:newAthleteIds,
+   laneLabel:String(form.get('laneLabel')||'').trim()||null,
+  }},{
+   onSuccess:()=>{refreshTeamDisplays();setNewAthleteIds(['','']);formElement.reset();},
+   onError:err=>setError(feedback(err)),
+  });
+ };
+ const categories=events.data?.find(event=>event.id===eventId)?.categories||[];
  return <div className="detail-layout">
   <section className="panel panel-pad">
-   <h2 className="panel-title">Inscrições cadastradas</h2>
-   {regs.isLoading?<LoadingRows/>:regs.isError?<QueryError retry={()=>regs.refetch()}/>:!regs.data?.length?
+   <div className="roster-panel-head">
+    <div><span className="eyebrow">Evento</span><h2 className="panel-title">Gerenciar Inscrições</h2></div>
+    <div className="field roster-search"><label htmlFor="registration-search">Buscar atleta ou equipe</label><div className="search-field"><input id="registration-search" type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Nome completo ou parcial"/></div></div>
+   </div>
+   {isAdmin&&managed.isError?<QueryError error={managed.error} retry={()=>managed.refetch()}/>:isAdmin&&managed.isLoading?<LoadingRows/>:regs.isLoading?<LoadingRows/>:regs.isError?<QueryError error={regs.error} retry={()=>regs.refetch()}/>:!currentRegistrations.length?
     <EmptyState title="Sem inscrições" detail="Adicione atletas já cadastrados no roster."/>:
-    <div className="lane-list">{regs.data.map(r=><div className="registration-item" key={r.id}>
-     <div className="lane-card"><span className="lane-tag">{r.laneLabel||'—'}</span><div>
-      <div className="lane-name">{r.teamName||`Equipe ${r.laneLabel||r.id.slice(0,6).toUpperCase()} — nome pendente`}</div>
-      <div className="lane-meta">{r.category} · {r.athleteNames.join(' / ')}</div>
-     </div><button className="button small" onClick={()=>setEditingId(editingId===r.id?null:r.id)}>{r.teamName?'Editar nome':'Adicionar nome da equipe'}</button></div>
-     {editingId===r.id&&<form className="revision-inline" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);saveTeamName(r.id,String(f.get('teamName')??''),()=>setEditingId(null));}}>
-      <label>Nome da equipe<input name="teamName" maxLength={40} defaultValue={r.teamName||''} placeholder="Pode ficar sem nome"/></label>
-      <small className="field-help">Até 40 caracteres; não use os sinais &lt; e &gt; ou controles.</small>
-      <div className="toolbar"><button className="button small primary" disabled={update.isPending}>Salvar nome</button><button type="button" className="button small" onClick={()=>setEditingId(null)}>Cancelar</button></div>
+    !visibleRegistrations.length?<EmptyState title="Nenhuma inscrição encontrada" detail="Tente outro nome de atleta ou equipe."/>:
+     <div className="lane-list">{visibleRegistrations.map(registration=>{
+      const laneLabel='laneLabel' in registration?registration.laneLabel:regs.data?.find(item=>item.id===registration.id)?.laneLabel;
+      return <div className="registration-item" key={registration.id} data-testid={`registration-${registration.id}`}>
+      <div className="lane-card"><span className="lane-tag">{isAdmin?(registration as Zero3RosterManagementEntry).confirmationStatus==='CANCELLED'?'CANCELADA':laneLabel||'—':laneLabel||'—'}</span><div>
+      <div className="lane-name">{registration.teamName||`Equipe ${'laneLabel' in registration&&registration.laneLabel||registration.id.slice(0,6).toUpperCase()} — nome pendente`}</div>
+      <div className="lane-meta">{registration.category} · {registration.athleteNames.join(' / ')}{isAdmin?` · ${(registration as Zero3RosterManagementEntry).confirmationStatus}`:''}</div>
+     </div>{isAdmin?<button type="button" className="button small" onClick={()=>startEdit(registration as Zero3RosterManagementEntry)} data-testid={`button-edit-registration-${registration.id}`}>Editar</button>:<button type="button" className="button small" onClick={()=>{setNameEditingId(nameEditingId===registration.id?null:registration.id);setEditingName(registration.teamName||'');}}>{registration.teamName?'Editar nome':'Adicionar nome da equipe'}</button>}</div>
+     {isAdmin&&editingId===registration.id&&editDraft&&<form className="revision-inline registration-edit-form" onSubmit={saveRegistrationEdit}>
+      <label>Nome da equipe<input value={editDraft.teamName} maxLength={40} onChange={event=>setEditDraft(current=>current?{...current,teamName:event.target.value}:current)} placeholder="Pode ficar sem nome"/></label>
+      <div className="field"><label htmlFor={`registration-category-${registration.id}`}>Categoria</label><select id={`registration-category-${registration.id}`} value={editDraft.category} onChange={event=>setEditDraft(current=>current?{...current,category:event.target.value}:current)}>{categories.map(value=><option key={value} value={value}>{categoryName(value)}</option>)}</select></div>
+      {[0,1].map(slot=><AthletePicker
+       key={slot}
+       id={`registration-athlete-${registration.id}-${slot}`}
+       label={`Atleta ${slot+1}`}
+       value={editDraft.athleteIds[slot]}
+       excludedId={editDraft.athleteIds[1-slot]}
+       athletes={athletes.data||[]}
+       isLoading={athletes.isLoading}
+       error={athletes.isError}
+       retry={()=>void athletes.refetch()}
+       onChange={value=>setEditDraft(current=>current?{...current,athleteIds:current.athleteIds.map((id,index)=>index===slot?value:id) as [string,string]}:current)}
+      />)}
+      {editConflicts.length>0&&<div className="roster-link-warning" role="alert">Impedimento: {[...new Set(editConflicts)].map(item=>item.teamName||item.athleteNames.join(' / ')).join('; ')} já usa um destes atletas neste evento.</div>}
+      <div className="field"><label htmlFor={`registration-confirmation-${registration.id}`}>Confirmação</label><select id={`registration-confirmation-${registration.id}`} value={editDraft.confirmationStatus} onChange={event=>setEditDraft(current=>current?{...current,confirmationStatus:event.target.value as Zero3RosterManagementEntry['confirmationStatus']}:current)}>{Object.values(Zero3RegistrationConfirmationStatus).map(value=><option key={value} value={value}>{registrationConfirmationLabels[value]||value}</option>)}</select></div>
+      <div className="field"><label htmlFor={`registration-payment-${registration.id}`}>Pagamento</label><select id={`registration-payment-${registration.id}`} value={editDraft.paymentStatus} onChange={event=>setEditDraft(current=>current?{...current,paymentStatus:event.target.value as Zero3RosterManagementEntry['paymentStatus']}:current)}>{Object.values(Zero3RegistrationPaymentStatus).map(value=><option key={value} value={value}>{registrationPaymentLabels[value]||value}</option>)}</select></div>
+      <small className="field-help">A alteração mantém o ID da inscrição. Se houver resultados, baterias, importação ou pódio vinculado, a troca de atleta/categoria será bloqueada.</small>
+      <div className="toolbar"><button className="button small primary" disabled={updateManaged.isPending||editConflicts.length>0}>{updateManaged.isPending?'Salvando…':'Salvar inscrição'}</button><button type="button" className="button small" onClick={()=>{setEditingId(null);setEditDraft(null);}}>Cancelar</button></div>
      </form>}
-    </div>)}</div>}
+     {!isAdmin&&nameEditingId===registration.id&&<form className="revision-inline" onSubmit={event=>{event.preventDefault();saveTeamName(registration.id,editingName,()=>setNameEditingId(null));}}>
+      <label>Nome da equipe<input value={editingName} maxLength={40} onChange={event=>setEditingName(event.target.value)} placeholder="Pode ficar sem nome"/></label>
+      <small className="field-help">A edição do nome não altera os atletas nem o ID da inscrição.</small>
+      <div className="toolbar"><button className="button small primary" disabled={updateName.isPending}>Salvar nome</button><button type="button" className="button small" onClick={()=>setNameEditingId(null)}>Cancelar</button></div>
+     </form>}
+    </div>})}</div>}
+   {athletes.isError&&<QueryError error={athletes.error} retry={()=>athletes.refetch()} testId="retry-registration-athletes"/>}
    {error&&<p style={{color:'#a34238',fontSize:11,marginTop:12}} role="alert">{error}</p>}
   </section>
-  <form className="panel panel-pad" onSubmit={e=>{
-   e.preventDefault();setError('');
-   const f=new FormData(e.currentTarget);
-   const rawName=String(f.get('teamName')??'');
-   const invalid=teamNameInputError(rawName);
-   if(invalid){setError(invalid);return;}
-   const athleteIds=f.getAll('athleteIds').map(String);
-   create.mutate({eventId,data:{category:String(f.get('category')),teamName:normalizeTeamNameInput(rawName),athleteIds,laneLabel:String(f.get('laneLabel')||'').trim()||null}},{onSuccess:refreshTeamDisplays,onError:err=>setError(feedback(err))});
-  }}>
+  <form className="panel panel-pad" onSubmit={createRegistration}>
    <h2 className="panel-title">Nova inscrição</h2><CategorySelect/>
    <Field label="Nome da equipe (opcional)" name="teamName" placeholder="Equipe" maxLength={40}/>
    <small className="field-help">Até 40 caracteres; não use os sinais &lt; e &gt; ou controles.</small>
    <Field label="Identificação da raia (opcional)" name="laneLabel" placeholder="P01"/>
-   <div className="field"><label htmlFor="athleteIds">Atletas · selecione exatamente dois</label><select id="athleteIds" name="athleteIds" multiple required style={{minHeight:112}}>{athletes.data?.map(a=><option key={a.id} value={a.id}>{a.fullName}</option>)}</select></div>
+   {[0,1].map(slot=><AthletePicker
+    key={slot}
+    id={`new-registration-athlete-${slot}`}
+    label={`Atleta ${slot+1}`}
+    value={newAthleteIds[slot]}
+    excludedId={newAthleteIds[1-slot]}
+    athletes={athletes.data||[]}
+    isLoading={athletes.isLoading}
+    error={athletes.isError}
+    retry={()=>void athletes.refetch()}
+    onChange={value=>setNewAthleteIds(current=>current.map((id,index)=>index===slot?value:id) as [string,string])}
+   />)}
    <button className="button primary" disabled={create.isPending||!athletes.data?.length}><Users size={14}/> Registrar equipe</button>
-   {(!athletes.data?.length&&!athletes.isLoading)&&<p className="lede" style={{marginTop:10}}>Cadastre os atletas no roster antes da inscrição.</p>}
+   {(!athletes.data?.length&&!athletes.isLoading)&&!athletes.isError&&<p className="lede" style={{marginTop:10}}>Cadastre os atletas no roster antes da inscrição.</p>}
    {error&&<p style={{color:'#a34238',fontSize:11,marginTop:10}} role="alert">{error}</p>}
   </form>
  </div>;

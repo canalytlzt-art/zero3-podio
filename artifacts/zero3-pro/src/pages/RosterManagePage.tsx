@@ -23,7 +23,6 @@ import {
   Zero3Role,
   type Zero3RosterManagementEntry,
   type Zero3Category,
-  type Zero3Athlete,
 } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
 import { ArrowDownUp, Search, Upload } from 'lucide-react';
@@ -35,6 +34,8 @@ import {
   normalizeTeamNameInput,
   teamNameInputError,
 } from '@/lib/roster-management';
+import { describeAthleteReplacement } from '@/lib/athlete-search';
+import { AthletePicker } from '@/components/AthletePicker';
 
 type Draft = {
   teamName: string;
@@ -42,7 +43,6 @@ type Draft = {
   athleteIds: string[];
   confirmationStatus: string;
   paymentStatus: string;
-  reason: string;
 };
 
 const confirmationLabels: Record<string, string> = {
@@ -70,7 +70,6 @@ const newDraft = (team: Zero3RosterManagementEntry): Draft => ({
   athleteIds: [team.athleteIds[0] || '', team.athleteIds[1] || ''],
   confirmationStatus: team.confirmationStatus,
   paymentStatus: team.paymentStatus,
-  reason: '',
 });
 
 export function RosterManagePage() {
@@ -90,7 +89,7 @@ export function RosterManagePage() {
   const [newTeamName, setNewTeamName] = useState('');
   const [newCategory, setNewCategory] = useState<Zero3Category>('SC');
   const [newAthleteIds, setNewAthleteIds] = useState<[string, string]>(['', '']);
-  const [athleteSearches, setAthleteSearches] = useState<[string, string]>(['', '']);
+  const [cancelReasons, setCancelReasons] = useState<Record<string, string>>({});
   const [quickAthleteName, setQuickAthleteName] = useState('');
   const [quickAthleteSlot, setQuickAthleteSlot] = useState<0 | 1>(0);
   const query = useQuery(getGetZero3RosterManagementQueryOptions(eventId, {
@@ -173,11 +172,10 @@ export function RosterManagePage() {
         athleteIds: draft.athleteIds.filter(Boolean),
         confirmationStatus: draft.confirmationStatus as typeof Zero3RegistrationConfirmationStatus[keyof typeof Zero3RegistrationConfirmationStatus],
         paymentStatus: draft.paymentStatus as typeof Zero3RegistrationPaymentStatus[keyof typeof Zero3RegistrationPaymentStatus],
-        reason: draft.reason.trim(),
       };
     });
-    if (edits.some(edit => edit.athleteIds.length < 1 || edit.athleteIds.length > 2 || new Set(edit.athleteIds).size !== edit.athleteIds.length || edit.reason.length < 3)) {
-      setError('Cada alteração exige um ou dois atletas distintos e um motivo de pelo menos 3 caracteres.');
+    if (edits.some(edit => edit.athleteIds.length < 1 || edit.athleteIds.length > 2 || new Set(edit.athleteIds).size !== edit.athleteIds.length)) {
+      setError('Cada inscrição deve ter um ou dois atletas diferentes.');
       return;
     }
     const blockedEdit = selectedTeams.map(team => {
@@ -193,6 +191,14 @@ export function RosterManagePage() {
       setError(blockedEdit);
       return;
     }
+    const replacements = selectedTeams
+      .map(team => describeAthleteReplacement(
+        team.athleteIds,
+        (drafts[team.id] || newDraft(team)).athleteIds,
+        athletes.data || [],
+      ))
+      .filter((message): message is string => Boolean(message));
+    if (replacements.length && !window.confirm(replacements.join('\n\n'))) return;
     update.mutate({ eventId, data: { edits } }, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: getGetZero3RosterManagementQueryKey(eventId) });
@@ -230,6 +236,11 @@ export function RosterManagePage() {
       setError('A dupla precisa ter dois atletas diferentes.');
       return;
     }
+    const conflicts = [...new Set(newAthleteIds.flatMap(athleteConflicts))];
+    if (conflicts.length) {
+      setError(`Não foi possível cadastrar: ${conflicts.map(team => team.teamName || team.athleteNames.join(' / ')).join('; ')} já possui pelo menos um destes atletas neste evento.`);
+      return;
+    }
     createRegistration.mutate({
       eventId,
       data: { category: newCategory, teamName: normalizeTeamNameInput(newTeamName), athleteIds: newAthleteIds },
@@ -238,7 +249,6 @@ export function RosterManagePage() {
         invalidateEventLists();
         setNewTeamName('');
         setNewAthleteIds(['', '']);
-        setAthleteSearches(['', '']);
         setError('');
       },
       onError: err => setError(apiMessage(err)),
@@ -285,7 +295,7 @@ export function RosterManagePage() {
     });
   };
   const cancelTeam = (team: Zero3RosterManagementEntry) => {
-    const reason = (drafts[team.id] || newDraft(team)).reason.trim();
+    const reason = (cancelReasons[team.id] || '').trim();
     if (reason.length < 3) { setError('Informe o motivo do cancelamento (mín. 3 caracteres).'); return; }
     if (!window.confirm('Cancelar esta inscrição preservando resultados e histórico?')) return;
     setError('');
@@ -326,14 +336,23 @@ export function RosterManagePage() {
         </div>
         {[0, 1].map(slot => {
           const excluded = newAthleteIds[1 - slot];
-          const searchValue = athleteSearches[slot];
-          const options = (athletes.data || []).filter(athlete =>
-            athlete.id !== excluded && (!searchValue || athlete.fullName.toLocaleLowerCase().includes(searchValue.toLocaleLowerCase())),
-          );
            const linkedRegistrations = athleteConflicts(newAthleteIds[slot]);
           return <div className="form-row" key={slot}>
-            <div className="field"><label htmlFor={`new-athlete-search-${slot}`}>Buscar atleta {slot + 1}</label><input id={`new-athlete-search-${slot}`} type="search" value={searchValue} onChange={e => setAthleteSearches(current => { const next = [...current] as [string, string]; next[slot] = e.target.value; return next; })} placeholder="Digite o nome"/></div>
-            <div className="field"><label htmlFor={`new-athlete-${slot}`}>Atleta {slot + 1}</label><select id={`new-athlete-${slot}`} value={newAthleteIds[slot]} onChange={e => setNewAthleteIds(current => { const next = [...current] as [string, string]; next[slot] = e.target.value; return next; })}><option value="">Selecione um atleta</option>{options.map((athlete: Zero3Athlete) => <option key={athlete.id} value={athlete.id}>{athlete.fullName}</option>)}</select></div>
+            <AthletePicker
+              id={`new-athlete-${slot}`}
+              label={`Atleta ${slot + 1}`}
+              value={newAthleteIds[slot]}
+              excludedId={excluded}
+              athletes={athletes.data || []}
+              isLoading={athletes.isLoading}
+              error={athletes.isError}
+              retry={() => void athletes.refetch()}
+              onChange={value => setNewAthleteIds(current => {
+                const next = [...current] as [string, string];
+                next[slot] = value;
+                return next;
+              })}
+            />
              {linkedRegistrations.length > 0 && <div className="roster-link-warning" role="status">Este atleta já consta em {linkedRegistrations.map(item => `${item.teamName || item.athleteNames.join(' / ')} (${item.category})`).join('; ')}. A API aplicará a regra de participação deste evento.</div>}
           </div>;
         })}
@@ -348,7 +367,7 @@ export function RosterManagePage() {
     <section className="panel roster-filter-bar">
       <div className="field">
         <label htmlFor="roster-event">Evento</label>
-        <select id="roster-event" value={eventId} onChange={e => { setEventId(e.target.value); setSelected([]); setDrafts({}); setNewTeamName(''); setNewAthleteIds(['','']); setAthleteSearches(['','']); }} data-testid="select-roster-event">
+        <select id="roster-event" value={eventId} onChange={e => { setEventId(e.target.value); setSelected([]); setDrafts({}); setNewTeamName(''); setNewAthleteIds(['','']); setCancelReasons({}); }} data-testid="select-roster-event">
           <option value="">Selecione um evento</option>{events.data?.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}
         </select>
       </div>
@@ -387,9 +406,31 @@ export function RosterManagePage() {
                   <div className="field"><label htmlFor={`team-conf-${team.id}`}>Confirmação</label><select id={`team-conf-${team.id}`} value={draft.confirmationStatus} onChange={e => setDraftValue(team.id, { confirmationStatus: e.target.value })} data-testid={`select-team-confirmation-${team.id}`}>{Object.entries(confirmationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
                 </div>
                 <div className="field"><label htmlFor={`team-payment-${team.id}`}>Pagamento</label><select id={`team-payment-${team.id}`} value={draft.paymentStatus} onChange={e => setDraftValue(team.id, { paymentStatus: e.target.value })} data-testid={`select-team-payment-${team.id}`}>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
-                {[0, 1].map(index => <div className="field" key={index}><label htmlFor={`team-athlete-${team.id}-${index}`}>Atleta {index + 1} · opcional</label><select id={`team-athlete-${team.id}-${index}`} value={draft.athleteIds[index] || ''} onChange={e => setDraftValue(team.id, { athleteIds: [0, 1].map(i => i === index ? e.target.value : draft.athleteIds[i] || '') })} data-testid={`select-team-athlete-${team.id}-${index}`}><option value="">Vaga vazia</option>{athletes.data?.map(athlete => <option key={athlete.id} value={athlete.id} disabled={draft.athleteIds.some((id, i) => i !== index && id === athlete.id)}>{athlete.fullName}</option>)}</select></div>)}
-                <div className="field"><label htmlFor={`team-reason-${team.id}`}>Motivo da revisão</label><input id={`team-reason-${team.id}`} minLength={3} value={draft.reason} onChange={e => setDraftValue(team.id, { reason: e.target.value })} placeholder="Registre o motivo (mín. 3 caracteres)" data-testid={`input-team-reason-${team.id}`}/></div>
+                {[0, 1].map(index => <AthletePicker
+                  key={index}
+                  id={`team-athlete-${team.id}-${index}`}
+                  label={`Atleta ${index + 1} · opcional`}
+                  value={draft.athleteIds[index] || ''}
+                  excludedId={draft.athleteIds[1 - index]}
+                  athletes={athletes.data || []}
+                  isLoading={athletes.isLoading}
+                  error={athletes.isError}
+                  retry={() => void athletes.refetch()}
+                  onChange={value => setDraftValue(team.id, {
+                    athleteIds: [0, 1].map(i => i === index ? value : draft.athleteIds[i] || ''),
+                  })}
+                />)}
+                {draft.athleteIds.filter(Boolean).flatMap(athleteId =>
+                  teams.filter(other => other.id !== team.id && other.athleteIds.includes(athleteId))
+                    .map(other => <div className="roster-link-warning" role="alert" key={`${team.id}-${athleteId}-${other.id}`}>
+                      {athletes.data?.find(athlete => athlete.id === athleteId)?.fullName || 'Este atleta'} já está inscrito em {other.teamName || other.athleteNames.join(' / ')} nesta edição.
+                    </div>),
+                )}
                 <div className="team-history-note" data-testid={`status-result-history-${team.id}`}>{team.resultCount > 0 ? `${team.resultCount} resultado(s) associado(s) — histórico preservado` : 'Sem resultados associados'}</div>
+                <div className="field">
+                  <label htmlFor={`cancel-reason-${team.id}`}>Motivo do cancelamento</label>
+                  <input id={`cancel-reason-${team.id}`} minLength={3} value={cancelReasons[team.id] || ''} onChange={e => setCancelReasons(current => ({ ...current, [team.id]: e.target.value }))} placeholder="Obrigatório apenas para cancelar" data-testid={`input-cancel-reason-${team.id}`}/>
+                </div>
                  <div className="team-audit" data-testid={`history-team-audit-${team.id}`}>
                    <strong>Histórico de alterações</strong>
                    {team.audit.length === 0 ? <p>Sem alterações registradas.</p> : team.audit.map(entry => <article key={entry.id} data-testid={`row-team-audit-${entry.id}`}>

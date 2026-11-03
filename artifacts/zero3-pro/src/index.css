@@ -377,6 +377,19 @@ tbody tr:last-child td { border-bottom:0; }
 .team-edit-block {margin:0;padding:13px;border:1px solid #e2dfd5;border-radius:7px;min-width:0}
 .team-edit-block legend {max-width:100%;padding:0 6px;font-size:11px;font-weight:750;color:#3e4940}
 .team-edit-block .field {margin-bottom:10px}.team-edit-block .form-row {gap:8px}.team-edit-block input,.team-edit-block select {padding:8px 9px;font-size:11px}
+.athlete-picker-field {min-width:0}
+.athlete-picker {position:relative;min-width:0}
+.athlete-picker input {width:100%}
+.athlete-picker-selected {display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:39px;padding:5px 8px;border:1px solid #d9d7cf;border-radius:6px;background:#fff}
+.athlete-picker-selected span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:650}
+.athlete-picker-options {position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;max-height:250px;overflow:auto;border:1px solid #d9d7cf;border-radius:7px;background:#fff;box-shadow:0 12px 30px rgba(22,28,22,.18)}
+.athlete-picker-current,.athlete-picker-state {padding:9px 11px;font-size:11px;color:#73776f}
+.athlete-picker-current {border-bottom:1px solid #eceae3;font-weight:650;color:#343b35}
+.athlete-picker-state {display:flex;align-items:center;justify-content:space-between;gap:8px}
+.athlete-picker-option {display:block;width:100%;padding:9px 11px;border:0;background:#fff;text-align:left;font:inherit;font-size:12px;cursor:pointer}
+.athlete-picker-option:hover,.athlete-picker-option.active {background:#f0f2ec}
+.athlete-picker-option[aria-selected="true"] {font-weight:750;color:#38583f}
+.athlete-picker-clear {margin-top:4px;padding:0;border:0;background:none;color:#666b63;font:inherit;font-size:10px;text-decoration:underline;cursor:pointer}
 .team-history-note {font:9px var(--font-data);color:#7a7666;background:#f2efe6;padding:8px;border-radius:5px}
 .team-audit {display:grid;gap:9px;margin-top:12px;padding-top:12px;border-top:1px solid #e9e6dd}
 .team-audit>strong {font-size:11px}
