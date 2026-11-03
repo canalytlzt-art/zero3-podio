@@ -807,7 +807,8 @@ components:
         - status
     Zero3Category:
       type: string
-      enum: [SC, RX]
+      minLength: 1
+      maxLength: 32
     Zero3Role:
       type: string
       enum: [ADMIN, JUIZ_CHEFE, JUIZ]
@@ -849,7 +850,7 @@ components:
         categories:
           type: array
           minItems: 1
-          maxItems: 2
+          maxItems: 10
           uniqueItems: true
           items: { $ref: "#/components/schemas/Zero3Category" }
         createdAt: { type: string, format: date-time }
@@ -863,7 +864,7 @@ components:
         categories:
           type: array
           minItems: 1
-          maxItems: 2
+          maxItems: 10
           uniqueItems: true
           items: { $ref: "#/components/schemas/Zero3Category" }
       required: [name, preparationSeconds]
@@ -877,7 +878,7 @@ components:
         categories:
           type: array
           minItems: 1
-          maxItems: 2
+          maxItems: 10
           uniqueItems: true
           items: { $ref: "#/components/schemas/Zero3Category" }
       minProperties: 1
@@ -946,7 +947,10 @@ components:
       type: object
       properties:
         category: { $ref: "#/components/schemas/Zero3Category" }
-        teamName: { type: ["string", "null"] }
+        teamName:
+          type: ["string", "null"]
+          maxLength: 40
+          pattern: '^[^<>\u0000-\u001F\u007F-\u009F]*$'
         athleteIds:
           type: array
           items: { type: string }
@@ -957,7 +961,10 @@ components:
     Zero3RegistrationUpdate:
       type: object
       properties:
-        teamName: { type: ["string", "null"] }
+        teamName:
+          type: ["string", "null"]
+          maxLength: 40
+          pattern: '^[^<>\u0000-\u001F\u007F-\u009F]*$'
       required: [teamName]
     Zero3RegistrationConfirmationStatus:
       type: string
@@ -987,17 +994,22 @@ components:
         confirmationStatus: { $ref: "#/components/schemas/Zero3RegistrationConfirmationStatus" }
         paymentStatus: { $ref: "#/components/schemas/Zero3RegistrationPaymentStatus" }
         resultCount: { type: integer, minimum: 0 }
+        heatEntryCount: { type: integer, minimum: 0 }
+        podiumCount: { type: integer, minimum: 0 }
         sourceCodes: { type: array, items: { type: string } }
         createdAt: { type: string, format: date-time }
         audit:
           type: array
           items: { $ref: "#/components/schemas/Zero3RosterManagementAuditEntry" }
-      required: [id, eventId, category, athleteIds, athleteNames, confirmationStatus, paymentStatus, resultCount, sourceCodes, createdAt, audit]
+      required: [id, eventId, category, athleteIds, athleteNames, confirmationStatus, paymentStatus, resultCount, heatEntryCount, podiumCount, sourceCodes, createdAt, audit]
     Zero3RosterManagementEdit:
       type: object
       properties:
         registrationId: { type: string }
-        teamName: { type: ["string", "null"] }
+        teamName:
+          type: ["string", "null"]
+          maxLength: 40
+          pattern: '^[^<>\u0000-\u001F\u007F-\u009F]*$'
         category: { $ref: "#/components/schemas/Zero3Category" }
         athleteIds:
           type: array
@@ -1016,8 +1028,7 @@ components:
           minItems: 1
           maxItems: 2
           items: { $ref: "#/components/schemas/Zero3RosterManagementEdit" }
-        confirmHistoryImpact: { type: boolean }
-      required: [edits, confirmHistoryImpact]
+      required: [edits]
     Zero3RosterManagementUpdateResponse:
       type: object
       properties:

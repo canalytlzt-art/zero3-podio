@@ -35,9 +35,12 @@ import {
 } from "@workspace/db";
 import { requireZero3Roles, type Zero3Request } from "../lib/zero3-auth";
 import { writeApiFailure } from "../lib/api-errors";
+import { parseZero3TeamName } from "../lib/zero3-team-name";
 import {
   buildRosterImportPlan,
+  rosterIdentityChanged,
   rosterSourceContentHash,
+  rosterIdentityEditConflict,
   validateRosterManagementEdit,
   type RosterImportRegistration,
 } from "../lib/zero3-roster-import";
@@ -174,13 +177,17 @@ async function rosterManagementRows(eventId: string) {
 
   const registrationIds = registrations.map((registration) => registration.id);
   const athleteIds = [...new Set(registrations.flatMap((registration) => registration.athleteIds))];
-  const [athletes, results, importTeams, audits] = await Promise.all([
+  const [athletes, results, importTeams, audits, heatEntries, podiumVersions] = await Promise.all([
     athleteIds.length
       ? db.select().from(zero3AthletesTable).where(inArray(zero3AthletesTable.id, athleteIds))
       : Promise.resolve([]),
     db.select().from(zero3ResultsTable).where(inArray(zero3ResultsTable.registrationId, registrationIds)),
     db.select().from(zero3ImportTeamsTable).where(inArray(zero3ImportTeamsTable.registrationId, registrationIds)),
     db.select().from(zero3RegistrationAuditTable).where(inArray(zero3RegistrationAuditTable.registrationId, registrationIds)),
+    db.select({ registrationId: zero3HeatEntriesTable.registrationId })
+      .from(zero3HeatEntriesTable).where(inArray(zero3HeatEntriesTable.registrationId, registrationIds)),
+    db.select({ registrationIds: zero3PodiumsTable.registrationIds })
+      .from(zero3PodiumsTable).where(eq(zero3PodiumsTable.eventId, eventId)),
   ]);
   const athleteNameById = new Map(athletes.map((athlete) => [athlete.id, athlete.fullName]));
   const resultCountByRegistration = new Map<string, number>();
@@ -189,6 +196,23 @@ async function rosterManagementRows(eventId: string) {
       result.registrationId,
       (resultCountByRegistration.get(result.registrationId) ?? 0) + 1,
     );
+  }
+  const heatCountByRegistration = new Map<string, number>();
+  for (const entry of heatEntries) {
+    heatCountByRegistration.set(
+      entry.registrationId,
+      (heatCountByRegistration.get(entry.registrationId) ?? 0) + 1,
+    );
+  }
+  const podiumCountByRegistration = new Map<string, number>();
+  for (const podium of podiumVersions) {
+    for (const registrationId of podium.registrationIds) {
+      if (!registrationId || !registrationIds.includes(registrationId)) continue;
+      podiumCountByRegistration.set(
+        registrationId,
+        (podiumCountByRegistration.get(registrationId) ?? 0) + 1,
+      );
+    }
   }
   const sourceCodesByRegistration = new Map<string, string[]>();
   const auditByRegistration = new Map<string, typeof audits>();
@@ -214,6 +238,8 @@ async function rosterManagementRows(eventId: string) {
     confirmationStatus: registration.confirmationStatus,
     paymentStatus: registration.paymentStatus,
     resultCount: resultCountByRegistration.get(registration.id) ?? 0,
+    heatEntryCount: heatCountByRegistration.get(registration.id) ?? 0,
+    podiumCount: podiumCountByRegistration.get(registration.id) ?? 0,
     sourceCodes: sourceCodesByRegistration.get(registration.id) ?? [],
     createdAt: registration.createdAt,
     audit: (auditByRegistration.get(registration.id) ?? [])
@@ -260,8 +286,20 @@ router.put(
       });
       return;
     }
+    const edits: typeof body.data.edits = [];
+    for (const edit of body.data.edits) {
+      if (edit.teamName === undefined) {
+        edits.push(edit);
+        continue;
+      }
+      const parsedTeamName = parseZero3TeamName(edit.teamName);
+      if (!parsedTeamName.success) {
+        res.status(400).json({ error: parsedTeamName.error });
+        return;
+      }
+      edits.push({ ...edit, teamName: parsedTeamName.value });
+    }
     try {
-      const edits = body.data.edits;
       const editIds = edits.map((edit) => edit.registrationId);
       if (new Set(editIds).size !== editIds.length) {
         throw new RosterInputError("A mesma equipe não pode aparecer duas vezes na alteração.");
@@ -318,28 +356,49 @@ router.put(
           throw new RosterConflictError("Um dos atletas já está inscrito em outra equipe desta edição.");
         }
 
-        const resultRows = await tx
+        const [resultRows, heatEntries, importTeams, podiumVersions] = await Promise.all([
+          tx
           .select({ registrationId: zero3ResultsTable.registrationId })
           .from(zero3ResultsTable)
-          .where(inArray(zero3ResultsTable.registrationId, editIds));
+          .where(inArray(zero3ResultsTable.registrationId, editIds)),
+          tx.select({ registrationId: zero3HeatEntriesTable.registrationId })
+            .from(zero3HeatEntriesTable)
+            .where(inArray(zero3HeatEntriesTable.registrationId, editIds)),
+          tx.select({ registrationId: zero3ImportTeamsTable.registrationId })
+            .from(zero3ImportTeamsTable)
+            .where(inArray(zero3ImportTeamsTable.registrationId, editIds)),
+          tx.select({ registrationIds: zero3PodiumsTable.registrationIds })
+            .from(zero3PodiumsTable)
+            .where(eq(zero3PodiumsTable.eventId, params.data.eventId)),
+        ]);
         const resultsByRegistration = new Map<string, number>();
         for (const row of resultRows) {
           resultsByRegistration.set(row.registrationId, (resultsByRegistration.get(row.registrationId) ?? 0) + 1);
         }
-        const changesWithResults = editedRegistrations.filter(({ edit, registration }) => {
-          const rosterChanged =
-            edit.category !== registration.category ||
-            edit.athleteIds.join(":") !== registration.athleteIds.join(":");
-          return rosterChanged && (resultsByRegistration.get(registration.id) ?? 0) > 0;
-        });
-        if (changesWithResults.length > 0 && !body.data.confirmHistoryImpact) {
-          const count = changesWithResults.reduce(
-            (sum, item) => sum + (resultsByRegistration.get(item.registration.id) ?? 0),
-            0,
-          );
-          throw new RosterConflictError(
-            `Há ${count} resultado(s) ligado(s) a esta composição. Revise o impacto e confirme explicitamente; o registro anterior será preservado no histórico.`,
-          );
+        const heatCountByRegistration = new Map<string, number>();
+        for (const entry of heatEntries) {
+          heatCountByRegistration.set(entry.registrationId, (heatCountByRegistration.get(entry.registrationId) ?? 0) + 1);
+        }
+        const importCountByRegistration = new Map<string, number>();
+        for (const entry of importTeams) {
+          importCountByRegistration.set(entry.registrationId, (importCountByRegistration.get(entry.registrationId) ?? 0) + 1);
+        }
+        const podiumCountByRegistration = new Map<string, number>();
+        for (const podium of podiumVersions) {
+          for (const registrationId of podium.registrationIds) {
+            if (!registrationId || !editIds.includes(registrationId)) continue;
+            podiumCountByRegistration.set(registrationId, (podiumCountByRegistration.get(registrationId) ?? 0) + 1);
+          }
+        }
+        for (const { edit, registration } of editedRegistrations) {
+          const identityChanged = rosterIdentityChanged(registration, edit);
+          const conflict = rosterIdentityEditConflict(identityChanged, {
+            resultCount: resultsByRegistration.get(registration.id) ?? 0,
+            heatEntryCount: heatCountByRegistration.get(registration.id) ?? 0,
+            importCount: importCountByRegistration.get(registration.id) ?? 0,
+            podiumCount: podiumCountByRegistration.get(registration.id) ?? 0,
+          });
+          if (conflict) throw new RosterConflictError(conflict);
         }
 
         await tx.delete(zero3RegistrationMembersTable)

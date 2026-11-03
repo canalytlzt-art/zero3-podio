@@ -6,10 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type Zero3Category = typeof Zero3Category[keyof typeof Zero3Category];
-
-
-export const Zero3Category = {
-  SC: 'SC',
-  RX: 'RX',
-} as const;
+/**
+ * @minLength 1
+ * @maxLength 32
+ */
+export type Zero3Category = string;

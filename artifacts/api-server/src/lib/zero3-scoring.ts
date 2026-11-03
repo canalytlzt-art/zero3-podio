@@ -1,4 +1,4 @@
-export type ScoreCategory = "SC" | "RX";
+export type ScoreCategory = string;
 
 export type ScoreProof = {
   id: string;

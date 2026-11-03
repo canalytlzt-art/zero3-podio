@@ -25,7 +25,7 @@ export const zero3EventsTable = pgTable("zero3_events", {
   status: text("status").notNull().default("PLANNED"),
   preparationSeconds: integer("preparation_seconds").notNull().default(10),
   categories: jsonb("categories")
-    .$type<Array<"SC" | "RX">>()
+    .$type<string[]>()
     .notNull()
     .default(sql`'["SC","RX"]'::jsonb`),
   createdAt: createdAt(),

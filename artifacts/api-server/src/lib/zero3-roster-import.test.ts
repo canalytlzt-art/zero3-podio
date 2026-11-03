@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { CreateZero3RegistrationBody } from "@workspace/api-zod";
 import {
   buildRosterImportPlan,
+  rosterIdentityChanged,
+  rosterIdentityEditConflict,
   rosterSourceContentHash,
   validateRosterManagementEdit,
 } from "./zero3-roster-import";
@@ -135,6 +137,32 @@ describe("ZERO3 roster import planning", () => {
     });
     const team = preview.teams.find((item) => item.sourceCode === "SCALE-01");
     assert.equal(team?.conflict, "EXISTING_CONFIRMATION_OR_PAYMENT_DIFFERS");
+  });
+});
+
+describe("registration history edit guard", () => {
+  it("treats athlete order swaps as the same roster identity", () => {
+    assert.equal(rosterIdentityChanged(
+      { category: "RX", athleteIds: ["a", "b"] },
+      { category: "RX", athleteIds: ["b", "a"] },
+    ), false);
+  });
+
+  it("blocks identity changes when result, heat, import, or podium references exist", () => {
+    for (const history of [
+      { resultCount: 1, heatEntryCount: 0, importCount: 0, podiumCount: 0 },
+      { resultCount: 0, heatEntryCount: 1, importCount: 0, podiumCount: 0 },
+      { resultCount: 0, heatEntryCount: 0, importCount: 1, podiumCount: 0 },
+      { resultCount: 0, heatEntryCount: 0, importCount: 0, podiumCount: 1 },
+    ]) {
+      assert.ok(rosterIdentityEditConflict(true, history));
+    }
+  });
+
+  it("allows display-name changes while preserving podium registration references", () => {
+    assert.equal(rosterIdentityEditConflict(false, {
+      resultCount: 0, heatEntryCount: 0, importCount: 0, podiumCount: 1,
+    }), null);
   });
 });
 

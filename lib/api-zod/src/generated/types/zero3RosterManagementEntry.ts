@@ -23,6 +23,10 @@ export interface Zero3RosterManagementEntry {
   paymentStatus: Zero3RegistrationPaymentStatus;
   /** @minimum 0 */
   resultCount: number;
+  /** @minimum 0 */
+  heatEntryCount: number;
+  /** @minimum 0 */
+  podiumCount: number;
   sourceCodes: string[];
   createdAt: Date;
   audit: Zero3RosterManagementAuditEntry[];

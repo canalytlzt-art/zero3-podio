@@ -7,6 +7,10 @@
  */
 
 export interface Zero3RegistrationUpdate {
-  /** @nullable */
+  /**
+     * @maxLength 40
+     * @nullable
+     * @pattern ^[^<>\u0000-\u001F\u007F-\u009F]*$
+     */
   teamName: string | null;
 }

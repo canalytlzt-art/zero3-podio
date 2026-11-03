@@ -9,13 +9,11 @@ export interface HealthStatus {
   status: string;
 }
 
-export type Zero3Category = typeof Zero3Category[keyof typeof Zero3Category];
-
-
-export const Zero3Category = {
-  SC: 'SC',
-  RX: 'RX',
-} as const;
+/**
+ * @minLength 1
+ * @maxLength 32
+ */
+export type Zero3Category = string;
 
 export type Zero3Role = typeof Zero3Role[keyof typeof Zero3Role];
 
@@ -71,7 +69,7 @@ export interface Zero3Event {
   preparationSeconds: number;
   /**
      * @minItems 1
-     * @maxItems 2
+     * @maxItems 10
      */
   categories: Zero3Category[];
   createdAt: string;
@@ -144,7 +142,7 @@ export interface Zero3EventInput {
   preparationSeconds: number;
   /**
      * @minItems 1
-     * @maxItems 2
+     * @maxItems 10
      */
   categories?: Zero3Category[];
 }
@@ -162,7 +160,7 @@ export interface Zero3EventUpdate {
   preparationSeconds?: number;
   /**
      * @minItems 1
-     * @maxItems 2
+     * @maxItems 10
      */
   categories?: Zero3Category[];
 }
@@ -243,7 +241,11 @@ export interface Zero3Registration {
 
 export interface Zero3RegistrationInput {
   category: Zero3Category;
-  /** @nullable */
+  /**
+     * @maxLength 40
+     * @nullable
+     * @pattern ^[^<>\u0000-\u001F\u007F-\u009F]*$
+     */
   teamName?: string | null;
   /**
      * @minItems 2
@@ -255,7 +257,11 @@ export interface Zero3RegistrationInput {
 }
 
 export interface Zero3RegistrationUpdate {
-  /** @nullable */
+  /**
+     * @maxLength 40
+     * @nullable
+     * @pattern ^[^<>\u0000-\u001F\u007F-\u009F]*$
+     */
   teamName: string | null;
 }
 
@@ -305,6 +311,10 @@ export interface Zero3RosterManagementEntry {
   paymentStatus: Zero3RegistrationPaymentStatus;
   /** @minimum 0 */
   resultCount: number;
+  /** @minimum 0 */
+  heatEntryCount: number;
+  /** @minimum 0 */
+  podiumCount: number;
   sourceCodes: string[];
   createdAt: string;
   audit: Zero3RosterManagementAuditEntry[];
@@ -312,7 +322,11 @@ export interface Zero3RosterManagementEntry {
 
 export interface Zero3RosterManagementEdit {
   registrationId: string;
-  /** @nullable */
+  /**
+     * @maxLength 40
+     * @nullable
+     * @pattern ^[^<>\u0000-\u001F\u007F-\u009F]*$
+     */
   teamName?: string | null;
   category: Zero3Category;
   /**
@@ -332,7 +346,6 @@ export interface Zero3RosterManagementUpdateInput {
      * @maxItems 2
      */
   edits: Zero3RosterManagementEdit[];
-  confirmHistoryImpact: boolean;
 }
 
 export interface Zero3RosterManagementUpdateResponse {

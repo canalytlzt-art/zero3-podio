@@ -64,6 +64,7 @@ import {
 } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { getAuth } from "@clerk/express";
+import { parseZero3TeamName, resolveZero3DisplayTeamName } from "../lib/zero3-team-name";
 import {
   db,
   zero3ActiveHeatsTable,
@@ -90,6 +91,7 @@ import {
   type ResultPlacement,
   type ScoreProof,
 } from "../lib/zero3-scoring";
+import { normalizeEventCategories, validateEventCategories } from "../lib/zero3-categories";
 import rosterRouter from "./zero3-roster";
 
 const router: IRouter = Router();
@@ -98,9 +100,8 @@ const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
 const RESULT_ROLES = ["ADMIN", "JUIZ_CHEFE", "JUIZ"] as const;
 const PODIUM_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
 
-type Category = "SC" | "RX";
-const orderedCategories = (categories: readonly Category[]): Category[] =>
-  (["SC", "RX"] as const).filter((category) => categories.includes(category));
+type Category = string;
+const orderedCategories = normalizeEventCategories;
 type EventRow = typeof zero3EventsTable.$inferSelect;
 type RegistrationRow = typeof zero3RegistrationsTable.$inferSelect;
 type ResultRow = typeof zero3ResultsTable.$inferSelect;
@@ -214,13 +215,11 @@ async function resultDto(
   const hasRosterSnapshot =
     result.athleteIdsSnapshot.length > 0 &&
     result.athleteNamesSnapshot.length === result.athleteIdsSnapshot.length;
-  const [registration] = hasRosterSnapshot
-    ? []
-    : await db
-        .select()
-        .from(zero3RegistrationsTable)
-        .where(eq(zero3RegistrationsTable.id, result.registrationId))
-        .limit(1);
+  const [registration] = await db
+    .select()
+    .from(zero3RegistrationsTable)
+    .where(eq(zero3RegistrationsTable.id, result.registrationId))
+    .limit(1);
   const [heat] = result.heatId
     ? await db
         .select()
@@ -251,9 +250,11 @@ async function resultDto(
     names: hasRosterSnapshot
       ? result.athleteNamesSnapshot
       : registrationInfo?.athleteNames ?? [],
-    teamName: hasRosterSnapshot
-      ? result.teamNameSnapshot
-      : registrationInfo?.teamName ?? null,
+    teamName: resolveZero3DisplayTeamName(
+      registrationInfo?.teamName,
+      hasRosterSnapshot ? result.teamNameSnapshot : null,
+      Boolean(registrationInfo),
+    ),
     heatName: heat?.name ?? null,
   };
 }
@@ -645,8 +646,9 @@ router.post(
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    if (parsed.data.categories && new Set(parsed.data.categories).size !== parsed.data.categories.length) {
-      res.status(400).json({ error: "A lista de categorias não pode conter duplicatas." });
+    const categoryError = parsed.data.categories && validateEventCategories(parsed.data.categories);
+    if (categoryError) {
+      res.status(400).json({ error: categoryError });
       return;
     }
     const [event] = await db.transaction(async (tx) => {
@@ -693,8 +695,9 @@ router.patch(
       });
       return;
     }
-    if (body.data.categories && new Set(body.data.categories).size !== body.data.categories.length) {
-      res.status(400).json({ error: "A lista de categorias não pode conter duplicatas." });
+    const categoryError = body.data.categories && validateEventCategories(body.data.categories);
+    if (categoryError) {
+      res.status(400).json({ error: categoryError });
       return;
     }
     if (body.data.categories) {
@@ -715,7 +718,7 @@ router.patch(
           .from(zero3PodiumsTable)
           .where(eq(zero3PodiumsTable.eventId, params.data.eventId)),
       ]);
-      const configured = new Set(body.data.categories);
+      const configured = new Set(orderedCategories(body.data.categories));
       const used = [
         ...registrations.map((row) => row.category),
         ...heats.map((row) => row.category),
@@ -1049,6 +1052,11 @@ router.post(
       });
       return;
     }
+    const parsedTeamName = parseZero3TeamName(body.data.teamName);
+    if (!parsedTeamName.success) {
+      res.status(400).json({ error: parsedTeamName.error });
+      return;
+    }
     const [event] = await db
       .select()
       .from(zero3EventsTable)
@@ -1107,7 +1115,7 @@ router.post(
         .values({
           eventId: params.data.eventId,
           category: body.data.category,
-          teamName: body.data.teamName?.trim() || null,
+          teamName: parsedTeamName.value,
           athleteIds,
           laneLabel: body.data.laneLabel?.trim() || null,
           confirmationStatus: "PENDING",
@@ -1146,6 +1154,11 @@ router.patch(
       });
       return;
     }
+    const parsedTeamName = parseZero3TeamName(body.data.teamName);
+    if (!parsedTeamName.success) {
+      res.status(400).json({ error: parsedTeamName.error });
+      return;
+    }
     const [existing] = await db
       .select()
       .from(zero3RegistrationsTable)
@@ -1160,10 +1173,11 @@ router.patch(
       res.status(404).json({ error: "Inscrição não encontrada." });
       return;
     }
+    const normalizedTeamName = parsedTeamName.value;
     const [updated] = await db
       .update(zero3RegistrationsTable)
       .set({
-        teamName: body.data.teamName?.trim() || null,
+        teamName: normalizedTeamName,
       })
       .where(eq(zero3RegistrationsTable.id, existing.id))
       .returning();

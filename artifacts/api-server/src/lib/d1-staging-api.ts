@@ -21,6 +21,7 @@ import { calculateAllResultPlacements } from "./zero3-scoring";
 import { handleD1StagingAdmin } from "./d1-staging-admin";
 import { handleD1StagingControls } from "./d1-staging-controls";
 import { handleD1StagingRoster } from "./d1-staging-roster";
+import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 
 type D1Env = { DB: D1Database };
 type Member = { clerk_user_id: string; email: string; role: string; active: number };
@@ -118,7 +119,7 @@ function eventDto(row: EventRow) {
   return {
     id: row.id, name: row.name, proofName: row.proof_name, status: row.status,
     preparationSeconds: row.preparation_seconds,
-    categories: jsonArray(row.categories) as Array<"SC" | "RX">,
+    categories: jsonArray(row.categories),
     createdAt: date(row.created_at),
   };
 }
@@ -164,11 +165,11 @@ async function publicBoard(DB: D1Database, eventId?: string) {
   const results = resultResult.results.filter((row) => activeRegistrationIds.has(row.registration_id));
   const athleteNames = new Map(athleteResult.results.map((athlete) => [athlete.id, athlete.full_name]));
   const registrationsDto = registrations.map((reg) => ({
-    id: reg.id, category: reg.category as "SC" | "RX", teamName: reg.team_name,
+    id: reg.id, category: reg.category, teamName: reg.team_name,
     laneLabel: reg.lane_label, athleteNames: jsonArray(reg.athlete_ids).map((athleteId) => athleteNames.get(athleteId) ?? "Atleta removido"),
   }));
   const scoring = calculateAllResultPlacements({
-    categories: jsonArray(event.categories) as Array<"SC" | "RX">,
+    categories: jsonArray(event.categories),
     eventStatus: event.status,
     proofs: proofs.map((proof) => ({
       id: proof.id, order: proof.proof_order, name: proof.name,
@@ -200,7 +201,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       tieRulePending: p?.tiePending ?? false, syncErrorMs: row.sync_error_ms,
       status: row.status, capturedAt: date(row.captured_at), revision: row.revision,
       names: snapshotNames.length ? snapshotNames : reg?.athleteNames ?? [],
-      teamName: row.team_name_snapshot ?? reg?.teamName ?? null,
+       teamName: resolveZero3DisplayTeamName(reg?.teamName, row.team_name_snapshot, Boolean(reg)),
       heatName: row.heat_id ? heatNames.get(row.heat_id) ?? null : null,
     };
   });
@@ -225,7 +226,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     preparationSeconds: event.preparation_seconds,
     startedAt: date(timer.started_at), version: timer.version, updatedAt: date(timer.updated_at),
   } : undefined;
-  const activeHeats = (jsonArray(event.categories) as Array<"SC" | "RX">).map((category) => {
+  const activeHeats = jsonArray(event.categories).map((category) => {
     const row = activeResult.results.find((item) => item.category === category);
     return { eventId: event.id, category, heatId: row?.heat_id ?? null, heatName: row?.heat_name ?? null, updatedAt: date(row?.updated_at) ?? new Date(0) };
   });
@@ -246,7 +247,7 @@ function captureDto(row: ResultRow, reg: RegistrationRow, names: string[], place
     placement: placement?.placement ?? null, points: placement?.points ?? null,
     tieRulePending: placement?.tiePending ?? false, syncErrorMs: row.sync_error_ms,
     status: row.status, capturedAt: date(row.captured_at), revision: row.revision,
-    names, teamName: row.team_name_snapshot ?? reg.team_name, heatName: null,
+     names, teamName: reg.team_name, heatName: null,
   };
 }
 

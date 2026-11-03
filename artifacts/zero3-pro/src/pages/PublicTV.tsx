@@ -26,7 +26,7 @@ const metricValue=(value:number|null,proof:Zero3Proof)=>{
   const formatted=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(value);
   return `${formatted}${proof.unit?` ${proof.unit}`:''}`;
 };
-function CategoryPanel({category, registrations, board, proofs, freshResultIds}:{category:'SC'|'RX';registrations:Zero3PublicRegistration[];board:Zero3PublicBoard;proofs:Zero3Proof[];freshResultIds:Set<string>}){
+function CategoryPanel({category, registrations, board, proofs, freshResultIds}:{category:string;registrations:Zero3PublicRegistration[];board:Zero3PublicBoard;proofs:Zero3Proof[];freshResultIds:Set<string>}){
   const leaderboard:Zero3CategoryLeaderboard|undefined=board.leaderboards?.find(item=>item.category===category);
   const entries=leaderboard?.entries||[];
   const registrationById=new Map(registrations.map(reg=>[reg.id,reg]));
@@ -34,8 +34,9 @@ function CategoryPanel({category, registrations, board, proofs, freshResultIds}:
   const categoryProofs=proofs.slice().sort((a,b)=>a.order-b.order);
   const podium=board.podiums?.find(item=>item.category===category);
   const isDemo=board.event?.name.toLocaleUpperCase('pt-BR').includes('DEMONSTRAÇÃO')??false;
-  return <section className={`tv-panel tv-panel-${category.toLowerCase()}`} aria-label={`Classificação ${category}`}>
-    <header className="tv-panel-head"><div className={`tv-category ${category==='RX'?'rx':''}`}>{category}<span className="tv-demo-tag">{leaderboard?.status==='FINAL'?'CLASSIFICAÇÃO FINAL':stateText(leaderboard?.status)}</span></div><div className="tv-count">{String(sorted.length).padStart(2,'0')} EQUIPES</div></header>
+  const categoryStyle=category==='RX'?'rx':category==='SC'?'sc':'custom';
+  return <section className={`tv-panel tv-panel-${categoryStyle}`} aria-label={`Classificação ${category}`}>
+    <header className="tv-panel-head"><div className={`tv-category ${categoryStyle==='rx'?'rx':''}`}>{category}<span className="tv-demo-tag">{leaderboard?.status==='FINAL'?'CLASSIFICAÇÃO FINAL':stateText(leaderboard?.status)}</span></div><div className="tv-count">{String(sorted.length).padStart(2,'0')} EQUIPES</div></header>
      <div className="tv-score-head"><span>RAIA</span><span>EQUIPE / ATLETAS</span><span>POS.</span>{categoryProofs.map(p=><span key={p.id}>P{p.order}</span>)}<span>TOTAL</span><span>STATUS</span></div>
      <div className="tv-team-list">{sorted.length?sorted.map(reg=>{
       const entry:Zero3LeaderboardEntry|undefined=entries.find(item=>item.registrationId===reg.id);
@@ -44,7 +45,7 @@ function CategoryPanel({category, registrations, board, proofs, freshResultIds}:
       const status=entry?.status==='FINAL'?'FINAL':scores.some(score=>score?.status==='PROVISIONAL')?'PROVISIONAL':scores.some(score=>score?.status==='VALIDATED')?'VALIDATED':entry?.status||'PARTIAL';
        const fresh=board.results?.some(result=>result.proofId!==null&&result.registrationId===reg.id&&freshResultIds.has(result.id));
        return <article className={`tv-score-row ${fresh?'fresh':''}`} key={reg.id}>
-        <span className={`tv-lane ${category==='RX'?'rx':''}`}>{reg.laneLabel||'—'}</span>
+         <span className={`tv-lane ${categoryStyle==='rx'?'rx':''}`}>{reg.laneLabel||'—'}</span>
          <div className="tv-score-team"><strong>{reg.teamName||`Equipe ${reg.laneLabel||reg.id.slice(0,6).toUpperCase()} — nome pendente`}</strong><small>{reg.athleteNames.join(' · ')||'Atletas pendentes'}</small></div>
          <span className={`tv-overall-rank ${entry?.overallPlace?'final':''}`}>{entry?.overallPlace?`${entry.overallPlace}º`:'—'}<small>{entry?.overallPlace?'FINAL':'PARCIAL'}</small></span>
          {categoryProofs.map((proof,index)=>{
@@ -60,7 +61,7 @@ function CategoryPanel({category, registrations, board, proofs, freshResultIds}:
       </article>;
     }):<div className="tv-no-registrations">Nenhuma inscrição nesta categoria.</div>}</div>
      <footer className="tv-podium"><div className="tv-podium-title">{isDemo?'PÓDIO DE DEMONSTRAÇÃO':'PÓDIO PUBLICADO'} <span>{podium?.places?.length?(isDemo?'DEMO · NÃO OFICIAL':'VERSÃO PUBLICADA'):'AGUARDANDO PUBLICAÇÃO'}</span></div>
-      {podium?.places?.length?<div className="tv-podium-list">{podium.places.slice().sort((a,b)=>a.place-b.place).map(place=><div key={place.registrationId}><div className={`tv-place ${category==='RX'?'rx':''}`}>{place.place}º LUGAR</div><div className="tv-place-name">{place.teamName||place.athleteNames.join(' · ')}</div><div className="tv-place-detail">{place.athleteNames.join(' · ')}</div></div>)}</div>:<div className="tv-podium-empty">Nenhum pódio manual publicado para esta categoria.</div>}
+       {podium?.places?.length?<div className="tv-podium-list">{podium.places.slice().sort((a,b)=>a.place-b.place).map(place=><div key={place.registrationId}><div className={`tv-place ${categoryStyle==='rx'?'rx':''}`}>{place.place}º LUGAR</div><div className="tv-place-name">{place.teamName||place.athleteNames.join(' · ')}</div><div className="tv-place-detail">{place.athleteNames.join(' · ')}</div></div>)}</div>:<div className="tv-podium-empty">Nenhum pódio manual publicado para esta categoria.</div>}
     </footer>
   </section>;
 }

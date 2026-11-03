@@ -24,7 +24,7 @@ export function OperationPage() {
   const canConfigure = me.data?.role === 'ADMIN' || me.data?.role === 'JUIZ_CHEFE';
   const [eventId, setEventId] = useState('');
   const selectedEventId = eventId || events.data?.[0]?.id || '';
-  const [category, setCategory] = useState<'SC'|'RX'|'TODAS'>('TODAS');
+  const [category, setCategory] = useState<string>('TODAS');
   const [search, setSearch] = useState('');
   const [proofId, setProofId] = useState('');
   const [registrationId, setRegistrationId] = useState('');
@@ -41,6 +41,7 @@ export function OperationPage() {
   const results = (board.data?.results || []).filter(result => result.proofId !== null);
   const selectedProof = proofs.data?.find(item => item.id === proofId);
   const selectedRegistration = registrations.data?.find(item => item.id === registrationId);
+  const eventCategories = events.data?.find(item => item.id === selectedEventId)?.categories || [];
   const filtered = useMemo(() => (registrations.data || []).filter(r => (category === 'TODAS' || r.category === category) && `${r.teamName||''} ${r.athleteNames.join(' ')}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))), [registrations.data, category, search]);
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getGetZero3PublicBoardQueryKey({ eventId: selectedEventId }) });
@@ -87,8 +88,8 @@ export function OperationPage() {
       <section className="panel"><EmptyState title="Nenhum evento cadastrado" detail="Crie um evento para configurar provas e receber resultados."/></section> :
       <>
         <section className="panel op-toolbar">
-          <div className="field"><label htmlFor="op-event">Evento</label><select id="op-event" data-testid="select-operation-event" value={selectedEventId} onChange={e=>{setEventId(e.target.value);setProofId('');setRegistrationId('');setError('');}}>{events.data.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
-          <div className="field"><label htmlFor="op-category">Categoria</label><select id="op-category" data-testid="select-operation-category" value={category} onChange={e=>setCategory(e.target.value as typeof category)}><option value="TODAS">Todas</option><option value="SC">SC</option><option value="RX">RX</option></select></div>
+          <div className="field"><label htmlFor="op-event">Evento</label><select id="op-event" data-testid="select-operation-event" value={selectedEventId} onChange={e=>{setEventId(e.target.value);setCategory('TODAS');setProofId('');setRegistrationId('');setError('');}}>{events.data.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+          <div className="field"><label htmlFor="op-category">Categoria</label><select id="op-category" data-testid="select-operation-category" value={category} onChange={e=>setCategory(e.target.value)}><option value="TODAS">Todas</option>{eventCategories.map(value=><option key={value} value={value}>{value==='SC'?'SC / Scale':value}</option>)}</select></div>
           <div className="field"><label htmlFor="op-search">Equipe ou atleta</label><input id="op-search" data-testid="input-operation-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nome"/></div>
         </section>
         <div className="op-grid">

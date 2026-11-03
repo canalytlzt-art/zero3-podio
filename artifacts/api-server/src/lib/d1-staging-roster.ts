@@ -15,11 +15,14 @@ import {
 } from "@workspace/api-zod";
 import {
   buildRosterImportPlan,
+  rosterIdentityChanged,
+  rosterIdentityEditConflict,
   rosterSourceContentHash,
   validateRosterManagementEdit,
   type RosterImportRegistration,
 } from "./zero3-roster-import";
 import { rosterSourcePeople, ZERO3_ROSTER_SOURCE } from "./zero3-roster-source";
+import { parseZero3TeamName } from "./zero3-team-name";
 import {
   d1ApiError,
   d1Date,
@@ -171,7 +174,7 @@ async function managedRows(DB: D1Database, eventId: string) {
   const registrationIds = registrations.results.map((row) => row.id);
   const athletes = await DB.prepare("SELECT id,full_name FROM zero3_athletes").all<{ id: string; full_name: string }>();
   const names = new Map(athletes.results.map((row) => [row.id, row.full_name]));
-  const [resultCounts, sourceRows, auditRows] = await Promise.all([
+  const [resultCounts, sourceRows, auditRows, heatRows, podiumRows] = await Promise.all([
     DB.prepare(`SELECT registration_id,COUNT(*) AS count FROM zero3_results
       WHERE registration_id IN (${registrationIds.map(() => "?").join(",")}) GROUP BY registration_id`)
       .bind(...registrationIds).all<{ registration_id: string; count: number }>(),
@@ -184,8 +187,24 @@ async function managedRows(DB: D1Database, eventId: string) {
         id: string; registration_id: string; actor_id: string; reason: string;
         before_state: string; after_state: string; created_at: string;
       }>(),
+    DB.prepare(`SELECT registration_id FROM zero3_heat_entries
+      WHERE registration_id IN (${registrationIds.map(() => "?").join(",")})`)
+      .bind(...registrationIds).all<{ registration_id: string }>(),
+    DB.prepare(`SELECT registration_ids FROM zero3_podium_versions WHERE event_id=?`)
+      .bind(eventId).all<{ registration_ids: string }>(),
   ]);
   const resultCount = new Map(resultCounts.results.map((row) => [row.registration_id, row.count]));
+  const heatCount = new Map<string, number>();
+  for (const row of heatRows.results) {
+    heatCount.set(row.registration_id, (heatCount.get(row.registration_id) ?? 0) + 1);
+  }
+  const podiumCount = new Map<string, number>();
+  for (const row of podiumRows.results) {
+    for (const registrationId of d1JsonArray(row.registration_ids)) {
+      if (!registrationIds.includes(registrationId)) continue;
+      podiumCount.set(registrationId, (podiumCount.get(registrationId) ?? 0) + 1);
+    }
+  }
   const sourceCodes = new Map<string, string[]>();
   for (const row of sourceRows.results) sourceCodes.set(row.registration_id, [...(sourceCodes.get(row.registration_id) ?? []), row.source_code]);
   const audit = new Map<string, typeof auditRows.results>();
@@ -198,6 +217,8 @@ async function managedRows(DB: D1Database, eventId: string) {
       athleteNames: athleteIds.map((athleteId) => names.get(athleteId) ?? "Atleta não encontrado"),
       confirmationStatus: row.confirmation_status, paymentStatus: row.payment_status,
       resultCount: resultCount.get(row.id) ?? 0,
+      heatEntryCount: heatCount.get(row.id) ?? 0,
+      podiumCount: podiumCount.get(row.id) ?? 0,
       sourceCodes: sourceCodes.get(row.id) ?? [], createdAt: d1Date(row.created_at),
       audit: (audit.get(row.id) ?? [])
         .sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -240,7 +261,19 @@ export async function handleD1StagingRoster(
       res.status(400).json({ error: !params.success ? params.error.message : body.error?.message ?? "Dados inválidos." });
       return true;
     }
-    const edits = body.data.edits;
+    const edits: typeof body.data.edits = [];
+    for (const edit of body.data.edits) {
+      if (edit.teamName === undefined) {
+        edits.push(edit);
+        continue;
+      }
+      const parsedTeamName = parseZero3TeamName(edit.teamName);
+      if (!parsedTeamName.success) {
+        res.status(400).json({ error: parsedTeamName.error });
+        return true;
+      }
+      edits.push({ ...edit, teamName: parsedTeamName.value });
+    }
     if (edits.length < 1 || edits.length > 2) {
       res.status(400).json({ error: "A operação deve conter uma ou duas equipes." }); return true;
     }
@@ -275,10 +308,31 @@ export async function handleD1StagingRoster(
         const validation = validateRosterManagementEdit({ athleteIds: edit.athleteIds, existingAthleteIds: athleteSet });
         if (validation) { res.status(400).json({ error: validation }); return true; }
       }
-      const resultRows = await DB.prepare(`SELECT registration_id,COUNT(*) AS count FROM zero3_results
+      const [resultRows, heatRows, importRows, podiumRows] = await Promise.all([
+        DB.prepare(`SELECT registration_id,COUNT(*) AS count FROM zero3_results
         WHERE registration_id IN (${ids.map(() => "?").join(",")}) GROUP BY registration_id`)
-        .bind(...ids).all<{ registration_id: string; count: number }>();
+          .bind(...ids).all<{ registration_id: string; count: number }>(),
+        DB.prepare(`SELECT registration_id FROM zero3_heat_entries
+          WHERE registration_id IN (${ids.map(() => "?").join(",")})`)
+          .bind(...ids).all<{ registration_id: string }>(),
+        DB.prepare(`SELECT registration_id FROM zero3_import_teams
+          WHERE registration_id IN (${ids.map(() => "?").join(",")})`)
+          .bind(...ids).all<{ registration_id: string }>(),
+        DB.prepare(`SELECT registration_ids FROM zero3_podium_versions WHERE event_id=?`)
+          .bind(params.data.eventId).all<{ registration_ids: string }>(),
+      ]);
       const counts = new Map(resultRows.results.map((row) => [row.registration_id, row.count]));
+      const heatCounts = new Map<string, number>();
+      for (const row of heatRows.results) heatCounts.set(row.registration_id, (heatCounts.get(row.registration_id) ?? 0) + 1);
+      const importCounts = new Map<string, number>();
+      for (const row of importRows.results) importCounts.set(row.registration_id, (importCounts.get(row.registration_id) ?? 0) + 1);
+      const podiumCounts = new Map<string, number>();
+      for (const row of podiumRows.results) {
+        for (const registrationId of d1JsonArray(row.registration_ids)) {
+          if (!ids.includes(registrationId)) continue;
+          podiumCounts.set(registrationId, (podiumCounts.get(registrationId) ?? 0) + 1);
+        }
+      }
       const planned = edits.map((edit) => {
         const row = currentById.get(edit.registrationId)!;
         const teamName = edit.teamName === undefined ? row.team_name : edit.teamName;
@@ -286,11 +340,21 @@ export async function handleD1StagingRoster(
           edit.athleteIds.join("|") !== d1JsonArray(row.athlete_ids).join("|");
         return { edit, row, teamName, changed, resultCount: counts.get(row.id) ?? 0 };
       });
-      const withHistory = planned.filter((item) => item.changed && item.resultCount > 0);
-      if (withHistory.length && !body.data.confirmHistoryImpact) {
-        const total = withHistory.reduce((sum, item) => sum + item.resultCount, 0);
-        res.status(409).json({ error: `Há ${total} resultado(s) ligado(s) à composição. Confirme explicitamente o impacto; o histórico anterior será preservado.` });
-        return true;
+      for (const item of planned) {
+        const identityChanged = rosterIdentityChanged(
+          { category: item.row.category, athleteIds: d1JsonArray(item.row.athlete_ids) },
+          item.edit,
+        );
+        const conflict = rosterIdentityEditConflict(identityChanged, {
+          resultCount: counts.get(item.row.id) ?? 0,
+          heatEntryCount: heatCounts.get(item.row.id) ?? 0,
+          importCount: importCounts.get(item.row.id) ?? 0,
+          podiumCount: podiumCounts.get(item.row.id) ?? 0,
+        });
+        if (conflict) {
+          res.status(409).json({ code: "ROSTER_HISTORY_CONFLICT", error: conflict });
+          return true;
+        }
       }
       const beforeGuard = beforeStateGuard(params.data.eventId, planned.map((item) => item.row));
       const updateAssignments = [
@@ -304,13 +368,38 @@ export async function handleD1StagingRoster(
         `${column}=CASE id ${pairs.map(() => "WHEN ? THEN ?").join(" ")} ELSE ${column} END`,
       ).join(",");
       const setValues = updateAssignments.flatMap(([, pairs]) => pairs.flat());
+      const historyPredicates: string[] = [];
+      const historyValues: unknown[] = [];
+      for (const item of planned) {
+        const identityChanged = rosterIdentityChanged(
+          { category: item.row.category, athleteIds: d1JsonArray(item.row.athlete_ids) },
+          item.edit,
+        );
+        if (identityChanged) {
+          historyPredicates.push(
+            "NOT EXISTS (SELECT 1 FROM zero3_results WHERE registration_id=?)",
+            "NOT EXISTS (SELECT 1 FROM zero3_heat_entries WHERE registration_id=?)",
+            "NOT EXISTS (SELECT 1 FROM zero3_import_teams WHERE registration_id=?)",
+            `NOT EXISTS (SELECT 1 FROM zero3_podium_versions p, json_each(p.registration_ids) j
+              WHERE p.event_id=? AND j.value=?)`,
+          );
+          historyValues.push(
+            item.row.id,
+            item.row.id,
+            item.row.id,
+            params.data.eventId,
+            item.row.id,
+          );
+        }
+      }
+      const historyGuardSql = historyPredicates.length ? historyPredicates.join(" AND ") : "1=1";
       const idList = ids.map(() => "?").join(",");
       const updateSql = `UPDATE zero3_registrations SET ${setSql}
         WHERE event_id=? AND id IN (${idList})
-        AND ${beforeGuard.sql}`;
+        AND ${beforeGuard.sql} AND ${historyGuardSql}`;
       const updateValues = [
         ...setValues, params.data.eventId, ...ids,
-        ...beforeGuard.values,
+        ...beforeGuard.values, ...historyValues,
       ];
       const after = planned.map((item) => ({
         registrationId: item.edit.registrationId, teamName: item.teamName,

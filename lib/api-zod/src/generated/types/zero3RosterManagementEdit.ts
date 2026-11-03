@@ -11,7 +11,11 @@ import type { Zero3RegistrationPaymentStatus } from './zero3RegistrationPaymentS
 
 export interface Zero3RosterManagementEdit {
   registrationId: string;
-  /** @nullable */
+  /**
+     * @maxLength 40
+     * @nullable
+     * @pattern ^[^<>\u0000-\u001F\u007F-\u009F]*$
+     */
   teamName?: string | null;
   category: Zero3Category;
   /**

@@ -9,7 +9,11 @@ import type { Zero3Category } from './zero3Category';
 
 export interface Zero3RegistrationInput {
   category: Zero3Category;
-  /** @nullable */
+  /**
+     * @maxLength 40
+     * @nullable
+     * @pattern ^[^<>\u0000-\u001F\u007F-\u009F]*$
+     */
   teamName?: string | null;
   /**
      * @minItems 2

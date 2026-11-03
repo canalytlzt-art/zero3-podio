@@ -8,6 +8,7 @@ import {
   getListZero3RegistrationsQueryKey,
   getListZero3AthletesQueryKey,
   getListZero3EventsQueryKey,
+  getListZero3HeatsQueryKey,
   getGetZero3MeQueryKey,
   useGetZero3Me,
   useListZero3Events,
@@ -26,6 +27,14 @@ import {
 } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
 import { ArrowDownUp, Search, Upload } from 'lucide-react';
+import {
+  categoryDisplayName,
+  findAthleteRegistrationConflicts,
+  registrationIdentityEditLock,
+  summarizeManagedRegistrations,
+  normalizeTeamNameInput,
+  teamNameInputError,
+} from '@/lib/roster-management';
 
 type Draft = {
   teamName: string;
@@ -77,7 +86,6 @@ export function RosterManagePage() {
   const [payment, setPayment] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [historyConfirmed, setHistoryConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
   const [newCategory, setNewCategory] = useState<Zero3Category>('SC');
@@ -96,8 +104,16 @@ export function RosterManagePage() {
   const currentEvent = events.data?.find(event => event.id === eventId);
   const eventCategories = currentEvent?.categories || [];
   useEffect(() => {
-    if (!eventId && events.data?.length) setEventId(events.data[0].id);
+    if (!eventId && events.data?.length) {
+      const preferred = events.data.find(event =>
+        event.name.trim().toLocaleLowerCase('pt-BR') === 'zero3 games',
+      );
+      setEventId((preferred || events.data[0]).id);
+    }
   }, [eventId, events.data]);
+  useEffect(() => {
+    if (category && !eventCategories.includes(category)) setCategory('');
+  }, [category, eventCategories]);
   useEffect(() => {
     if (eventCategories.length && !eventCategories.includes(newCategory)) {
       setNewCategory(eventCategories[0]);
@@ -112,12 +128,19 @@ export function RosterManagePage() {
       && (!payment || team.paymentStatus === payment);
   }), [teams, search, category, confirmation, payment]);
   const selectedTeams = selected.map(id => teams.find(team => team.id === id)).filter((team): team is Zero3RosterManagementEntry => Boolean(team));
-  const needsHistoryAck = selectedTeams.some(team => {
+  const summary = summarizeManagedRegistrations(teams);
+  const invalidSelectedTeamName = selectedTeams.some(team =>
+    teamNameInputError((drafts[team.id] || newDraft(team)).teamName) !== null,
+  );
+  const identityLockMessages = selectedTeams.flatMap(team => {
     const draft = drafts[team.id] || newDraft(team);
-    const changed = draft.teamName !== (team.teamName || '')
-      || draft.category !== team.category
-      || draft.athleteIds.filter(Boolean).join('|') !== team.athleteIds.join('|');
-    return changed && team.resultCount > 0;
+    const reason = registrationIdentityEditLock(team, draft, {
+      resultCount: team.resultCount,
+      heatEntryCount: team.heatEntryCount,
+      podiumCount: team.podiumCount,
+      sourceCodes: team.sourceCodes,
+    });
+    return reason ? [{ registrationId: team.id, reason }] : [];
   });
   const setDraftValue = (id: string, patch: Partial<Draft>) => setDrafts(current => ({
     ...current,
@@ -130,16 +153,22 @@ export function RosterManagePage() {
       setDrafts(value => ({ ...value, [team.id]: value[team.id] || newDraft(team) }));
       return [...current, team.id];
     });
-    setHistoryConfirmed(false);
     setError('');
   };
   const submit = () => {
     setError('');
+    const invalidTeam = selectedTeams.find(team =>
+      teamNameInputError((drafts[team.id] || newDraft(team)).teamName),
+    );
+    if (invalidTeam) {
+      setError(teamNameInputError((drafts[invalidTeam.id] || newDraft(invalidTeam)).teamName) || 'Nome da equipe inválido.');
+      return;
+    }
     const edits = selectedTeams.map(team => {
       const draft = drafts[team.id] || newDraft(team);
       return {
         registrationId: team.id,
-        teamName: draft.teamName.trim() || null,
+        teamName: normalizeTeamNameInput(draft.teamName),
         category: draft.category,
         athleteIds: draft.athleteIds.filter(Boolean),
         confirmationStatus: draft.confirmationStatus as typeof Zero3RegistrationConfirmationStatus[keyof typeof Zero3RegistrationConfirmationStatus],
@@ -151,14 +180,27 @@ export function RosterManagePage() {
       setError('Cada alteração exige um ou dois atletas distintos e um motivo de pelo menos 3 caracteres.');
       return;
     }
-    update.mutate({ eventId, data: { edits, confirmHistoryImpact: historyConfirmed } }, {
+    const blockedEdit = selectedTeams.map(team => {
+      const draft = drafts[team.id] || newDraft(team);
+      return registrationIdentityEditLock(team, draft, {
+        resultCount: team.resultCount,
+        heatEntryCount: team.heatEntryCount,
+        podiumCount: team.podiumCount,
+        sourceCodes: team.sourceCodes,
+      });
+    }).find(Boolean);
+    if (blockedEdit) {
+      setError(blockedEdit);
+      return;
+    }
+    update.mutate({ eventId, data: { edits } }, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: getGetZero3RosterManagementQueryKey(eventId) });
         void qc.invalidateQueries({ queryKey: getListZero3RegistrationsQueryKey(eventId) });
+        void qc.invalidateQueries({ queryKey: getListZero3HeatsQueryKey(eventId) });
         void qc.invalidateQueries({ queryKey: getGetZero3PublicBoardQueryKey({ eventId }) });
         setSelected([]);
         setDrafts({});
-        setHistoryConfirmed(false);
       },
       onError: err => setError(apiMessage(err)),
     });
@@ -166,10 +208,16 @@ export function RosterManagePage() {
   const invalidateEventLists = () => {
     void qc.invalidateQueries({ queryKey: getGetZero3RosterManagementQueryKey(eventId) });
     void qc.invalidateQueries({ queryKey: getListZero3RegistrationsQueryKey(eventId) });
+    void qc.invalidateQueries({ queryKey: getListZero3HeatsQueryKey(eventId) });
     void qc.invalidateQueries({ queryKey: getGetZero3PublicBoardQueryKey({ eventId }) });
   };
   const createPair = () => {
     setError('');
+    const teamNameError = teamNameInputError(newTeamName);
+    if (teamNameError) {
+      setError(teamNameError);
+      return;
+    }
     if (!eventId || !eventCategories.includes(newCategory)) {
       setError('Selecione um evento e uma categoria habilitada.');
       return;
@@ -184,7 +232,7 @@ export function RosterManagePage() {
     }
     createRegistration.mutate({
       eventId,
-      data: { category: newCategory, teamName: newTeamName.trim() || null, athleteIds: newAthleteIds },
+      data: { category: newCategory, teamName: normalizeTeamNameInput(newTeamName), athleteIds: newAthleteIds },
     }, {
       onSuccess: () => {
         invalidateEventLists();
@@ -250,6 +298,8 @@ export function RosterManagePage() {
       onError: err => setError(apiMessage(err)),
     });
   };
+  const athleteConflicts = (athleteId: string) =>
+    findAthleteRegistrationConflicts(athleteId, teams);
   if (me.isLoading) return <AdminShell><div className="panel panel-pad"><LoadingRows/></div></AdminShell>;
   if (me.isError) return <AdminShell><QueryError retry={() => me.refetch()} testId="button-retry-roster-session"/></AdminShell>;
   if (!isAdmin) return <AdminShell><div className="panel"><EmptyState title="Acesso administrativo necessário" detail="Somente uma conta com função ADMIN pode alterar equipes, confirmações ou pagamentos."/></div></AdminShell>;
@@ -261,14 +311,18 @@ export function RosterManagePage() {
       <Link href="/admin/roster" className="button small" data-testid="link-roster-athletes">Cadastro de atletas</Link>
       <Link href="/admin/roster/import" className="button small" data-testid="link-roster-import-secondary">Revisar importação</Link>
     </div>
+    <div className="stats-grid roster-stats" aria-label="Resumo de inscrições do evento">
+      <div className="panel stat"><div className="stat-kicker">Inscrições no evento</div><div className="stat-value">{summary.registrationCount}</div><div className="stat-detail">{summary.activeRegistrationCount} ativas · {summary.cancelledRegistrationCount} canceladas preservadas</div></div>
+      <div className="panel stat"><div className="stat-kicker">Atletas únicos inscritos</div><div className="stat-value">{summary.uniqueAthleteCount}</div><div className="stat-detail">{summary.uniqueActiveAthleteCount} em inscrições ativas neste evento</div></div>
+    </div>
     <section className="panel panel-pad roster-create" aria-label="Nova inscrição de dupla">
       <div className="eyebrow">Nova inscrição</div>
       <h2 className="panel-title">Cadastrar dupla no evento</h2>
       <p className="lede">As inscrições e categorias pertencem somente ao evento selecionado. O cadastro dos atletas pode ser reutilizado em outros eventos.</p>
       {!eventId ? <EmptyState title="Selecione um evento" detail="Cadastre ou selecione um evento antes de criar duplas."/> : <>
         <div className="form-row">
-          <div className="field"><label htmlFor="new-team-name">Nome da equipe (opcional)</label><input id="new-team-name" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="Se não houver nome, os atletas identificam a dupla"/></div>
-          <div className="field"><label htmlFor="new-team-category">Categoria</label><select id="new-team-category" value={newCategory} onChange={e => setNewCategory(e.target.value as Zero3Category)}>{eventCategories.map(value => <option key={value} value={value}>{value === 'SC' ? 'SC / Scale' : value}</option>)}</select></div>
+          <div className="field"><label htmlFor="new-team-name">Nome da equipe (opcional)</label><input id="new-team-name" value={newTeamName} maxLength={40} aria-invalid={Boolean(teamNameInputError(newTeamName))} onChange={e => setNewTeamName(e.target.value)} placeholder="Se não houver nome, os atletas identificam a dupla"/><span className="field-help">Até 40 caracteres; não use os sinais &lt; e &gt; ou controles.</span>{teamNameInputError(newTeamName)&&<small className="form-error" role="alert">{teamNameInputError(newTeamName)}</small>}</div>
+          <div className="field"><label htmlFor="new-team-category">Categoria</label><select id="new-team-category" value={newCategory} onChange={e => setNewCategory(e.target.value as Zero3Category)}>{eventCategories.map(value => <option key={value} value={value}>{categoryDisplayName(value)}</option>)}</select></div>
         </div>
         {[0, 1].map(slot => {
           const excluded = newAthleteIds[1 - slot];
@@ -276,9 +330,11 @@ export function RosterManagePage() {
           const options = (athletes.data || []).filter(athlete =>
             athlete.id !== excluded && (!searchValue || athlete.fullName.toLocaleLowerCase().includes(searchValue.toLocaleLowerCase())),
           );
+           const linkedRegistrations = athleteConflicts(newAthleteIds[slot]);
           return <div className="form-row" key={slot}>
             <div className="field"><label htmlFor={`new-athlete-search-${slot}`}>Buscar atleta {slot + 1}</label><input id={`new-athlete-search-${slot}`} type="search" value={searchValue} onChange={e => setAthleteSearches(current => { const next = [...current] as [string, string]; next[slot] = e.target.value; return next; })} placeholder="Digite o nome"/></div>
             <div className="field"><label htmlFor={`new-athlete-${slot}`}>Atleta {slot + 1}</label><select id={`new-athlete-${slot}`} value={newAthleteIds[slot]} onChange={e => setNewAthleteIds(current => { const next = [...current] as [string, string]; next[slot] = e.target.value; return next; })}><option value="">Selecione um atleta</option>{options.map((athlete: Zero3Athlete) => <option key={athlete.id} value={athlete.id}>{athlete.fullName}</option>)}</select></div>
+             {linkedRegistrations.length > 0 && <div className="roster-link-warning" role="status">Este atleta já consta em {linkedRegistrations.map(item => `${item.teamName || item.athleteNames.join(' / ')} (${item.category})`).join('; ')}. A API aplicará a regra de participação deste evento.</div>}
           </div>;
         })}
         <div className="form-row">
@@ -297,7 +353,7 @@ export function RosterManagePage() {
         </select>
       </div>
       <div className="field roster-search"><label htmlFor="roster-search">Busca rápida</label><div className="search-field"><Search size={15}/><input id="roster-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Equipe, atleta ou código de origem" data-testid="input-roster-search"/></div></div>
-      <div className="field"><label htmlFor="roster-category">Categoria</label><select id="roster-category" value={category} onChange={e => setCategory(e.target.value)} data-testid="filter-roster-category"><option value="">Todas</option><option value="SC">SC</option><option value="RX">RX</option></select></div>
+       <div className="field"><label htmlFor="roster-category">Categoria</label><select id="roster-category" value={category} onChange={e => setCategory(e.target.value)} data-testid="filter-roster-category"><option value="">Todas</option>{eventCategories.map(value => <option key={value} value={value}>{categoryDisplayName(value)}</option>)}</select></div>
       <div className="field"><label htmlFor="roster-confirmation">Confirmação</label><select id="roster-confirmation" value={confirmation} onChange={e => setConfirmation(e.target.value)} data-testid="filter-roster-confirmation"><option value="">Todos os status</option>{Object.entries(confirmationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
       <div className="field"><label htmlFor="roster-payment">Pagamento</label><select id="roster-payment" value={payment} onChange={e => setPayment(e.target.value)} data-testid="filter-roster-payment"><option value="">Todos os status</option>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     </section>
@@ -309,7 +365,7 @@ export function RosterManagePage() {
       : teams.length === 0 ? <div className="panel"><EmptyState title="Nenhuma equipe neste evento" detail="As inscrições gerenciadas aparecerão aqui."/></div>
       : <div className="roster-workspace">
         <section className="panel roster-list-panel">
-          <header className="roster-panel-head"><div><span className="eyebrow">Inscrições</span><h2 className="panel-title">{filtered.length} de {teams.length} equipes</h2></div><span className="selection-count">{selected.length}/2 selecionadas</span></header>
+          <header className="roster-panel-head"><div><span className="eyebrow">Inscrições</span><h2 className="panel-title">{filtered.length} de {teams.length} inscrições</h2></div><span className="selection-count">{selected.length}/2 selecionadas</span></header>
           {filtered.length === 0 ? <EmptyState title="Nenhuma correspondência" detail="Revise os filtros ou a busca."/ > : <div className="team-list">
             {filtered.map(team => <button type="button" className={`team-row ${selected.includes(team.id) ? 'selected' : ''}`} key={team.id} onClick={() => toggleTeam(team)} data-testid={`row-managed-team-${team.id}`} aria-pressed={selected.includes(team.id)}>
               <span className="team-select-mark">{selected.includes(team.id) ? '✓' : ''}</span>
@@ -325,9 +381,9 @@ export function RosterManagePage() {
               const draft = drafts[team.id] || newDraft(team);
               return <fieldset className="team-edit-block" key={team.id} data-testid={`edit-managed-team-${team.id}`}>
                 <legend>{team.teamName || team.athleteNames.join(' / ')}</legend>
-                <div className="field"><label htmlFor={`team-name-${team.id}`}>Nome da equipe</label><input id={`team-name-${team.id}`} value={draft.teamName} onChange={e => setDraftValue(team.id, { teamName: e.target.value })} data-testid={`input-team-name-${team.id}`}/></div>
+        <div className="field"><label htmlFor={`team-name-${team.id}`}>Nome da equipe</label><input id={`team-name-${team.id}`} value={draft.teamName} maxLength={40} aria-invalid={Boolean(teamNameInputError(draft.teamName))} onChange={e => setDraftValue(team.id, { teamName: e.target.value })} data-testid={`input-team-name-${team.id}`}/>{teamNameInputError(draft.teamName)&&<small className="form-error" role="alert">{teamNameInputError(draft.teamName)}</small>}</div>
                 <div className="form-row">
-                  <div className="field"><label htmlFor={`team-cat-${team.id}`}>Categoria</label><select id={`team-cat-${team.id}`} value={draft.category} onChange={e => setDraftValue(team.id, { category: e.target.value as Zero3Category })} data-testid={`select-team-category-${team.id}`}>{eventCategories.map(value => <option key={value} value={value}>{value === 'SC' ? 'SC / Scale' : value}</option>)}</select></div>
+                  <div className="field"><label htmlFor={`team-cat-${team.id}`}>Categoria</label><select id={`team-cat-${team.id}`} value={draft.category} onChange={e => setDraftValue(team.id, { category: e.target.value as Zero3Category })} data-testid={`select-team-category-${team.id}`}>{eventCategories.map(value => <option key={value} value={value}>{categoryDisplayName(value)}</option>)}</select></div>
                   <div className="field"><label htmlFor={`team-conf-${team.id}`}>Confirmação</label><select id={`team-conf-${team.id}`} value={draft.confirmationStatus} onChange={e => setDraftValue(team.id, { confirmationStatus: e.target.value })} data-testid={`select-team-confirmation-${team.id}`}>{Object.entries(confirmationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
                 </div>
                 <div className="field"><label htmlFor={`team-payment-${team.id}`}>Pagamento</label><select id={`team-payment-${team.id}`} value={draft.paymentStatus} onChange={e => setDraftValue(team.id, { paymentStatus: e.target.value })} data-testid={`select-team-payment-${team.id}`}>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
@@ -350,9 +406,9 @@ export function RosterManagePage() {
               </fieldset>;
             })}
           </div>}
-          {needsHistoryAck && <label className="history-confirm" data-testid="label-confirm-history"><input type="checkbox" checked={historyConfirmed} onChange={e => setHistoryConfirmed(e.target.checked)} data-testid="checkbox-confirm-history-impact"/> <span>Confirmo que compreendo o impacto desta alteração no histórico de resultados.</span></label>}
+           {identityLockMessages.map(({ registrationId, reason }) => <div className="error-box roster-error" role="alert" key={registrationId}>{reason}</div>)}
           {error && <div className="error-box roster-error" role="alert" data-testid="status-roster-error">{error}</div>}
-          <div className="roster-submit"><button className="button primary" disabled={!selected.length || update.isPending || (needsHistoryAck && !historyConfirmed)} onClick={submit} data-testid="button-save-team-edits">{update.isPending ? 'Salvando lote…' : `Salvar ${selected.length || ''} alteração${selected.length === 1 ? '' : 'ões'}`}</button></div>
+            <div className="roster-submit"><button className="button primary" disabled={!selected.length || update.isPending || identityLockMessages.length > 0 || invalidSelectedTeamName} onClick={submit} data-testid="button-save-team-edits">{update.isPending ? 'Salvando lote…' : `Salvar ${selected.length || ''} alteração${selected.length === 1 ? '' : 'ões'}`}</button></div>
           <div className="sr-only" data-testid="status-athlete-catalog">{athletes.data?.length ?? 0} atletas cadastrados</div>
           <div className="sr-only" data-testid="status-events">{events.data?.length ?? 0} eventos disponíveis</div>
         </section>

@@ -21,7 +21,7 @@ export interface Zero3EventUpdate {
   preparationSeconds?: number;
   /**
      * @minItems 1
-     * @maxItems 2
+     * @maxItems 10
      */
   categories?: Zero3Category[];
 }

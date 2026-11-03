@@ -13,5 +13,4 @@ export interface Zero3RosterManagementUpdateInput {
      * @maxItems 2
      */
   edits: Zero3RosterManagementEdit[];
-  confirmHistoryImpact: boolean;
 }

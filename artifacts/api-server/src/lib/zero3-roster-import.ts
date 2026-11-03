@@ -8,6 +8,43 @@ import {
 
 export type RosterImportCategory = "SC" | "SCALE" | "RX";
 
+export type RosterIdentityHistory = {
+  resultCount: number;
+  heatEntryCount: number;
+  importCount: number;
+  podiumCount: number;
+};
+
+export function rosterIdentityChanged(
+  original: { category: string; athleteIds: readonly string[] },
+  next: { category: string; athleteIds: readonly string[] },
+): boolean {
+  return original.category !== next.category ||
+    [...original.athleteIds].sort().join("|") !== [...next.athleteIds].sort().join("|");
+}
+
+/**
+ * Changing the registration identity after it has been used would make its
+ * existing results, heats, import links, or podium point at a different team.
+ * Keep those links intact; only registrations without such references can have
+ * their athletes or category changed.
+ */
+export function rosterIdentityEditConflict(
+  identityChanged: boolean,
+  history: RosterIdentityHistory,
+): string | null {
+  if (!identityChanged) return null;
+
+  const linked: string[] = [];
+  if (history.resultCount) linked.push(`${history.resultCount} resultado(s)`);
+  if (history.heatEntryCount) linked.push(`${history.heatEntryCount} bateria(s)`);
+  if (history.importCount) linked.push(`${history.importCount} vínculo(s) de importação`);
+  if (history.podiumCount) linked.push(`${history.podiumCount} pódio(s)`);
+  if (linked.length === 0) return null;
+
+  return `Não é possível trocar atletas ou categoria: esta inscrição está vinculada a ${linked.join(", ")}. Preserve a inscrição e revise esses vínculos antes da alteração.`;
+}
+
 export type RosterImportRegistration = {
   id: string;
   category: string;
