@@ -5,6 +5,8 @@ import {
   ControlZero3TimerResponse,
   CreateZero3AthleteBody,
   CreateZero3AthleteResponse,
+  DeleteZero3AthleteParams,
+  DeleteZero3AthleteResponse,
   CreateZero3EventBody,
   CreateZero3EventResponse,
   CreateZero3HeatBody,
@@ -40,6 +42,9 @@ import {
   UpdateZero3EventBody,
   UpdateZero3EventParams,
   UpdateZero3EventResponse,
+  UpdateZero3AthleteBody,
+  UpdateZero3AthleteParams,
+  UpdateZero3AthleteResponse,
   UpdateZero3RegistrationBody,
   UpdateZero3RegistrationParams,
   UpdateZero3RegistrationResponse,
@@ -55,6 +60,7 @@ import {
   desc,
   eq,
   inArray,
+  sql,
 } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { getAuth } from "@clerk/express";
@@ -65,6 +71,7 @@ import {
   zero3EventsTable,
   zero3HeatEntriesTable,
   zero3HeatsTable,
+  zero3ImportPeopleTable,
   zero3MembersTable,
   zero3PodiumsTable,
   zero3ProofsTable,
@@ -798,6 +805,93 @@ router.post(
     res
       .status(201)
       .json(CreateZero3AthleteResponse.parse(athlete));
+  },
+);
+
+router.put(
+  "/zero3/athletes/:athleteId",
+  requireZero3Roles([...EVENT_ROLES]),
+  async (req, res): Promise<void> => {
+    const params = UpdateZero3AthleteParams.safeParse(req.params);
+    const body = UpdateZero3AthleteBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({
+        error: !params.success ? params.error.message : body.error?.message ?? "Informe o nome completo do atleta.",
+      });
+      return;
+    }
+    try {
+      const [athlete] = await db
+        .update(zero3AthletesTable)
+        .set({ fullName: body.data.fullName })
+        .where(eq(zero3AthletesTable.id, params.data.athleteId))
+        .returning();
+      if (!athlete) {
+        res.status(404).json({ error: "Atleta não encontrado." });
+        return;
+      }
+      res.json(UpdateZero3AthleteResponse.parse(athlete));
+    } catch (error) {
+      writeApiFailure(req, res, error, "Não foi possível atualizar o atleta.");
+    }
+  },
+);
+
+router.delete(
+  "/zero3/athletes/:athleteId",
+  requireZero3Roles([...EVENT_ROLES]),
+  async (req, res): Promise<void> => {
+    const params = DeleteZero3AthleteParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    try {
+      const [athlete] = await db
+        .select({ id: zero3AthletesTable.id })
+        .from(zero3AthletesTable)
+        .where(eq(zero3AthletesTable.id, params.data.athleteId))
+        .limit(1);
+      if (!athlete) {
+        res.status(404).json({ error: "Atleta não encontrado." });
+        return;
+      }
+      const [memberLink, importLink, registrationLink] = await Promise.all([
+        db.select({ id: zero3RegistrationMembersTable.athleteId })
+          .from(zero3RegistrationMembersTable)
+          .where(eq(zero3RegistrationMembersTable.athleteId, athlete.id))
+          .limit(1),
+        db.select({ id: zero3ImportPeopleTable.athleteId })
+          .from(zero3ImportPeopleTable)
+          .where(eq(zero3ImportPeopleTable.athleteId, athlete.id))
+          .limit(1),
+        db.select({ id: zero3RegistrationsTable.id })
+          .from(zero3RegistrationsTable)
+          .where(sql`${zero3RegistrationsTable.athleteIds} @> ${JSON.stringify([athlete.id])}::jsonb`)
+          .limit(1),
+      ]);
+      if (memberLink.length || importLink.length || registrationLink.length) {
+        const links = [
+          memberLink.length || registrationLink.length ? "inscrições/equipes" : "",
+          importLink.length ? "histórico de importação" : "",
+        ].filter(Boolean).join(" e ");
+        res.status(409).json({
+          code: "ATHLETE_HAS_LINKS",
+          error: `Não é possível excluir: atleta possui vínculo em ${links}. Remova ou preserve os vínculos primeiro.`,
+        });
+        return;
+      }
+      const deleted = await db.delete(zero3AthletesTable)
+        .where(eq(zero3AthletesTable.id, athlete.id))
+        .returning({ id: zero3AthletesTable.id });
+      if (!deleted.length) {
+        res.status(409).json({ error: "O atleta foi alterado por outra operação." });
+        return;
+      }
+      res.json(DeleteZero3AthleteResponse.parse({ id: athlete.id, deleted: true }));
+    } catch (error) {
+      writeApiFailure(req, res, error, "Não foi possível excluir o atleta.");
+    }
   },
 );
 

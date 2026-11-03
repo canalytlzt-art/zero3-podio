@@ -53,6 +53,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+/generated-artifacts/
 
 # Cloudflare local state and secrets
 .wrangler/

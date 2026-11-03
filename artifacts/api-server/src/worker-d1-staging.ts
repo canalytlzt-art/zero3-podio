@@ -9,7 +9,7 @@ import { createApp } from "./app";
 const stagingEnv = env as unknown as { DB: D1Database };
 const app = createApp({
   beforeMiddleware: workerRequestLogger(),
-  beforeRoutes: d1StagingApi(stagingEnv.DB),
+  beforeRoutes: d1StagingApi(stagingEnv.DB, { allowRosterApply: true }),
 });
 app.listen(8080);
 

@@ -10,6 +10,7 @@ import NotFound from '@/pages/not-found';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useSearch } from 'wouter';
 import { getGetZero3MeQueryKey, useGetZero3Me } from '@workspace/api-client-react';
 import { isSessionScopedZero3QueryKey } from './lib/session-query-cache';
+import { shouldRefetchAfterError, shouldRetryZero3Query } from './lib/api-error-policy';
 import { Zero3Role } from '@workspace/api-client-react';
 import { DashboardPage, EventDetailPage, EventsPage, MembersPage, RosterPage } from '@/pages/AdminPages';
 import { RosterManagePage } from '@/pages/RosterManagePage';
@@ -25,7 +26,7 @@ import {
   signInHrefForProtectedPath,
 } from '@/lib/auth-redirect';
 
-const queryClient = new QueryClient({defaultOptions:{queries:{staleTime:1500,refetchOnWindowFocus:true,retry:(failureCount,error)=>{const status=typeof error==='object'&&error!==null&&'status' in error&&typeof error.status==='number'?error.status:undefined;if(status===401||status===403)return false;return failureCount<1;}}}});
+const queryClient = new QueryClient({defaultOptions:{queries:{staleTime:1500,refetchOnWindowFocus:query=>shouldRefetchAfterError(query.state.error),refetchOnReconnect:query=>shouldRefetchAfterError(query.state.error),retry:shouldRetryZero3Query}}});
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -93,7 +94,7 @@ function Protected({children}:{children:ReactNode}){
 }
 function RoleProtected({children}:{children:ReactNode}){
   const reloginHref=signInHrefForProtectedPath(`${window.location.pathname}${window.location.search}${window.location.hash}`,basePath,window.location.origin);
-  const me=useGetZero3Me({query:{queryKey:getGetZero3MeQueryKey(),refetchOnWindowFocus:true,retry:false}});
+  const me=useGetZero3Me({query:{queryKey:getGetZero3MeQueryKey(),refetchOnWindowFocus:query=>shouldRefetchAfterError(query.state.error),refetchOnReconnect:query=>shouldRefetchAfterError(query.state.error),retry:false}});
   const requestTimedOut=usePendingTimeout(me.isLoading,15_000);
   if(me.isLoading)return requestTimedOut?<ApiRequestTimeout retry={()=>me.refetch()}/>:<AuthLoading message="Consultando sessão e permissões…"/>;
   if(me.isError){

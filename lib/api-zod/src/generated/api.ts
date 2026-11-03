@@ -598,6 +598,35 @@ export const CreateZero3AthleteResponse = zod.object({
   "createdAt": zod.coerce.date()
 })
 
+/**
+ * @summary Edit an athlete without changing their stable ID or history
+ */
+export const UpdateZero3AthleteParams = zod.object({
+  "athleteId": zod.coerce.string()
+})
+
+export const UpdateZero3AthleteBody = zod.object({
+  "fullName": zod.string().trim().min(1)
+})
+
+export const UpdateZero3AthleteResponse = zod.object({
+  "id": zod.string(),
+  "fullName": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+/**
+ * @summary Delete an athlete that has no registrations or import history
+ */
+export const DeleteZero3AthleteParams = zod.object({
+  "athleteId": zod.coerce.string()
+})
+
+export const DeleteZero3AthleteResponse = zod.object({
+  "id": zod.string(),
+  "deleted": zod.literal(true)
+})
+
 
 /**
  * @summary Apply a shared sports timer command

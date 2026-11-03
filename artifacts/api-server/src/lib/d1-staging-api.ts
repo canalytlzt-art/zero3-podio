@@ -18,6 +18,9 @@ import {
 import { hasSignedInUserSession } from "./auth-session";
 import { workerLogger } from "./worker-logger";
 import { calculateAllResultPlacements } from "./zero3-scoring";
+import { handleD1StagingAdmin } from "./d1-staging-admin";
+import { handleD1StagingControls } from "./d1-staging-controls";
+import { handleD1StagingRoster } from "./d1-staging-roster";
 
 type D1Env = { DB: D1Database };
 type Member = { clerk_user_id: string; email: string; role: string; active: number };
@@ -48,6 +51,17 @@ const jsonArray = (value: string | null | undefined): string[] => {
   if (!value) return [];
   const parsed: unknown = JSON.parse(value);
   return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+};
+const nullableStringArray = (value: string | null | undefined): Array<string | null> => {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.map((item) => typeof item === "string" ? item : null)
+      : [];
+  } catch {
+    return [];
+  }
 };
 const date = (value: string | null | undefined) => value ? new Date(value) : null;
 const id = () => crypto.randomUUID();
@@ -192,7 +206,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     if (!latestPodium.has(podium.category)) latestPodium.set(podium.category, podium.registration_ids);
   }
   const podiums = [...latestPodium].map(([category, json]) => ({
-    category, places: jsonArray(json).flatMap((registrationId, index) => {
+    category, places: nullableStringArray(json).flatMap((registrationId, index) => {
       if (!registrationId) return [];
       const reg = registrationsById.get(registrationId);
       return !reg || reg.category !== category ? [] : [{
@@ -233,7 +247,10 @@ function captureDto(row: ResultRow, reg: RegistrationRow, names: string[], place
   };
 }
 
-export function d1StagingApi(DB: D1Database): RequestHandler {
+export function d1StagingApi(
+  DB: D1Database,
+  options: { allowRosterApply?: boolean } = {},
+): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.path.startsWith("/api/zero3/")) { next(); return; }
     void (async () => {
@@ -310,7 +327,19 @@ export function d1StagingApi(DB: D1Database): RequestHandler {
         const member = await requireD1Role(req, res, DB, ["ADMIN", "JUIZ_CHEFE", "JUIZ"]);
         if (!member) return;
         try {
-          const rows = await DB.prepare("SELECT * FROM zero3_proofs WHERE event_id=? ORDER BY proof_order").bind(proofsMatch[1]).all<ProofRow>();
+          const event = await DB.prepare("SELECT id FROM zero3_events WHERE id=?")
+            .bind(proofsMatch[1]).first<{ id: string }>();
+          if (!event) { res.status(404).json({ error: "Evento não encontrado." }); return; }
+          const existing = await DB.prepare("SELECT proof_order FROM zero3_proofs WHERE event_id=?")
+            .bind(event.id).all<{ proof_order: number }>();
+          const orders = new Set(existing.results.map((row) => row.proof_order));
+          const missing = [1, 2, 3, 4].filter((order) => !orders.has(order));
+          if (missing.length) {
+            await DB.batch(missing.map((order) => DB.prepare(`INSERT OR IGNORE INTO zero3_proofs
+              (id,event_id,proof_order,name,metric_type,unit,direction) VALUES(?,?,?,'','UNCONFIGURED',NULL,NULL)`)
+              .bind(id(), event.id, order)));
+          }
+          const rows = await DB.prepare("SELECT * FROM zero3_proofs WHERE event_id=? ORDER BY proof_order").bind(event.id).all<ProofRow>();
           res.json(ListZero3ProofsResponse.parse(rows.results.map(proofDto)));
         } catch { error(res, 503, "DATABASE_UNAVAILABLE", "Não foi possível consultar as provas.", req); }
         return;
@@ -431,6 +460,9 @@ export function d1StagingApi(DB: D1Database): RequestHandler {
         }
         return;
       }
+      if (await handleD1StagingAdmin(req, res, DB)) return;
+      if (await handleD1StagingRoster(req, res, DB, options.allowRosterApply)) return;
+      if (await handleD1StagingControls(req, res, DB)) return;
       res.status(501).json({ code: "D1_ROUTE_NOT_IMPLEMENTED", error: "Esta rota ainda não foi migrada para D1 neste staging." });
     })().catch(() => {
       error(res, 500, "API_INTERNAL_ERROR", "Falha interna da API D1.", req);

@@ -3,6 +3,7 @@ import { Link, useLocation } from 'wouter';
 import { useClerk, useUser } from '@clerk/react';
 import type { ReactNode } from 'react';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
+import { queryErrorMessage } from '@/lib/api-error-policy';
 
 const nav = [
   { href: '/admin', label: 'Visão geral', icon: LayoutDashboard },
@@ -42,5 +43,5 @@ export function PageHeading({ eyebrow, title, detail, children }: { eyebrow: str
 }
 
 export function LoadingRows() { return <div style={{display:'grid',gap:10}} aria-label="Carregando"><div className="skeleton"/><div className="skeleton"/><div className="skeleton"/></div>; }
-export function QueryError({ retry, testId = 'button-query-retry' }: { retry: () => void; testId?: string }) { return <div className="error-box" role="alert"><span>Não foi possível conectar aos dados da operação.</span><button className="button small" data-testid={testId} onClick={retry}>Tentar novamente</button></div>; }
+export function QueryError({ retry, error, testId = 'button-query-retry' }: { retry: () => void; error?: unknown; testId?: string }) { return <div className="error-box" role="alert"><span>{queryErrorMessage(error)}</span><button className="button small" data-testid={testId} onClick={retry}>Tentar novamente</button></div>; }
 export function EmptyState({ title, detail }: { title: string; detail: string }) { return <div className="empty"><div className="empty-mark"><Activity size={17}/></div><strong>{title}</strong><p>{detail}</p></div>; }

@@ -1,6 +1,7 @@
 - [ZERO3 display and scoring](zero3-public-display.md) — One Brasília-clock TV shows SC/RX, four-proof points, progress and manually published podiums; admin stays separate.
 - [Clerk package compatibility](clerk-package-compatibility.md) — Keep Clerk React and shared packages on compatible major lines; misaligned exports can fail only during Vite bundling.
 - [Cloudflare Clerk instance](clerk-cloudflare-instance.md) — The user confirmed Cloudflare should keep using the existing Clerk test instance; do not switch instances implicitly.
+- [ZERO3 Worker cutover](zero3-worker-cutover.md) — The user intends to adopt the D1 staging Worker and retire `zero3-podio` only after readiness checks.
 - [ZERO3 Development demo seed](zero3-development-seed.md) — Bundle workspace TypeScript seed scripts with esbuild and place transient output under `lib/db` for Node ESM resolution.
 - [ZERO3 roster category mapping](zero3-roster-category-mapping.md) — For the supplied roster only, the user approved mapping SCALE to SC; do not generalize it to other sources.
 - [ZERO3 roster payment status](zero3-roster-payment-status.md) — The organizer confirmed the supplied 29 registrations as paid and confirmed; do not invent financial details.
