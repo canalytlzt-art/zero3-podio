@@ -10,3 +10,4 @@
 - [ZERO3 Git history](zero3-github-history.md) — Preserve existing branch/checkpoint history; the user chose not to rewrite it during GitHub preparation.
 - [Workerd network errors](workerd-network-errors.md) — PostgreSQL TCP failures may lack Node codes; classify only with specific SQL context, never from timing alone.
 - [Wrangler D1 query limits](wrangler-d1-query-limits.md) — Large compound SELECT count queries can be rejected by remote D1; use scalar subqueries or separate SELECTs.
+- [ZERO3 event-specific duplas](zero3-event-specific-duplas.md) — Athlete records are reusable; pairings and categories belong only to each event registration.

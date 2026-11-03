@@ -436,6 +436,66 @@ paths:
           description: Authentication required
         "404":
           description: Registration not found
+    delete:
+      operationId: deleteZero3Registration
+      tags: [zero3]
+      summary: Delete an event registration when it has no protected history
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: registrationId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Registration deleted without deleting athletes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3RegistrationDeleteResult" }
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Registration not found
+        "409":
+          description: Registration has history and must be cancelled instead
+  /zero3/events/{eventId}/registrations/{registrationId}/cancel:
+    post:
+      operationId: cancelZero3Registration
+      tags: [zero3]
+      summary: Cancel an event registration while preserving history
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: registrationId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3RegistrationCancelInput" }
+      responses:
+        "200":
+          description: Registration cancelled and retained for history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3RegistrationCancelResult" }
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Registration not found
+        "409":
+          description: Registration is already cancelled or referenced by a published podium
   /zero3/athletes:
     get:
       operationId: listZero3Athletes
@@ -471,6 +531,50 @@ paths:
                 $ref: "#/components/schemas/Zero3Athlete"
         "401":
           description: Authentication required
+  /zero3/athletes/{athleteId}:
+    put:
+      operationId: updateZero3Athlete
+      tags: [zero3]
+      summary: Update an athlete's name
+      parameters:
+        - in: path
+          name: athleteId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3AthleteInput" }
+      responses:
+        "200":
+          description: Updated athlete
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3Athlete" }
+        "401":
+          description: Authentication required
+        "404":
+          description: Athlete not found
+    delete:
+      operationId: deleteZero3Athlete
+      tags: [zero3]
+      summary: Delete an athlete with no event or import links
+      parameters:
+        - in: path
+          name: athleteId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted athlete
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3AthleteDeleteResult" }
+        "401":
+          description: Authentication required
+        "409":
+          description: Athlete is linked to event data
   /zero3/events/{eventId}/timer:
     put:
       operationId: controlZero3Timer
@@ -742,14 +846,26 @@ components:
         proofName: { type: string }
         status: { $ref: "#/components/schemas/Zero3EventStatus" }
         preparationSeconds: { type: integer }
+        categories:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/Zero3Category" }
         createdAt: { type: string, format: date-time }
-      required: [id, name, proofName, status, preparationSeconds, createdAt]
+      required: [id, name, proofName, status, preparationSeconds, categories, createdAt]
     Zero3EventInput:
       type: object
       properties:
         name: { type: string, minLength: 1 }
         proofName: { type: string, minLength: 1 }
         preparationSeconds: { type: integer, minimum: 0, maximum: 120 }
+        categories:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/Zero3Category" }
       required: [name, preparationSeconds]
     Zero3EventUpdate:
       type: object
@@ -758,6 +874,12 @@ components:
         proofName: { type: string, minLength: 1 }
         status: { $ref: "#/components/schemas/Zero3EventStatus" }
         preparationSeconds: { type: integer, minimum: 0, maximum: 120 }
+        categories:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/Zero3Category" }
       minProperties: 1
     Zero3ProofMetric:
       type: string
@@ -798,6 +920,12 @@ components:
       properties:
         fullName: { type: string, minLength: 1 }
       required: [fullName]
+    Zero3AthleteDeleteResult:
+      type: object
+      properties:
+        id: { type: string }
+        deleted: { type: boolean, const: true }
+      required: [id, deleted]
     Zero3Registration:
       type: object
       properties:
@@ -822,7 +950,8 @@ components:
         athleteIds:
           type: array
           items: { type: string }
-          minItems: 1
+          minItems: 2
+          maxItems: 2
         laneLabel: { type: ["string", "null"] }
       required: [category, athleteIds]
     Zero3RegistrationUpdate:
@@ -872,7 +1001,7 @@ components:
         category: { $ref: "#/components/schemas/Zero3Category" }
         athleteIds:
           type: array
-          minItems: 2
+          minItems: 1
           maxItems: 2
           items: { type: string }
         confirmationStatus: { $ref: "#/components/schemas/Zero3RegistrationConfirmationStatus" }
@@ -896,6 +1025,23 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Zero3RosterManagementEntry" }
       required: [registrations]
+    Zero3RegistrationDeleteResult:
+      type: object
+      properties:
+        registrationId: { type: string }
+        deleted: { type: boolean, const: true }
+      required: [registrationId, deleted]
+    Zero3RegistrationCancelInput:
+      type: object
+      properties:
+        reason: { type: string, minLength: 3 }
+      required: [reason]
+    Zero3RegistrationCancelResult:
+      type: object
+      properties:
+        registrationId: { type: string }
+        cancelled: { type: boolean, const: true }
+      required: [registrationId, cancelled]
     Zero3RosterImportResolution:
       type: object
       properties:

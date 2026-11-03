@@ -30,6 +30,7 @@ import type {
   Zero3ActiveHeat,
   Zero3ActiveHeatInput,
   Zero3Athlete,
+  Zero3AthleteDeleteResult,
   Zero3AthleteInput,
   Zero3Category,
   Zero3Dashboard,
@@ -49,6 +50,9 @@ import type {
   Zero3ProofUpdate,
   Zero3PublicBoard,
   Zero3Registration,
+  Zero3RegistrationCancelInput,
+  Zero3RegistrationCancelResult,
+  Zero3RegistrationDeleteResult,
   Zero3RegistrationInput,
   Zero3RegistrationUpdate,
   Zero3Result,
@@ -1796,6 +1800,173 @@ export const useUpdateZero3Registration = <TError = ErrorType<void>,
       return useMutation(getUpdateZero3RegistrationMutationOptions(options), queryClient);
     }
 
+export const getDeleteZero3RegistrationUrl = (eventId: string,
+    registrationId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/registrations/${registrationId}`
+}
+
+/**
+ * @summary Delete an event registration when it has no protected history
+ */
+export const deleteZero3Registration = async (eventId: string,
+    registrationId: string, options?: Parameters<typeof customFetch>[1]): Promise<Zero3RegistrationDeleteResult> => {
+
+  return customFetch<Zero3RegistrationDeleteResult>(getDeleteZero3RegistrationUrl(eventId,registrationId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteZero3RegistrationMutationKey = () => ['deleteZero3Registration'] as const;
+
+export const getDeleteZero3RegistrationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteZero3Registration>>, TError,DeleteZero3RegistrationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteZero3Registration>>, TError,DeleteZero3RegistrationMutationVariables, TContext> => {
+
+const mutationKey = getDeleteZero3RegistrationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteZero3Registration>>, DeleteZero3RegistrationMutationVariables> = (props) => {
+          const {eventId,registrationId} = props ?? {};
+
+          return  deleteZero3Registration(eventId,registrationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteZero3RegistrationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteZero3Registration>>>
+
+    export type DeleteZero3RegistrationMutationError = ErrorType<void>
+    export type DeleteZero3RegistrationMutationVariables = {eventId: string;registrationId: string}
+
+    /**
+ * @summary Delete an event registration when it has no protected history
+ */
+export const useDeleteZero3Registration = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteZero3Registration>>, TError,DeleteZero3RegistrationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteZero3Registration>>,
+        TError,
+        DeleteZero3RegistrationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteZero3RegistrationMutationOptions(options), queryClient);
+    }
+
+export const getCancelZero3RegistrationUrl = (eventId: string,
+    registrationId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/registrations/${registrationId}/cancel`
+}
+
+/**
+ * @summary Cancel an event registration while preserving history
+ */
+export const cancelZero3Registration = async (eventId: string,
+    registrationId: string,
+    zero3RegistrationCancelInput: Zero3RegistrationCancelInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3RegistrationCancelResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3RegistrationCancelResult>(getCancelZero3RegistrationUrl(eventId,registrationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3RegistrationCancelInput)
+  }
+);}
+
+
+
+
+
+export const getCancelZero3RegistrationMutationKey = () => ['cancelZero3Registration'] as const;
+
+export const getCancelZero3RegistrationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelZero3Registration>>, TError,CancelZero3RegistrationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelZero3Registration>>, TError,CancelZero3RegistrationMutationVariables, TContext> => {
+
+const mutationKey = getCancelZero3RegistrationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelZero3Registration>>, CancelZero3RegistrationMutationVariables> = (props) => {
+          const {eventId,registrationId,data} = props ?? {};
+
+          return  cancelZero3Registration(eventId,registrationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelZero3RegistrationMutationResult = NonNullable<Awaited<ReturnType<typeof cancelZero3Registration>>>
+    export type CancelZero3RegistrationMutationBody = BodyType<Zero3RegistrationCancelInput>
+    export type CancelZero3RegistrationMutationError = ErrorType<void>
+    export type CancelZero3RegistrationMutationVariables = {eventId: string;registrationId: string;data: BodyType<Zero3RegistrationCancelInput>}
+
+    /**
+ * @summary Cancel an event registration while preserving history
+ */
+export const useCancelZero3Registration = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelZero3Registration>>, TError,CancelZero3RegistrationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof cancelZero3Registration>>,
+        TError,
+        CancelZero3RegistrationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCancelZero3RegistrationMutationOptions(options), queryClient);
+    }
+
 export const getListZero3AthletesUrl = () => {
 
 
@@ -1983,6 +2154,169 @@ export const useCreateZero3Athlete = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCreateZero3AthleteMutationOptions(options), queryClient);
+    }
+
+export const getUpdateZero3AthleteUrl = (athleteId: string,) => {
+
+
+
+
+  return `/api/zero3/athletes/${athleteId}`
+}
+
+/**
+ * @summary Update an athlete's name
+ */
+export const updateZero3Athlete = async (athleteId: string,
+    zero3AthleteInput: Zero3AthleteInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3Athlete> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3Athlete>(getUpdateZero3AthleteUrl(athleteId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3AthleteInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateZero3AthleteMutationKey = () => ['updateZero3Athlete'] as const;
+
+export const getUpdateZero3AthleteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateZero3Athlete>>, TError,UpdateZero3AthleteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateZero3Athlete>>, TError,UpdateZero3AthleteMutationVariables, TContext> => {
+
+const mutationKey = getUpdateZero3AthleteMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateZero3Athlete>>, UpdateZero3AthleteMutationVariables> = (props) => {
+          const {athleteId,data} = props ?? {};
+
+          return  updateZero3Athlete(athleteId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateZero3AthleteMutationResult = NonNullable<Awaited<ReturnType<typeof updateZero3Athlete>>>
+    export type UpdateZero3AthleteMutationBody = BodyType<Zero3AthleteInput>
+    export type UpdateZero3AthleteMutationError = ErrorType<void>
+    export type UpdateZero3AthleteMutationVariables = {athleteId: string;data: BodyType<Zero3AthleteInput>}
+
+    /**
+ * @summary Update an athlete's name
+ */
+export const useUpdateZero3Athlete = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateZero3Athlete>>, TError,UpdateZero3AthleteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateZero3Athlete>>,
+        TError,
+        UpdateZero3AthleteMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateZero3AthleteMutationOptions(options), queryClient);
+    }
+
+export const getDeleteZero3AthleteUrl = (athleteId: string,) => {
+
+
+
+
+  return `/api/zero3/athletes/${athleteId}`
+}
+
+/**
+ * @summary Delete an athlete with no event or import links
+ */
+export const deleteZero3Athlete = async (athleteId: string, options?: Parameters<typeof customFetch>[1]): Promise<Zero3AthleteDeleteResult> => {
+
+  return customFetch<Zero3AthleteDeleteResult>(getDeleteZero3AthleteUrl(athleteId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteZero3AthleteMutationKey = () => ['deleteZero3Athlete'] as const;
+
+export const getDeleteZero3AthleteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteZero3Athlete>>, TError,DeleteZero3AthleteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteZero3Athlete>>, TError,DeleteZero3AthleteMutationVariables, TContext> => {
+
+const mutationKey = getDeleteZero3AthleteMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteZero3Athlete>>, DeleteZero3AthleteMutationVariables> = (props) => {
+          const {athleteId} = props ?? {};
+
+          return  deleteZero3Athlete(athleteId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteZero3AthleteMutationResult = NonNullable<Awaited<ReturnType<typeof deleteZero3Athlete>>>
+
+    export type DeleteZero3AthleteMutationError = ErrorType<void>
+    export type DeleteZero3AthleteMutationVariables = {athleteId: string}
+
+    /**
+ * @summary Delete an athlete with no event or import links
+ */
+export const useDeleteZero3Athlete = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteZero3Athlete>>, TError,DeleteZero3AthleteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteZero3Athlete>>,
+        TError,
+        DeleteZero3AthleteMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteZero3AthleteMutationOptions(options), queryClient);
     }
 
 export const getControlZero3TimerUrl = (eventId: string,) => {

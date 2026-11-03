@@ -30,6 +30,8 @@ export const GetZero3MeResponse = zod.object({
 /**
  * @summary Get operation summary
  */
+export const getZero3DashboardResponseActiveEventCategoriesMax = 2;
+
 export const getZero3DashboardResponseRecentResultsItemElapsedMsMin = 0;
 
 export const getZero3DashboardResponseRecentResultsItemRawValueMin = 0;
@@ -49,6 +51,7 @@ export const GetZero3DashboardResponse = zod.object({
   "proofName": zod.string(),
   "status": zod.enum(['PLANNED', 'ACTIVE', 'FINISHED']),
   "preparationSeconds": zod.number().int(),
+  "categories": zod.array(zod.enum(['SC', 'RX'])).min(1).max(getZero3DashboardResponseActiveEventCategoriesMax),
   "createdAt": zod.coerce.date()
 }).optional(),
   "recentResults": zod.array(zod.object({
@@ -79,12 +82,17 @@ export const GetZero3DashboardResponse = zod.object({
 /**
  * @summary List competition events
  */
+export const listZero3EventsResponseCategoriesMax = 2;
+
+
+
 export const ListZero3EventsResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "proofName": zod.string(),
   "status": zod.enum(['PLANNED', 'ACTIVE', 'FINISHED']),
   "preparationSeconds": zod.number().int(),
+  "categories": zod.array(zod.enum(['SC', 'RX'])).min(1).max(listZero3EventsResponseCategoriesMax),
   "createdAt": zod.coerce.date()
 })
 export const ListZero3EventsResponse = zod.array(ListZero3EventsResponseItem)
@@ -98,13 +106,20 @@ export const ListZero3EventsResponse = zod.array(ListZero3EventsResponseItem)
 export const createZero3EventBodyPreparationSecondsMin = 0;
 export const createZero3EventBodyPreparationSecondsMax = 120;
 
+export const createZero3EventBodyCategoriesMax = 2;
+
 
 
 export const CreateZero3EventBody = zod.object({
   "name": zod.string().min(1),
   "proofName": zod.string().min(1).optional(),
-  "preparationSeconds": zod.number().int().min(createZero3EventBodyPreparationSecondsMin).max(createZero3EventBodyPreparationSecondsMax)
+  "preparationSeconds": zod.number().int().min(createZero3EventBodyPreparationSecondsMin).max(createZero3EventBodyPreparationSecondsMax),
+  "categories": zod.array(zod.enum(['SC', 'RX'])).min(1).max(createZero3EventBodyCategoriesMax).optional()
 })
+
+export const createZero3EventResponseCategoriesMax = 2;
+
+
 
 export const CreateZero3EventResponse = zod.object({
   "id": zod.string(),
@@ -112,6 +127,7 @@ export const CreateZero3EventResponse = zod.object({
   "proofName": zod.string(),
   "status": zod.enum(['PLANNED', 'ACTIVE', 'FINISHED']),
   "preparationSeconds": zod.number().int(),
+  "categories": zod.array(zod.enum(['SC', 'RX'])).min(1).max(createZero3EventResponseCategoriesMax),
   "createdAt": zod.coerce.date()
 })
 
@@ -128,14 +144,21 @@ export const UpdateZero3EventParams = zod.object({
 export const updateZero3EventBodyPreparationSecondsMin = 0;
 export const updateZero3EventBodyPreparationSecondsMax = 120;
 
+export const updateZero3EventBodyCategoriesMax = 2;
+
 
 
 export const UpdateZero3EventBody = zod.object({
   "name": zod.string().min(1).optional(),
   "proofName": zod.string().min(1).optional(),
   "status": zod.enum(['PLANNED', 'ACTIVE', 'FINISHED']).optional(),
-  "preparationSeconds": zod.number().int().min(updateZero3EventBodyPreparationSecondsMin).max(updateZero3EventBodyPreparationSecondsMax).optional()
+  "preparationSeconds": zod.number().int().min(updateZero3EventBodyPreparationSecondsMin).max(updateZero3EventBodyPreparationSecondsMax).optional(),
+  "categories": zod.array(zod.enum(['SC', 'RX'])).min(1).max(updateZero3EventBodyCategoriesMax).optional()
 })
+
+export const updateZero3EventResponseCategoriesMax = 2;
+
+
 
 export const UpdateZero3EventResponse = zod.object({
   "id": zod.string(),
@@ -143,6 +166,7 @@ export const UpdateZero3EventResponse = zod.object({
   "proofName": zod.string(),
   "status": zod.enum(['PLANNED', 'ACTIVE', 'FINISHED']),
   "preparationSeconds": zod.number().int(),
+  "categories": zod.array(zod.enum(['SC', 'RX'])).min(1).max(updateZero3EventResponseCategoriesMax),
   "createdAt": zod.coerce.date()
 })
 
@@ -319,13 +343,15 @@ export const CreateZero3RegistrationParams = zod.object({
   "eventId": zod.coerce.string()
 })
 
+export const createZero3RegistrationBodyAthleteIdsMin = 2;
+export const createZero3RegistrationBodyAthleteIdsMax = 2;
 
 
 
 export const CreateZero3RegistrationBody = zod.object({
   "category": zod.enum(['SC', 'RX']),
   "teamName": zod.string().nullish(),
-  "athleteIds": zod.array(zod.string()).min(1),
+  "athleteIds": zod.array(zod.string()).min(createZero3RegistrationBodyAthleteIdsMin).max(createZero3RegistrationBodyAthleteIdsMax),
   "laneLabel": zod.string().nullish()
 })
 
@@ -384,7 +410,6 @@ export const UpdateZero3RosterManagementParams = zod.object({
   "eventId": zod.coerce.string()
 })
 
-export const updateZero3RosterManagementBodyEditsItemAthleteIdsMin = 2;
 export const updateZero3RosterManagementBodyEditsItemAthleteIdsMax = 2;
 
 export const updateZero3RosterManagementBodyEditsItemReasonMin = 3;
@@ -398,7 +423,7 @@ export const UpdateZero3RosterManagementBody = zod.object({
   "registrationId": zod.string(),
   "teamName": zod.string().nullish(),
   "category": zod.enum(['SC', 'RX']),
-  "athleteIds": zod.array(zod.string()).min(updateZero3RosterManagementBodyEditsItemAthleteIdsMin).max(updateZero3RosterManagementBodyEditsItemAthleteIdsMax),
+  "athleteIds": zod.array(zod.string()).min(1).max(updateZero3RosterManagementBodyEditsItemAthleteIdsMax),
   "confirmationStatus": zod.enum(['INTERESTED', 'PENDING', 'CONFIRMED', 'CANCELLED']),
   "paymentStatus": zod.enum(['UNVERIFIED', 'PENDING', 'PAID', 'NOT_PAID']),
   "reason": zod.string().min(updateZero3RosterManagementBodyEditsItemReasonMin)
@@ -452,6 +477,8 @@ export const PreviewZero3RosterImportBody = zod.object({
 }))
 })
 
+export const previewZero3RosterImportResponseEventCategoriesMax = 2;
+
 export const previewZero3RosterImportResponseTeamsItemSourceCellsMin = 2;
 export const previewZero3RosterImportResponseTeamsItemSourceCellsMax = 2;
 
@@ -467,6 +494,7 @@ export const PreviewZero3RosterImportResponse = zod.object({
   "proofName": zod.string(),
   "status": zod.enum(['PLANNED', 'ACTIVE', 'FINISHED']),
   "preparationSeconds": zod.number().int(),
+  "categories": zod.array(zod.enum(['SC', 'RX'])).min(1).max(previewZero3RosterImportResponseEventCategoriesMax),
   "createdAt": zod.coerce.date()
 }),
   "datasetKey": zod.string(),
@@ -572,6 +600,42 @@ export const UpdateZero3RegistrationResponse = zod.object({
 
 
 /**
+ * @summary Delete an event registration when it has no protected history
+ */
+export const DeleteZero3RegistrationParams = zod.object({
+  "eventId": zod.coerce.string(),
+  "registrationId": zod.coerce.string()
+})
+
+export const DeleteZero3RegistrationResponse = zod.object({
+  "registrationId": zod.string(),
+  "deleted": zod.literal(true)
+})
+
+
+/**
+ * @summary Cancel an event registration while preserving history
+ */
+export const CancelZero3RegistrationParams = zod.object({
+  "eventId": zod.coerce.string(),
+  "registrationId": zod.coerce.string()
+})
+
+export const cancelZero3RegistrationBodyReasonMin = 3;
+
+
+
+export const CancelZero3RegistrationBody = zod.object({
+  "reason": zod.string().min(cancelZero3RegistrationBodyReasonMin)
+})
+
+export const CancelZero3RegistrationResponse = zod.object({
+  "registrationId": zod.string(),
+  "cancelled": zod.literal(true)
+})
+
+
+/**
  * @summary List persistent athlete records
  */
 export const ListZero3AthletesResponseItem = zod.object({
@@ -598,15 +662,19 @@ export const CreateZero3AthleteResponse = zod.object({
   "createdAt": zod.coerce.date()
 })
 
+
 /**
- * @summary Edit an athlete without changing their stable ID or history
+ * @summary Update an athlete's name
  */
 export const UpdateZero3AthleteParams = zod.object({
   "athleteId": zod.coerce.string()
 })
 
+
+
+
 export const UpdateZero3AthleteBody = zod.object({
-  "fullName": zod.string().trim().min(1)
+  "fullName": zod.string().min(1)
 })
 
 export const UpdateZero3AthleteResponse = zod.object({
@@ -615,8 +683,9 @@ export const UpdateZero3AthleteResponse = zod.object({
   "createdAt": zod.coerce.date()
 })
 
+
 /**
- * @summary Delete an athlete that has no registrations or import history
+ * @summary Delete an athlete with no event or import links
  */
 export const DeleteZero3AthleteParams = zod.object({
   "athleteId": zod.coerce.string()
@@ -917,6 +986,8 @@ export const GetZero3PublicBoardQueryParams = zod.object({
   "eventId": zod.coerce.string().optional()
 })
 
+export const getZero3PublicBoardResponseEventCategoriesMax = 2;
+
 export const getZero3PublicBoardResponseTimerElapsedMsMin = 0;
 
 export const getZero3PublicBoardResponseTimerPreparationRemainingMsMin = 0;
@@ -952,6 +1023,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "proofName": zod.string(),
   "status": zod.enum(['PLANNED', 'ACTIVE', 'FINISHED']),
   "preparationSeconds": zod.number().int(),
+  "categories": zod.array(zod.enum(['SC', 'RX'])).min(1).max(getZero3PublicBoardResponseEventCategoriesMax),
   "createdAt": zod.coerce.date()
 }).optional(),
   "timer": zod.object({

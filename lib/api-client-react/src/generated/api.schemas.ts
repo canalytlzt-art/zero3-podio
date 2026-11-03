@@ -69,6 +69,11 @@ export interface Zero3Event {
   proofName: string;
   status: Zero3EventStatus;
   preparationSeconds: number;
+  /**
+     * @minItems 1
+     * @maxItems 2
+     */
+  categories: Zero3Category[];
   createdAt: string;
 }
 
@@ -137,6 +142,11 @@ export interface Zero3EventInput {
      * @maximum 120
      */
   preparationSeconds: number;
+  /**
+     * @minItems 1
+     * @maxItems 2
+     */
+  categories?: Zero3Category[];
 }
 
 export interface Zero3EventUpdate {
@@ -150,6 +160,11 @@ export interface Zero3EventUpdate {
      * @maximum 120
      */
   preparationSeconds?: number;
+  /**
+     * @minItems 1
+     * @maxItems 2
+     */
+  categories?: Zero3Category[];
 }
 
 export type Zero3ProofMetric = typeof Zero3ProofMetric[keyof typeof Zero3ProofMetric];
@@ -208,6 +223,11 @@ export interface Zero3AthleteInput {
   fullName: string;
 }
 
+export interface Zero3AthleteDeleteResult {
+  id: string;
+  deleted: true;
+}
+
 export interface Zero3Registration {
   id: string;
   eventId: string;
@@ -225,7 +245,10 @@ export interface Zero3RegistrationInput {
   category: Zero3Category;
   /** @nullable */
   teamName?: string | null;
-  /** @minItems 1 */
+  /**
+     * @minItems 2
+     * @maxItems 2
+     */
   athleteIds: string[];
   /** @nullable */
   laneLabel?: string | null;
@@ -293,7 +316,7 @@ export interface Zero3RosterManagementEdit {
   teamName?: string | null;
   category: Zero3Category;
   /**
-     * @minItems 2
+     * @minItems 1
      * @maxItems 2
      */
   athleteIds: string[];
@@ -314,6 +337,21 @@ export interface Zero3RosterManagementUpdateInput {
 
 export interface Zero3RosterManagementUpdateResponse {
   registrations: Zero3RosterManagementEntry[];
+}
+
+export interface Zero3RegistrationDeleteResult {
+  registrationId: string;
+  deleted: true;
+}
+
+export interface Zero3RegistrationCancelInput {
+  /** @minLength 3 */
+  reason: string;
+}
+
+export interface Zero3RegistrationCancelResult {
+  registrationId: string;
+  cancelled: true;
 }
 
 export type Zero3RosterImportResolutionAction = typeof Zero3RosterImportResolutionAction[keyof typeof Zero3RosterImportResolutionAction];

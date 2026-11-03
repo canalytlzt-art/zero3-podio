@@ -15,7 +15,7 @@ export interface Zero3RosterManagementEdit {
   teamName?: string | null;
   category: Zero3Category;
   /**
-     * @minItems 2
+     * @minItems 1
      * @maxItems 2
      */
   athleteIds: string[];

@@ -9,8 +9,13 @@ import {
   CreateZero3HeatResponse,
   CreateZero3RegistrationBody,
   CreateZero3RegistrationResponse,
+  CancelZero3RegistrationBody,
+  CancelZero3RegistrationParams,
+  CancelZero3RegistrationResponse,
   DeleteZero3AthleteParams,
   DeleteZero3AthleteResponse,
+  DeleteZero3RegistrationParams,
+  DeleteZero3RegistrationResponse,
   ListZero3AthletesResponse,
   ListZero3HeatsParams,
   ListZero3HeatsResponse,
@@ -44,7 +49,7 @@ import {
 
 type EventRow = {
   id: string; name: string; proof_name: string; status: string;
-  preparation_seconds: number; created_at: string;
+  preparation_seconds: number; categories: string; created_at: string;
 };
 type ProofRow = {
   id: string; event_id: string; proof_order: number; name: string;
@@ -65,7 +70,9 @@ const RESULT_ROLES = ["ADMIN", "JUIZ_CHEFE", "JUIZ"] as const;
 
 const eventDto = (row: EventRow) => ({
   id: row.id, name: row.name, proofName: row.proof_name, status: row.status,
-  preparationSeconds: row.preparation_seconds, createdAt: d1Date(row.created_at),
+  preparationSeconds: row.preparation_seconds,
+  categories: d1JsonArray(row.categories) as Array<"SC" | "RX">,
+  createdAt: d1Date(row.created_at),
 });
 const proofDto = (row: ProofRow) => ({
   id: row.id, eventId: row.event_id, order: row.proof_order, name: row.name,
@@ -109,14 +116,20 @@ export async function handleD1StagingAdmin(
     if (!await requireD1Member(req, res, DB, EVENT_ROLES)) return true;
     const parsed = CreateZero3EventBody.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return true; }
+    if (parsed.data.categories && new Set(parsed.data.categories).size !== parsed.data.categories.length) {
+      res.status(400).json({ error: "A lista de categorias não pode conter duplicatas." });
+      return true;
+    }
     const eventId = newD1Id();
     const stamp = d1IsoNow();
     const proofName = parsed.data.proofName?.trim() || "4 provas — configuração pendente";
+    const categories = (["SC", "RX"] as const)
+      .filter((category) => (parsed.data.categories ?? ["SC", "RX"]).includes(category));
     try {
       const statements: D1PreparedStatement[] = [
         DB.prepare(`INSERT INTO zero3_events
-          (id,name,proof_name,status,preparation_seconds,created_at) VALUES(?,?,?,'PLANNED',?,?)`)
-          .bind(eventId, parsed.data.name.trim(), proofName, parsed.data.preparationSeconds, stamp),
+          (id,name,proof_name,status,preparation_seconds,categories,created_at) VALUES(?,?,?,'PLANNED',?,?,?)`)
+          .bind(eventId, parsed.data.name.trim(), proofName, parsed.data.preparationSeconds, JSON.stringify(categories), stamp),
         ...[1, 2, 3, 4].map((order) => DB.prepare(`INSERT INTO zero3_proofs
           (id,event_id,proof_order,name,metric_type,unit,direction,created_at,updated_at)
           VALUES(?,?,?,'','UNCONFIGURED',NULL,NULL,?,?)`)
@@ -142,11 +155,41 @@ export async function handleD1StagingAdmin(
       res.status(400).json({ error: !params.success ? params.error.message : body.error?.message ?? "Dados inválidos." });
       return true;
     }
+    if (body.data.categories && new Set(body.data.categories).size !== body.data.categories.length) {
+      res.status(400).json({ error: "A lista de categorias não pode conter duplicatas." });
+      return true;
+    }
     const fields: Array<[string, unknown]> = [];
+    if (body.data.categories) {
+      const [registrations, heats, results, activeHeats, podiums] = await Promise.all([
+        DB.prepare("SELECT category FROM zero3_registrations WHERE event_id=?").bind(params.data.eventId).all<{ category: string }>(),
+        DB.prepare("SELECT category FROM zero3_heats WHERE event_id=?").bind(params.data.eventId).all<{ category: string }>(),
+        DB.prepare("SELECT category FROM zero3_results WHERE event_id=?").bind(params.data.eventId).all<{ category: string }>(),
+        DB.prepare("SELECT category FROM zero3_active_heats WHERE event_id=?").bind(params.data.eventId).all<{ category: string }>(),
+        DB.prepare("SELECT category FROM zero3_podium_versions WHERE event_id=?").bind(params.data.eventId).all<{ category: string }>(),
+      ]);
+      const configured = new Set(body.data.categories);
+      const inUse = [
+        ...registrations.results.map((row) => row.category),
+        ...heats.results.map((row) => row.category),
+        ...results.results.map((row) => row.category),
+        ...activeHeats.results.map((row) => row.category),
+        ...podiums.results.map((row) => row.category),
+      ];
+      const removed = [...new Set(inUse)].filter((category) => !configured.has(category as "SC" | "RX"));
+      if (removed.length) {
+        res.status(409).json({ error: `Não é possível remover ${removed.join(", ")}: a categoria já possui inscrições ou histórico.` });
+        return true;
+      }
+    }
     if (body.data.name !== undefined) fields.push(["name", body.data.name.trim()]);
     if (body.data.proofName !== undefined) fields.push(["proof_name", body.data.proofName.trim()]);
     if (body.data.status !== undefined) fields.push(["status", body.data.status]);
     if (body.data.preparationSeconds !== undefined) fields.push(["preparation_seconds", body.data.preparationSeconds]);
+    if (body.data.categories !== undefined) {
+      const ordered = (["SC", "RX"] as const).filter((category) => body.data.categories?.includes(category));
+      fields.push(["categories", JSON.stringify(ordered)]);
+    }
     if (!fields.length) { res.status(400).json({ error: "Informe ao menos um campo para atualizar." }); return true; }
     try {
       await DB.prepare(`UPDATE zero3_events SET ${fields.map(([name]) => `${name}=?`).join(",")}
@@ -296,9 +339,20 @@ export async function handleD1StagingAdmin(
     const body = CreateZero3RegistrationBody.safeParse(req.body);
     if (!body.success) { res.status(400).json({ error: body.error.message }); return true; }
     const eventId = registrationsMatch[1];
+    const event = await DB.prepare("SELECT categories FROM zero3_events WHERE id=?")
+      .bind(eventId).first<{ categories: string }>();
+    if (!event) { res.status(404).json({ error: "Prova não encontrada." }); return true; }
+    if (!d1JsonArray(event.categories).includes(body.data.category)) {
+      res.status(400).json({ error: "A categoria não está habilitada para este evento." });
+      return true;
+    }
+    if (body.data.athleteIds.length > 2) {
+      res.status(400).json({ error: "Uma inscrição pode conter no máximo dois atletas." });
+      return true;
+    }
     const athleteIds = body.data.athleteIds;
     if (new Set(athleteIds).size !== athleteIds.length) { res.status(400).json({ error: "Há atletas duplicados nesta inscrição." }); return true; }
-    if (athleteIds.length > 2) { res.status(400).json({ error: "Uma inscrição pode conter no máximo dois atletas." }); return true; }
+    if (athleteIds.length !== 2) { res.status(400).json({ error: "Uma dupla precisa conter exatamente dois atletas." }); return true; }
     try {
       const event = await DB.prepare("SELECT id FROM zero3_events WHERE id=?").bind(eventId).first<{ id: string }>();
       if (!event) { res.status(404).json({ error: "Evento não encontrado." }); return true; }
@@ -335,6 +389,97 @@ export async function handleD1StagingAdmin(
   }
 
   const registrationMatch = route.match(/^\/events\/([^/]+)\/registrations\/([^/]+)$/);
+  if (registrationMatch && req.method === "DELETE") {
+    if (!await requireD1Member(req, res, DB, ADMIN)) return true;
+    const [eventId, registrationId] = registrationMatch.slice(1);
+    const existing = await DB.prepare("SELECT id FROM zero3_registrations WHERE id=? AND event_id=?")
+      .bind(registrationId, eventId).first<{ id: string }>();
+    if (!existing) { res.status(404).json({ error: "Inscrição não encontrada." }); return true; }
+    const dependencies = await DB.prepare(`SELECT
+      EXISTS(SELECT 1 FROM zero3_results WHERE registration_id=?) AS has_results,
+      EXISTS(SELECT 1 FROM zero3_heat_entries WHERE registration_id=?) AS has_heat_entries,
+      EXISTS(SELECT 1 FROM zero3_registration_audit WHERE registration_id=?) AS has_audit,
+      EXISTS(SELECT 1 FROM zero3_import_teams WHERE registration_id=?) AS has_import,
+      EXISTS(SELECT 1 FROM zero3_podium_versions p, json_each(p.registration_ids) j
+        WHERE p.event_id=? AND j.value=?) AS has_podium,
+      EXISTS(SELECT 1 FROM zero3_podium_versions p, json_each(p.registration_ids) j
+        WHERE p.event_id=? AND p.published=1 AND j.value=?) AS has_published_podium`)
+      .bind(registrationId, registrationId, registrationId, registrationId, eventId, registrationId, eventId, registrationId)
+      .first<{ has_results: number; has_heat_entries: number; has_audit: number; has_import: number; has_podium: number; has_published_podium: number }>();
+    if (dependencies && Object.values(dependencies).some(Boolean)) {
+      const canCancel = !dependencies.has_published_podium;
+      res.status(409).json({
+        code: "REGISTRATION_HAS_HISTORY",
+        canCancel,
+        error: canCancel
+          ? "Esta inscrição possui resultados, bateria ou histórico. Cancele para preservar os registros."
+          : "Esta inscrição está em um pódio publicado. Atualize o pódio antes de cancelar.",
+      });
+      return true;
+    }
+    const deleted = await DB.prepare(`DELETE FROM zero3_registrations
+      WHERE id=? AND event_id=?
+      AND NOT EXISTS(SELECT 1 FROM zero3_results WHERE registration_id=?)
+      AND NOT EXISTS(SELECT 1 FROM zero3_heat_entries WHERE registration_id=?)
+      AND NOT EXISTS(SELECT 1 FROM zero3_registration_audit WHERE registration_id=?)
+      AND NOT EXISTS(SELECT 1 FROM zero3_import_teams WHERE registration_id=?)
+      AND NOT EXISTS(SELECT 1 FROM zero3_podium_versions p, json_each(p.registration_ids) j
+        WHERE p.event_id=? AND j.value=?)`)
+      .bind(registrationId, eventId, registrationId, registrationId, registrationId, registrationId, eventId, registrationId)
+      .run();
+    if ((deleted.meta.changes ?? 0) !== 1) {
+      res.status(409).json({ code: "REGISTRATION_HAS_HISTORY", canCancel: true, error: "A inscrição ganhou um vínculo durante a exclusão. Atualize e tente novamente." });
+      return true;
+    }
+    res.json(DeleteZero3RegistrationResponse.parse({ registrationId, deleted: true }));
+    return true;
+  }
+  const cancelMatch = route.match(/^\/events\/([^/]+)\/registrations\/([^/]+)\/cancel$/);
+  if (cancelMatch && req.method === "POST") {
+    const member = await requireD1Member(req, res, DB, ADMIN);
+    if (!member) return true;
+    const body = CancelZero3RegistrationBody.safeParse(req.body);
+    if (!body.success) { res.status(400).json({ error: body.error.message }); return true; }
+    const [eventId, registrationId] = cancelMatch.slice(1);
+    const row = await DB.prepare("SELECT * FROM zero3_registrations WHERE id=? AND event_id=?")
+      .bind(registrationId, eventId).first<RegistrationRow>();
+    if (!row) { res.status(404).json({ error: "Inscrição não encontrada." }); return true; }
+    if (row.confirmation_status === "CANCELLED") {
+      res.status(409).json({ error: "A inscrição já está cancelada." });
+      return true;
+    }
+    const published = await DB.prepare(`SELECT 1 AS found FROM zero3_podium_versions p,
+      json_each(p.registration_ids) j WHERE p.event_id=? AND p.published=1 AND j.value=? LIMIT 1`)
+      .bind(eventId, registrationId).first<{ found: number }>();
+    if (published) {
+      res.status(409).json({ error: "A inscrição está em um pódio publicado. Atualize o pódio antes de cancelar." });
+      return true;
+    }
+    const stamp = d1IsoNow();
+    const beforeState = JSON.stringify({
+      teamName: row.team_name, category: row.category, athleteIds: d1JsonArray(row.athlete_ids),
+      confirmationStatus: row.confirmation_status, paymentStatus: row.payment_status,
+    });
+    const afterState = JSON.stringify({
+      teamName: row.team_name, category: row.category, athleteIds: d1JsonArray(row.athlete_ids),
+      confirmationStatus: "CANCELLED", paymentStatus: row.payment_status,
+    });
+    const changes = await DB.batch([
+      DB.prepare(`UPDATE zero3_registrations SET confirmation_status='CANCELLED'
+        WHERE id=? AND event_id=? AND confirmation_status<> 'CANCELLED'`)
+        .bind(registrationId, eventId),
+      DB.prepare(`INSERT INTO zero3_registration_audit
+        (id,event_id,registration_id,actor_id,reason,before_state,after_state,created_at)
+        SELECT ?,?,?,?,?,?,?,? WHERE changes()=1`)
+        .bind(newD1Id(), eventId, registrationId, member.clerk_user_id, body.data.reason.trim(), beforeState, afterState, stamp),
+    ]);
+    if ((changes[0]?.meta.changes ?? 0) !== 1) {
+      res.status(409).json({ error: "A inscrição foi alterada por outra operação. Atualize a lista." });
+      return true;
+    }
+    res.json(CancelZero3RegistrationResponse.parse({ registrationId, cancelled: true }));
+    return true;
+  }
   if (registrationMatch && req.method === "PATCH") {
     if (!await requireD1Member(req, res, DB, EVENT_ROLES)) return true;
     const params = UpdateZero3RegistrationParams.safeParse({ eventId: registrationMatch[1], registrationId: registrationMatch[2] });

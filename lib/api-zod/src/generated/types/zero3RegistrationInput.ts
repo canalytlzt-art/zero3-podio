@@ -11,7 +11,10 @@ export interface Zero3RegistrationInput {
   category: Zero3Category;
   /** @nullable */
   teamName?: string | null;
-  /** @minItems 1 */
+  /**
+     * @minItems 2
+     * @maxItems 2
+     */
   athleteIds: string[];
   /** @nullable */
   laneLabel?: string | null;

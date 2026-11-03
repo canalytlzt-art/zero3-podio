@@ -104,7 +104,7 @@ export function PublicTV(){
   return <main className="tv-root"><div className="tv-board">
     <header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/><div className="tv-eventline">{board.event.name}<span> · </span>{board.event.proofName}</div><span className={`tv-status-chip ${connected?'':'offline'}`}><i/> {connected?'AO VIVO':'SEM CONEXÃO · DADOS CONFIRMADOS'}</span></header>
     <section className="tv-clock-section"><div className="tv-timer-box"><small>{timer?.state==='PREPARATION'?'PREPARAÇÃO':'DURAÇÃO ESPORTIVA'}</small><strong>{duration(timer?.state==='PREPARATION'?timer.preparationRemainingMs:timer?.elapsedMs)}</strong><small>{timer?.state||'IDLE'}</small></div><ClockBlock now={now}/><div className="tv-event-status">{board.event.status==='ACTIVE'?'EVENTO EM ANDAMENTO':board.event.status==='FINISHED'?'EVENTO FINALIZADO':'EVENTO PREPARADO'}</div></section>
-     <div className="tv-panels">{(['SC','RX'] as const).map(category=><CategoryPanel key={category} category={category} board={board} registrations={board.registrations||[]} proofs={board.proofs||[]} freshResultIds={freshResultIds}/>)}</div>
+     <div className="tv-panels" style={board.event.categories.length === 1 ? { gridTemplateColumns: '1fr' } : undefined}>{board.event.categories.map(category=><CategoryPanel key={category} category={category} board={board} registrations={board.registrations||[]} proofs={board.proofs||[]} freshResultIds={freshResultIds}/>)}</div>
     <div className="tv-footer-note">PLACAR OFICIAL · PONTUAÇÃO E CLASSIFICAÇÃO CALCULADAS NO SERVIDOR</div>
   </div></main>;
 }

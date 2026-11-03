@@ -99,6 +99,8 @@ const RESULT_ROLES = ["ADMIN", "JUIZ_CHEFE", "JUIZ"] as const;
 const PODIUM_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
 
 type Category = "SC" | "RX";
+const orderedCategories = (categories: readonly Category[]): Category[] =>
+  (["SC", "RX"] as const).filter((category) => categories.includes(category));
 type EventRow = typeof zero3EventsTable.$inferSelect;
 type RegistrationRow = typeof zero3RegistrationsTable.$inferSelect;
 type ResultRow = typeof zero3ResultsTable.$inferSelect;
@@ -112,6 +114,7 @@ function eventDto(event: EventRow) {
     proofName: event.proofName,
     status: event.status,
     preparationSeconds: event.preparationSeconds,
+    categories: event.categories,
     createdAt: event.createdAt,
   };
 }
@@ -301,7 +304,7 @@ async function eventResults(
 }
 
 async function eventScoring(event: EventRow) {
-  const [proofRows, registrationRows, resultRows] = await Promise.all([
+  const [proofRows, allRegistrationRows, allResultRows] = await Promise.all([
     ensureProofSlots(event.id),
     db
       .select()
@@ -312,6 +315,13 @@ async function eventScoring(event: EventRow) {
       .from(zero3ResultsTable)
       .where(eq(zero3ResultsTable.eventId, event.id)),
   ]);
+  const registrationRows = allRegistrationRows.filter(
+    (registration) => registration.confirmationStatus !== "CANCELLED",
+  );
+  const activeRegistrationIds = new Set(registrationRows.map((row) => row.id));
+  const resultRows = allResultRows.filter((result) =>
+    activeRegistrationIds.has(result.registrationId),
+  );
   const registrations = await registrationDtos(registrationRows);
   const proofs: ScoreProof[] = proofRows.map((proof) => ({
     id: proof.id,
@@ -322,7 +332,7 @@ async function eventScoring(event: EventRow) {
     direction: proof.direction,
   }));
   const calculated = calculateAllResultPlacements({
-    categories: ["SC", "RX"],
+    categories: event.categories,
     eventStatus: event.status,
     proofs,
     registrations,
@@ -352,7 +362,7 @@ async function eventScoring(event: EventRow) {
   };
 }
 
-async function activeHeatDtos(eventId: string) {
+async function activeHeatDtos(eventId: string, categories: Category[]) {
   const rows = await db
     .select()
     .from(zero3ActiveHeatsTable)
@@ -366,7 +376,7 @@ async function activeHeatDtos(eventId: string) {
     : [];
   const heatNameById = new Map(heats.map((heat) => [heat.id, heat.name]));
   return Promise.all(
-    (["SC", "RX"] as const).map(async (category) => {
+    categories.map(async (category) => {
       const active = rows.find((row) => row.category === category);
       return {
         eventId,
@@ -635,11 +645,16 @@ router.post(
       res.status(400).json({ error: parsed.error.message });
       return;
     }
+    if (parsed.data.categories && new Set(parsed.data.categories).size !== parsed.data.categories.length) {
+      res.status(400).json({ error: "A lista de categorias não pode conter duplicatas." });
+      return;
+    }
     const [event] = await db.transaction(async (tx) => {
       const [created] = await tx
         .insert(zero3EventsTable)
         .values({
           ...parsed.data,
+          categories: orderedCategories(parsed.data.categories ?? ["SC", "RX"]),
           proofName:
             parsed.data.proofName?.trim() ||
             "4 provas — configuração pendente",
@@ -678,9 +693,50 @@ router.patch(
       });
       return;
     }
+    if (body.data.categories && new Set(body.data.categories).size !== body.data.categories.length) {
+      res.status(400).json({ error: "A lista de categorias não pode conter duplicatas." });
+      return;
+    }
+    if (body.data.categories) {
+      const [registrations, heats, results, activeHeats, podiums] = await Promise.all([
+        db.select({ category: zero3RegistrationsTable.category })
+          .from(zero3RegistrationsTable)
+          .where(eq(zero3RegistrationsTable.eventId, params.data.eventId)),
+        db.select({ category: zero3HeatsTable.category })
+          .from(zero3HeatsTable)
+          .where(eq(zero3HeatsTable.eventId, params.data.eventId)),
+        db.select({ category: zero3ResultsTable.category })
+          .from(zero3ResultsTable)
+          .where(eq(zero3ResultsTable.eventId, params.data.eventId)),
+        db.select({ category: zero3ActiveHeatsTable.category })
+          .from(zero3ActiveHeatsTable)
+          .where(eq(zero3ActiveHeatsTable.eventId, params.data.eventId)),
+        db.select({ category: zero3PodiumsTable.category })
+          .from(zero3PodiumsTable)
+          .where(eq(zero3PodiumsTable.eventId, params.data.eventId)),
+      ]);
+      const configured = new Set(body.data.categories);
+      const used = [
+        ...registrations.map((row) => row.category),
+        ...heats.map((row) => row.category),
+        ...results.map((row) => row.category),
+        ...activeHeats.map((row) => row.category),
+        ...podiums.map((row) => row.category),
+      ];
+      const removedInUse = [...new Set(used)].filter((category) => !configured.has(category as Category));
+      if (removedInUse.length) {
+        res.status(409).json({
+          error: `Não é possível remover ${removedInUse.join(", ")}: a categoria já possui inscrições ou histórico.`,
+        });
+        return;
+      }
+    }
+    const updateData = body.data.categories
+      ? { ...body.data, categories: orderedCategories(body.data.categories) }
+      : body.data;
     const [event] = await db
       .update(zero3EventsTable)
-      .set(body.data)
+      .set(updateData)
       .where(eq(zero3EventsTable.id, params.data.eventId))
       .returning();
     if (!event) {
@@ -971,7 +1027,9 @@ router.get(
       .orderBy(zero3RegistrationsTable.createdAt);
     res.json(
       ListZero3RegistrationsResponse.parse(
-        await Promise.all(rows.map(registrationDto)),
+        await Promise.all(rows
+          .filter((row) => row.confirmationStatus !== "CANCELLED")
+          .map(registrationDto)),
       ),
     );
   },
@@ -1000,9 +1058,17 @@ router.post(
       res.status(404).json({ error: "Prova não encontrada." });
       return;
     }
+    if (!event.categories.includes(body.data.category)) {
+      res.status(400).json({ error: "A categoria não está habilitada para este evento." });
+      return;
+    }
     const athleteIds = [...new Set(body.data.athleteIds)];
     if (athleteIds.length !== body.data.athleteIds.length) {
       res.status(400).json({ error: "Há atletas duplicados nesta inscrição." });
+      return;
+    }
+    if (athleteIds.length !== 2) {
+      res.status(400).json({ error: "Uma dupla precisa conter exatamente dois atletas." });
       return;
     }
     const athletes = await db
@@ -1954,7 +2020,7 @@ router.get(
       getTimerDto(event),
       eventScoring(event),
       publicPodiums(event.id),
-      activeHeatDtos(event.id),
+      activeHeatDtos(event.id, event.categories),
     ]);
     const results = await eventResults(
       scoring.resultRows,

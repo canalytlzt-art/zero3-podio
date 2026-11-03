@@ -2,6 +2,11 @@ import {
   ApplyZero3RosterImportBody,
   ApplyZero3RosterImportParams,
   ApplyZero3RosterImportResponse,
+  CancelZero3RegistrationBody,
+  CancelZero3RegistrationParams,
+  CancelZero3RegistrationResponse,
+  DeleteZero3RegistrationParams,
+  DeleteZero3RegistrationResponse,
   GetZero3RosterManagementParams,
   GetZero3RosterManagementResponse,
   PreviewZero3RosterImportBody,
@@ -21,6 +26,8 @@ import {
   zero3ImportBatchesTable,
   zero3ImportPeopleTable,
   zero3ImportTeamsTable,
+  zero3HeatEntriesTable,
+  zero3PodiumsTable,
   zero3RegistrationAuditTable,
   zero3RegistrationMembersTable,
   zero3RegistrationsTable,
@@ -283,6 +290,16 @@ router.put(
           .select()
           .from(zero3RegistrationsTable)
           .where(eq(zero3RegistrationsTable.eventId, params.data.eventId));
+        const [event] = await tx
+          .select({ categories: zero3EventsTable.categories })
+          .from(zero3EventsTable)
+          .where(eq(zero3EventsTable.id, params.data.eventId))
+          .for("update")
+          .limit(1);
+        if (!event) throw new RosterInputError("Evento não encontrado.");
+        if (edits.some((edit) => !event.categories.includes(edit.category))) {
+          throw new RosterInputError("A categoria não está habilitada para este evento.");
+        }
         const currentById = new Map(current.map((registration) => [registration.id, registration]));
         const editedRegistrations = edits.map((edit) => {
           const registration = currentById.get(edit.registrationId);
@@ -369,6 +386,176 @@ router.put(
       }));
     } catch (error) {
       writeRosterError(req, res, error, "Não foi possível salvar as alterações das equipes.");
+    }
+  },
+);
+
+router.delete(
+  "/zero3/events/:eventId/registrations/:registrationId",
+  requireZero3Roles([...ADMIN_ONLY]),
+  async (req, res): Promise<void> => {
+    const params = DeleteZero3RegistrationParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [registration] = await tx
+          .select()
+          .from(zero3RegistrationsTable)
+          .where(and(
+            eq(zero3RegistrationsTable.id, params.data.registrationId),
+            eq(zero3RegistrationsTable.eventId, params.data.eventId),
+          ))
+          .for("update")
+          .limit(1);
+        if (!registration) return { kind: "missing" as const };
+
+        const [results, heatEntries, audits, importTeams, podiums, publishedPodiums] = await Promise.all([
+          tx.select({ id: zero3ResultsTable.id }).from(zero3ResultsTable)
+            .where(eq(zero3ResultsTable.registrationId, registration.id)),
+          tx.select({ registrationId: zero3HeatEntriesTable.registrationId }).from(zero3HeatEntriesTable)
+            .where(eq(zero3HeatEntriesTable.registrationId, registration.id)),
+          tx.select({ id: zero3RegistrationAuditTable.id }).from(zero3RegistrationAuditTable)
+            .where(eq(zero3RegistrationAuditTable.registrationId, registration.id)),
+          tx.select({ id: zero3ImportTeamsTable.id }).from(zero3ImportTeamsTable)
+            .where(eq(zero3ImportTeamsTable.registrationId, registration.id)),
+          tx.select({ eventId: zero3PodiumsTable.eventId }).from(zero3PodiumsTable)
+            .where(and(
+              eq(zero3PodiumsTable.eventId, registration.eventId),
+              sql`${zero3PodiumsTable.registrationIds} @> jsonb_build_array(${registration.id})`,
+            )),
+          tx.select({ eventId: zero3PodiumsTable.eventId }).from(zero3PodiumsTable)
+            .where(and(
+              eq(zero3PodiumsTable.eventId, registration.eventId),
+              eq(zero3PodiumsTable.published, true),
+              sql`${zero3PodiumsTable.registrationIds} @> jsonb_build_array(${registration.id})`,
+            )),
+        ]);
+        const hasHistory = results.length + heatEntries.length + audits.length +
+          importTeams.length + podiums.length > 0;
+        if (hasHistory) {
+          return { kind: "history" as const, canCancel: publishedPodiums.length === 0 };
+        }
+        const [deleted] = await tx.delete(zero3RegistrationsTable)
+          .where(and(
+            eq(zero3RegistrationsTable.id, registration.id),
+            eq(zero3RegistrationsTable.eventId, registration.eventId),
+          ))
+          .returning({ id: zero3RegistrationsTable.id });
+        return deleted ? { kind: "deleted" as const } : { kind: "missing" as const };
+      });
+      if (result.kind === "missing") {
+        res.status(404).json({ error: "Inscrição não encontrada." });
+      } else if (result.kind === "history") {
+        res.status(409).json({
+          code: "REGISTRATION_HAS_HISTORY",
+          canCancel: result.canCancel,
+          error: result.canCancel
+            ? "Esta inscrição possui resultados, bateria ou histórico. Cancele para preservar os registros."
+            : "Esta inscrição está em um pódio publicado. Atualize o pódio antes de cancelar.",
+        });
+      } else {
+        res.json(DeleteZero3RegistrationResponse.parse({
+          registrationId: params.data.registrationId,
+          deleted: true,
+        }));
+      }
+    } catch (error) {
+      writeRosterError(req, res, error, "Não foi possível excluir a inscrição.");
+    }
+  },
+);
+
+router.post(
+  "/zero3/events/:eventId/registrations/:registrationId/cancel",
+  requireZero3Roles([...ADMIN_ONLY]),
+  async (req, res): Promise<void> => {
+    const params = CancelZero3RegistrationParams.safeParse(req.params);
+    const body = CancelZero3RegistrationBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({
+        error: !params.success ? params.error.message : body.error?.message ?? "Informe o motivo.",
+      });
+      return;
+    }
+    const actorId = getAuth(req).userId;
+    if (!actorId) {
+      res.status(401).json({ error: "A sessão não informou um ID Clerk verificado." });
+      return;
+    }
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [registration] = await tx
+          .select()
+          .from(zero3RegistrationsTable)
+          .where(and(
+            eq(zero3RegistrationsTable.id, params.data.registrationId),
+            eq(zero3RegistrationsTable.eventId, params.data.eventId),
+          ))
+          .for("update")
+          .limit(1);
+        if (!registration) return "missing" as const;
+        if (registration.confirmationStatus === "CANCELLED") return "cancelled" as const;
+        const [publishedPodium] = await tx
+          .select({ eventId: zero3PodiumsTable.eventId })
+          .from(zero3PodiumsTable)
+          .where(and(
+            eq(zero3PodiumsTable.eventId, registration.eventId),
+            eq(zero3PodiumsTable.published, true),
+            sql`${zero3PodiumsTable.registrationIds} @> jsonb_build_array(${registration.id})`,
+          ))
+          .limit(1);
+        if (publishedPodium) return "published-podium" as const;
+
+        const afterState = { ...registration, confirmationStatus: "CANCELLED" };
+        const [updated] = await tx.update(zero3RegistrationsTable)
+          .set({ confirmationStatus: "CANCELLED" })
+          .where(and(
+            eq(zero3RegistrationsTable.id, registration.id),
+            eq(zero3RegistrationsTable.confirmationStatus, registration.confirmationStatus),
+          ))
+          .returning({ id: zero3RegistrationsTable.id });
+        if (!updated) return "cancelled" as const;
+        await tx.insert(zero3RegistrationAuditTable).values({
+          eventId: registration.eventId,
+          registrationId: registration.id,
+          actorId,
+          reason: body.data.reason.trim(),
+          beforeState: {
+            teamName: registration.teamName,
+            category: registration.category,
+            athleteIds: registration.athleteIds,
+            confirmationStatus: registration.confirmationStatus,
+            paymentStatus: registration.paymentStatus,
+          },
+          afterState: {
+            teamName: registration.teamName,
+            category: registration.category,
+            athleteIds: registration.athleteIds,
+            confirmationStatus: "CANCELLED",
+            paymentStatus: registration.paymentStatus,
+          },
+        });
+        return "ok" as const;
+      });
+      if (result === "missing") {
+        res.status(404).json({ error: "Inscrição não encontrada." });
+      } else if (result === "cancelled") {
+        res.status(409).json({ error: "A inscrição já está cancelada." });
+      } else if (result === "published-podium") {
+        res.status(409).json({
+          error: "A inscrição está em um pódio publicado. Atualize o pódio antes de cancelar.",
+        });
+      } else {
+        res.json(CancelZero3RegistrationResponse.parse({
+          registrationId: params.data.registrationId,
+          cancelled: true,
+        }));
+      }
+    } catch (error) {
+      writeRosterError(req, res, error, "Não foi possível cancelar a inscrição.");
     }
   },
 );

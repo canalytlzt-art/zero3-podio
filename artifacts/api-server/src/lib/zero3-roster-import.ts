@@ -290,8 +290,12 @@ export function validateRosterManagementEdit(input: {
   athleteIds: string[];
   existingAthleteIds: Set<string>;
 }): string | null {
-  if (input.athleteIds.length !== 2) return "A equipe precisa ter exatamente dois atletas.";
-  if (new Set(input.athleteIds).size !== 2) return "A equipe precisa ter dois atletas distintos.";
+  if (input.athleteIds.length < 1 || input.athleteIds.length > 2) {
+    return "A equipe precisa ter um ou dois atletas.";
+  }
+  if (new Set(input.athleteIds).size !== input.athleteIds.length) {
+    return "A equipe não pode repetir o mesmo atleta.";
+  }
   if (input.athleteIds.some((id) => !input.existingAthleteIds.has(id))) {
     return "Selecione atletas cadastrados.";
   }

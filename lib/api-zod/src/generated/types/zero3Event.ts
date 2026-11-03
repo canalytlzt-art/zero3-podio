@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Zero3Category } from './zero3Category';
 import type { Zero3EventStatus } from './zero3EventStatus';
 
 export interface Zero3Event {
@@ -13,5 +14,10 @@ export interface Zero3Event {
   proofName: string;
   status: Zero3EventStatus;
   preparationSeconds: number;
+  /**
+     * @minItems 1
+     * @maxItems 2
+     */
+  categories: Zero3Category[];
   createdAt: Date;
 }

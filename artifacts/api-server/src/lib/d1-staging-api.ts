@@ -26,7 +26,7 @@ type D1Env = { DB: D1Database };
 type Member = { clerk_user_id: string; email: string; role: string; active: number };
 type EventRow = {
   id: string; name: string; proof_name: string; status: string;
-  preparation_seconds: number; created_at: string;
+  preparation_seconds: number; categories: string; created_at: string;
 };
 type ProofRow = {
   id: string; event_id: string; proof_order: number; name: string;
@@ -35,7 +35,7 @@ type ProofRow = {
 };
 type RegistrationRow = {
   id: string; event_id: string; category: string; team_name: string | null;
-  athlete_ids: string; lane_label: string | null; created_at: string;
+  athlete_ids: string; lane_label: string | null; confirmation_status: string; created_at: string;
 };
 type ResultRow = {
   id: string; event_id: string; registration_id: string; proof_id: string | null;
@@ -117,7 +117,9 @@ async function requireD1Role(
 function eventDto(row: EventRow) {
   return {
     id: row.id, name: row.name, proofName: row.proof_name, status: row.status,
-    preparationSeconds: row.preparation_seconds, createdAt: date(row.created_at),
+    preparationSeconds: row.preparation_seconds,
+    categories: jsonArray(row.categories) as Array<"SC" | "RX">,
+    createdAt: date(row.created_at),
   };
 }
 
@@ -157,15 +159,16 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     }>(),
   ]);
   const proofs = proofResult.results;
-  const registrations = regResult.results;
-  const results = resultResult.results;
+  const registrations = regResult.results.filter((row) => row.confirmation_status !== "CANCELLED");
+  const activeRegistrationIds = new Set(registrations.map((row) => row.id));
+  const results = resultResult.results.filter((row) => activeRegistrationIds.has(row.registration_id));
   const athleteNames = new Map(athleteResult.results.map((athlete) => [athlete.id, athlete.full_name]));
   const registrationsDto = registrations.map((reg) => ({
     id: reg.id, category: reg.category as "SC" | "RX", teamName: reg.team_name,
     laneLabel: reg.lane_label, athleteNames: jsonArray(reg.athlete_ids).map((athleteId) => athleteNames.get(athleteId) ?? "Atleta removido"),
   }));
   const scoring = calculateAllResultPlacements({
-    categories: ["SC", "RX"],
+    categories: jsonArray(event.categories) as Array<"SC" | "RX">,
     eventStatus: event.status,
     proofs: proofs.map((proof) => ({
       id: proof.id, order: proof.proof_order, name: proof.name,
@@ -222,7 +225,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     preparationSeconds: event.preparation_seconds,
     startedAt: date(timer.started_at), version: timer.version, updatedAt: date(timer.updated_at),
   } : undefined;
-  const activeHeats = (["SC", "RX"] as const).map((category) => {
+  const activeHeats = (jsonArray(event.categories) as Array<"SC" | "RX">).map((category) => {
     const row = activeResult.results.find((item) => item.category === category);
     return { eventId: event.id, category, heatId: row?.heat_id ?? null, heatName: row?.heat_name ?? null, updatedAt: date(row?.updated_at) ?? new Date(0) };
   });
@@ -349,7 +352,7 @@ export function d1StagingApi(
         const member = await requireD1Role(req, res, DB, ["ADMIN", "JUIZ_CHEFE", "JUIZ"]);
         if (!member) return;
         try {
-          const rows = await DB.prepare("SELECT * FROM zero3_registrations WHERE event_id=? ORDER BY created_at").bind(registrationsMatch[1]).all<RegistrationRow>();
+          const rows = await DB.prepare("SELECT * FROM zero3_registrations WHERE event_id=? AND confirmation_status<>'CANCELLED' ORDER BY created_at").bind(registrationsMatch[1]).all<RegistrationRow>();
           const athletes = await DB.prepare("SELECT id,full_name FROM zero3_athletes").all<{id:string;full_name:string}>();
           const names = new Map(athletes.results.map((athlete) => [athlete.id, athlete.full_name]));
           res.json(ListZero3RegistrationsResponse.parse(rows.results.map((row) => ({

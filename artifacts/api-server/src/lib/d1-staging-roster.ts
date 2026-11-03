@@ -247,8 +247,14 @@ export async function handleD1StagingRoster(
     const ids = edits.map((edit) => edit.registrationId);
     if (new Set(ids).size !== ids.length) { res.status(400).json({ error: "A mesma equipe não pode aparecer duas vezes na alteração." }); return true; }
     try {
-      const event = await DB.prepare("SELECT id FROM zero3_events WHERE id=?").bind(params.data.eventId).first<{ id: string }>();
+      const event = await DB.prepare("SELECT id,categories FROM zero3_events WHERE id=?")
+        .bind(params.data.eventId).first<{ id: string; categories: string }>();
       if (!event) { res.status(404).json({ error: "A edição selecionada não existe." }); return true; }
+      const enabledCategories = new Set(d1JsonArray(event.categories));
+      if (edits.some((edit) => !enabledCategories.has(edit.category))) {
+        res.status(400).json({ error: "A categoria não está habilitada para este evento." });
+        return true;
+      }
       const currentResult = await DB.prepare(`SELECT * FROM zero3_registrations WHERE event_id=?
         AND id IN (${ids.map(() => "?").join(",")})`).bind(params.data.eventId, ...ids).all<RegistrationRow>();
       if (currentResult.results.length !== ids.length) { res.status(400).json({ error: "Uma equipe não pertence à edição selecionada." }); return true; }

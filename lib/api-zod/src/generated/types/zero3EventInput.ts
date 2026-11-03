@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Zero3Category } from './zero3Category';
 
 export interface Zero3EventInput {
   /** @minLength 1 */
@@ -16,4 +17,9 @@ export interface Zero3EventInput {
      * @maximum 120
      */
   preparationSeconds: number;
+  /**
+     * @minItems 1
+     * @maxItems 2
+     */
+  categories?: Zero3Category[];
 }

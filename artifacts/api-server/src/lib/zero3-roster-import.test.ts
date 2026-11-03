@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { CreateZero3RegistrationBody } from "@workspace/api-zod";
 import {
   buildRosterImportPlan,
   rosterSourceContentHash,
@@ -138,11 +139,21 @@ describe("ZERO3 roster import planning", () => {
 });
 
 describe("ZERO3 team management validation", () => {
-  it("requires exactly two distinct existing athletes", () => {
+  it("allows one or two distinct existing athletes", () => {
     const existingAthleteIds = new Set(["a", "b", "c"]);
-    assert.equal(validateRosterManagementEdit({ athleteIds: ["a"], existingAthleteIds }), "A equipe precisa ter exatamente dois atletas.");
-    assert.equal(validateRosterManagementEdit({ athleteIds: ["a", "a"], existingAthleteIds }), "A equipe precisa ter dois atletas distintos.");
+    assert.equal(validateRosterManagementEdit({ athleteIds: [], existingAthleteIds }), "A equipe precisa ter um ou dois atletas.");
+    assert.equal(validateRosterManagementEdit({ athleteIds: ["a", "b", "c"], existingAthleteIds }), "A equipe precisa ter um ou dois atletas.");
+    assert.equal(validateRosterManagementEdit({ athleteIds: ["a", "a"], existingAthleteIds }), "A equipe não pode repetir o mesmo atleta.");
     assert.equal(validateRosterManagementEdit({ athleteIds: ["a", "missing"], existingAthleteIds }), "Selecione atletas cadastrados.");
+    assert.equal(validateRosterManagementEdit({ athleteIds: ["a"], existingAthleteIds }), null);
     assert.equal(validateRosterManagementEdit({ athleteIds: ["a", "b"], existingAthleteIds }), null);
+  });
+});
+
+describe("ZERO3 registration creation contract", () => {
+  it("requires exactly two athletes for a new event registration", () => {
+    assert.equal(CreateZero3RegistrationBody.safeParse({ category: "SC", athleteIds: ["a"] }).success, false);
+    assert.equal(CreateZero3RegistrationBody.safeParse({ category: "SC", athleteIds: ["a", "b"] }).success, true);
+    assert.equal(CreateZero3RegistrationBody.safeParse({ category: "SC", athleteIds: ["a", "b", "c"] }).success, false);
   });
 });
