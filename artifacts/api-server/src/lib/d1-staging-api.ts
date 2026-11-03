@@ -463,7 +463,16 @@ export function d1StagingApi(
       if (await handleD1StagingAdmin(req, res, DB)) return;
       if (await handleD1StagingRoster(req, res, DB, options.allowRosterApply)) return;
       if (await handleD1StagingControls(req, res, DB)) return;
-      res.status(501).json({ code: "D1_ROUTE_NOT_IMPLEMENTED", error: "Esta rota ainda não foi migrada para D1 neste staging." });
+      const diagnosticId = requestId(req) ?? crypto.randomUUID();
+      workerLogger.error(
+        { requestId: diagnosticId, method: req.method, path: route },
+        "D1 staging API route not implemented",
+      );
+      res.status(501).json({
+        code: "D1_ROUTE_NOT_IMPLEMENTED",
+        error: "Esta rota ainda não foi migrada para D1 neste staging.",
+        requestId: diagnosticId,
+      });
     })().catch(() => {
       error(res, 500, "API_INTERNAL_ERROR", "Falha interna da API D1.", req);
     });

@@ -14,3 +14,9 @@ The remote D1 `zero3-podio-dev` already has the initial tables and the manually 
 **Why:** Applying the checked-in initial migrations to a database whose schema was created outside Wrangler can collide with existing tables or columns, despite the actual schema being present.
 
 **How to apply:** Before any remote migration, compare tables, indexes, and columns with the migration files and decide how to baseline migration history without replacing or deleting existing records.
+
+An unauthenticated 401 confirms only that a protected route reached its session guard; it does not prove the authenticated path works. When reports conflict, correlate the same Worker version, HTTP method, route, and request ID, and keep Replit Preview evidence separate from Cloudflare staging evidence.
+
+**Why:** Staging returned 401 without a session while a browser report showed 501 for the same endpoint; the status difference could not be explained by the unauthenticated check alone.
+
+**How to apply:** Use a real authorized session for protected-route validation. Ensure fallback 501 responses carry a request ID so the exact dispatch failure can be correlated safely.
