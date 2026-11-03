@@ -2,7 +2,7 @@
 # This configuration targets only the user-identified Development D1.
 # Do not copy this binding into the production wrangler.toml.
 name = "zero3-games-d1-staging"
-main = "artifacts/api-server/src/worker.ts"
+main = "artifacts/api-server/src/worker-d1-staging.ts"
 compatibility_date = "2026-10-30"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 

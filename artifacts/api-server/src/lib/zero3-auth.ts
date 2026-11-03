@@ -65,26 +65,11 @@ export async function resolveZero3Member(
         "authorization_role_query",
       );
       try {
-        let [currentMember] = await database
+        const [currentMember] = await database
           .select()
           .from(zero3MembersTable)
           .where(eq(zero3MembersTable.email, email))
           .limit(1);
-
-        const initialAdminEmail = process.env.ZERO3_INITIAL_ADMIN_EMAIL
-          ?.trim()
-          .toLowerCase();
-        if (!currentMember && initialAdminEmail && email === initialAdminEmail) {
-          await database
-            .insert(zero3MembersTable)
-            .values({ email, role: "ADMIN", active: true })
-            .onConflictDoNothing();
-          [currentMember] = await database
-            .select()
-            .from(zero3MembersTable)
-            .where(eq(zero3MembersTable.email, email))
-            .limit(1);
-        }
 
         finishRoleQuery(undefined, {
           memberFound: Boolean(currentMember),
