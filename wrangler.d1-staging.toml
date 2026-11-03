@@ -5,6 +5,7 @@ name = "zero3-games-d1-staging"
 main = "artifacts/api-server/src/worker-d1-staging.ts"
 compatibility_date = "2026-10-30"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
+keep_vars = true
 
 [vars]
 ZERO3_CLOUDFLARE_WORKER = "true"
@@ -18,6 +19,6 @@ run_worker_first = ["/api/*"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "zero3-games-d1-staging"
+database_name = "zero3-podio-dev"
 database_id = "60416dac-0da6-48d9-a2d2-c267760f4b7a"
 migrations_dir = "lib/db/d1-migrations"
