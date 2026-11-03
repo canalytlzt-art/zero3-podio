@@ -9,6 +9,12 @@ Replit-managed PostgreSQL is for application access inside Replit and does not e
 
 **How to apply:** Keep Replit's API on its current `DATABASE_URL`; use Hyperdrive only for the separate Neon test database. Inspect before schema changes and preserve `neon_auth` relations. Use Wrangler for local checks only; do not deploy or push from this workspace unless explicitly asked. Do not copy or migrate Replit records, bind Hyperdrive to the Replit-managed database, or use a tunnel/personal proxy.
 
+For local Wrangler, a shell-exported Clerk runtime value is not necessarily injected into the Worker binding. Use Wrangler's `--var`/local development binding mechanism for non-secret synthetic test values; never print or substitute real Clerk credentials. A synthetic key can test unauthenticated routes only, not a real session.
+
+**Why:** Wrangler local testing returned a missing-secret error even when the value was present only in the parent shell; the Worker received a binding only when it was supplied through Wrangler's local variable mechanism.
+
+**How to apply:** Use fake values for local boot and no-session HTTP tests, and state that they do not validate the configured Clerk instance. Use the proper workspace secret flow only when a real credential-dependent test is necessary.
+
 For Worker requests, carry the Drizzle handle in `AsyncLocalStorage` so concurrent requests never depend on a mutable global current-database pointer. A concurrency-safe pool may be shared within the isolate only while it remains bound to that isolate's single Hyperdrive connection string; keep Node/Replit's `DATABASE_URL` pool separate.
 
 **Why:** Cloudflare reuses Worker isolates across requests, and request-scoped state must remain isolated while the underlying pool safely multiplexes connections.

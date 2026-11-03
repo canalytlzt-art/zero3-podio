@@ -299,6 +299,112 @@ paths:
           description: Invalid or duplicate registration
         "401":
           description: Authentication required
+  /zero3/events/{eventId}/roster-management:
+    get:
+      operationId: getZero3RosterManagement
+      tags: [zero3]
+      summary: List event teams and registration statuses for administrators
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Event teams with payment, confirmation, and history counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Zero3RosterManagementEntry" }
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+    put:
+      operationId: updateZero3RosterManagement
+      tags: [zero3]
+      summary: Atomically update one or two event teams
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3RosterManagementUpdateInput" }
+      responses:
+        "200":
+          description: Updated teams and audit entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3RosterManagementUpdateResponse" }
+        "400":
+          description: Invalid team composition or status
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "409":
+          description: Duplicate athlete or explicit result-history decision required
+  /zero3/events/{eventId}/roster-import/preview:
+    post:
+      operationId: previewZero3RosterImport
+      tags: [zero3]
+      summary: Simulate the approved roster import without writing data
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3RosterImportPreviewInput" }
+      responses:
+        "200":
+          description: Source data, exact database candidates, and planned changes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3RosterImportPreviewResponse" }
+        "400":
+          description: Invalid category mapping or unresolved source references
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+  /zero3/events/{eventId}/roster-import/apply:
+    post:
+      operationId: applyZero3RosterImport
+      tags: [zero3]
+      summary: Apply a reviewed roster import atomically
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3RosterImportApplyInput" }
+      responses:
+        "200":
+          description: Import applied or safely recognized as already applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3RosterImportApplyResponse" }
+        "400":
+          description: Invalid import plan
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role or non-production import gate required
+        "409":
+          description: Plan changed, identity conflict, or source content changed
   /zero3/events/{eventId}/registrations/{registrationId}:
     patch:
       operationId: updateZero3Registration
@@ -724,6 +830,181 @@ components:
       properties:
         teamName: { type: ["string", "null"] }
       required: [teamName]
+    Zero3RegistrationConfirmationStatus:
+      type: string
+      enum: [INTERESTED, PENDING, CONFIRMED, CANCELLED]
+    Zero3RegistrationPaymentStatus:
+      type: string
+      enum: [UNVERIFIED, PENDING, PAID, NOT_PAID]
+    Zero3RosterManagementAuditEntry:
+      type: object
+      properties:
+        id: { type: string }
+        actorId: { type: string }
+        reason: { type: string }
+        beforeState: { type: object, additionalProperties: true }
+        afterState: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, actorId, reason, beforeState, afterState, createdAt]
+    Zero3RosterManagementEntry:
+      type: object
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        teamName: { type: ["string", "null"] }
+        athleteIds: { type: array, minItems: 1, items: { type: string } }
+        athleteNames: { type: array, items: { type: string } }
+        confirmationStatus: { $ref: "#/components/schemas/Zero3RegistrationConfirmationStatus" }
+        paymentStatus: { $ref: "#/components/schemas/Zero3RegistrationPaymentStatus" }
+        resultCount: { type: integer, minimum: 0 }
+        sourceCodes: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        audit:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3RosterManagementAuditEntry" }
+      required: [id, eventId, category, athleteIds, athleteNames, confirmationStatus, paymentStatus, resultCount, sourceCodes, createdAt, audit]
+    Zero3RosterManagementEdit:
+      type: object
+      properties:
+        registrationId: { type: string }
+        teamName: { type: ["string", "null"] }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        athleteIds:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { type: string }
+        confirmationStatus: { $ref: "#/components/schemas/Zero3RegistrationConfirmationStatus" }
+        paymentStatus: { $ref: "#/components/schemas/Zero3RegistrationPaymentStatus" }
+        reason: { type: string, minLength: 3 }
+      required: [registrationId, category, athleteIds, confirmationStatus, paymentStatus, reason]
+    Zero3RosterManagementUpdateInput:
+      type: object
+      properties:
+        edits:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items: { $ref: "#/components/schemas/Zero3RosterManagementEdit" }
+        confirmHistoryImpact: { type: boolean }
+      required: [edits, confirmHistoryImpact]
+    Zero3RosterManagementUpdateResponse:
+      type: object
+      properties:
+        registrations:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3RosterManagementEntry" }
+      required: [registrations]
+    Zero3RosterImportResolution:
+      type: object
+      properties:
+        sourceKey: { type: string }
+        action: { type: string, enum: [CREATE, REUSE] }
+        athleteId: { type: ["string", "null"] }
+      required: [sourceKey, action, athleteId]
+    Zero3RosterImportPreviewInput:
+      type: object
+      properties:
+        scaleTargetCategory:
+          type: string
+          enum: [SC]
+        resolutions:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3RosterImportResolution" }
+      required: [scaleTargetCategory, resolutions]
+    Zero3RosterImportPerson:
+      type: object
+      properties:
+        sourceKey: { type: string }
+        sourceCode: { type: string }
+        sourceCell: { type: string }
+        fullName: { type: string }
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3Athlete" }
+        resolutionAction: { type: ["string", "null"], enum: [CREATE, REUSE, null] }
+        resolvedAthleteId: { type: ["string", "null"] }
+      required: [sourceKey, sourceCode, sourceCell, fullName, candidates, resolutionAction, resolvedAthleteId]
+    Zero3RosterImportTeam:
+      type: object
+      properties:
+        sourceCode: { type: string }
+        sourceCategory: { type: string, enum: [RX, SCALE] }
+        sourceRow: { type: integer }
+        sourceCells:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { type: string }
+        athleteNames:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { type: string }
+        targetCategory: { $ref: "#/components/schemas/Zero3Category" }
+        existingRegistrationId: { type: ["string", "null"] }
+        conflict: { type: ["string", "null"] }
+        confirmationStatus: { $ref: "#/components/schemas/Zero3RegistrationConfirmationStatus" }
+        paymentStatus: { $ref: "#/components/schemas/Zero3RegistrationPaymentStatus" }
+      required: [sourceCode, sourceCategory, sourceRow, sourceCells, athleteNames, targetCategory, existingRegistrationId, conflict, confirmationStatus, paymentStatus]
+    Zero3RosterImportPreviewResponse:
+      type: object
+      properties:
+        event: { $ref: "#/components/schemas/Zero3Event" }
+        datasetKey: { type: string }
+        sourceFile: { type: string }
+        sourceSheet: { type: string }
+        contentHash: { type: string }
+        environment: { type: string }
+        alreadyApplied: { type: boolean }
+        isDemoTarget: { type: boolean }
+        people: { type: array, items: { $ref: "#/components/schemas/Zero3RosterImportPerson" } }
+        teams: { type: array, items: { $ref: "#/components/schemas/Zero3RosterImportTeam" } }
+        counts:
+          type: object
+          properties:
+            sourcePeople: { type: integer }
+            sourceTeams: { type: integer }
+            peopleToCreate: { type: integer }
+            peopleToReuse: { type: integer }
+            unresolvedPeople: { type: integer }
+            teamsToCreate: { type: integer }
+            teamsToReuse: { type: integer }
+            conflicts: { type: integer }
+          required: [sourcePeople, sourceTeams, peopleToCreate, peopleToReuse, unresolvedPeople, teamsToCreate, teamsToReuse, conflicts]
+        excludedSourceNotes:
+          type: array
+          items:
+            type: object
+            properties:
+              cells: { type: array, items: { type: string } }
+              text: { type: string }
+            required: [cells, text]
+      required: [event, datasetKey, sourceFile, sourceSheet, contentHash, environment, alreadyApplied, isDemoTarget, people, teams, counts, excludedSourceNotes]
+    Zero3RosterImportApplyInput:
+      type: object
+      properties:
+        scaleTargetCategory:
+          type: string
+          enum: [SC]
+        resolutions:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3RosterImportResolution" }
+        contentHash: { type: string }
+        confirmDemoEvent: { type: boolean }
+      required: [scaleTargetCategory, resolutions, contentHash, confirmDemoEvent]
+    Zero3RosterImportApplyResponse:
+      type: object
+      properties:
+        batchId: { type: string }
+        alreadyApplied: { type: boolean }
+        createdPeople: { type: integer }
+        reusedPeople: { type: integer }
+        createdTeams: { type: integer }
+        reusedTeams: { type: integer }
+        registrationIds: { type: array, items: { type: string } }
+      required: [batchId, alreadyApplied, createdPeople, reusedPeople, createdTeams, reusedTeams, registrationIds]
     Zero3Heat:
       type: object
       properties:

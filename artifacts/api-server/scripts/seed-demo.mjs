@@ -6,6 +6,7 @@ import {
   zero3EventsTable,
   zero3ProofsTable,
   zero3PodiumsTable,
+  zero3RegistrationMembersTable,
   zero3RegistrationsTable,
   zero3ResultsTable,
 } from "@workspace/db";
@@ -129,6 +130,16 @@ try {
           })),
         )
         .returning();
+      await tx.insert(zero3RegistrationMembersTable).values(
+        registrationRows.flatMap((registration) =>
+          registration.athleteIds.map((athleteId, index) => ({
+            registrationId: registration.id,
+            eventId: registration.eventId,
+            athleteId,
+            slot: index + 1,
+          })),
+        ),
+      );
 
       const resultValues = teams.flatMap((team, index) =>
         proofRows.map((proof, proofIndex) => {
@@ -145,6 +156,9 @@ try {
             proofId: proof.id,
             category: team.category,
             laneLabel: registration.laneLabel,
+            athleteIdsSnapshot: registration.athleteIds,
+            athleteNamesSnapshot: athleteRows.slice(index * 2, index * 2 + 2).map((athlete) => athlete.fullName),
+            teamNameSnapshot: registration.teamName,
             rawValue: String(rawValue),
             status: "VALIDATED",
             idempotencyKey: `demo:${event.id}:${proof.id}:${registration.id}`,

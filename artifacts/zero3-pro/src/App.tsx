@@ -9,8 +9,11 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useSearch } from 'wouter';
 import { getGetZero3MeQueryKey, useGetZero3Me } from '@workspace/api-client-react';
+import { isSessionScopedZero3QueryKey } from './lib/session-query-cache';
 import { Zero3Role } from '@workspace/api-client-react';
 import { DashboardPage, EventDetailPage, EventsPage, MembersPage, RosterPage } from '@/pages/AdminPages';
+import { RosterManagePage } from '@/pages/RosterManagePage';
+import { RosterImportPage } from '@/pages/RosterImportPage';
 import { PublicTV } from '@/pages/PublicTV';
 import { OperationPage } from '@/pages/OperationPage';
 import {
@@ -73,7 +76,7 @@ const clerkAppearance = {
 
 function CacheInvalidator(){
   const {addListener}=useClerk();const qc=useQueryClient();const prev=useRef<string|null|undefined>(undefined);
-  useEffect(()=>addListener(({user})=>{const id=user?.id??null;if(prev.current!==undefined&&prev.current!==id)qc.clear();prev.current=id;}),[addListener,qc]);
+  useEffect(()=>addListener(({user})=>{const id=user?.id??null;if(prev.current!==undefined&&prev.current!==id)qc.removeQueries({predicate:({queryKey})=>isSessionScopedZero3QueryKey(queryKey)});prev.current=id;}),[addListener,qc]);
   return null;
 }
 
@@ -126,8 +129,9 @@ function apiErrorRequestId(error:unknown):string|undefined{
 function RetryButton({retry}:{retry:()=>void}){return <button className="button" style={{marginTop:12}} onClick={retry}>Verificar autorização novamente</button>}
 function ReauthenticateButton({redirectTo}:{redirectTo:string}){
   const {signOut}=useClerk();
+  const qc=useQueryClient();
   const [error,setError]=useState(false);
-  return <><button className="button primary" style={{marginTop:12}} onClick={()=>{setError(false);void endCurrentSessionForReauthentication(signOut,redirectTo).catch(()=>setError(true));}}>Encerrar sessão e entrar novamente</button>{error&&<p role="alert" className="lede" style={{marginTop:10}}>Não foi possível encerrar a sessão agora. Recarregue e tente novamente.</p>}</>;
+  return <><button className="button primary" style={{marginTop:12}} onClick={()=>{setError(false);qc.removeQueries({predicate:({queryKey})=>isSessionScopedZero3QueryKey(queryKey)});void endCurrentSessionForReauthentication(signOut,redirectTo).catch(()=>setError(true));}}>Encerrar sessão e entrar novamente</button>{error&&<p role="alert" className="lede" style={{marginTop:10}}>Não foi possível encerrar a sessão agora. Recarregue e tente novamente.</p>}</>;
 }
 
 function useSanitizedClerkRedirects(){
@@ -207,6 +211,8 @@ function AppRoutes(){
       <Route path="/admin/events/:eventId"><Protected><EventDetailPage/></Protected></Route>
       <Route path="/admin/events"><Protected><EventsPage/></Protected></Route>
       <Route path="/admin/roster"><Protected><RosterPage/></Protected></Route>
+      <Route path="/admin/roster/manage"><Protected><RosterManagePage/></Protected></Route>
+      <Route path="/admin/roster/import"><Protected><RosterImportPage/></Protected></Route>
       <Route path="/admin/members"><Protected><MembersPage/></Protected></Route>
       <Route path="/admin"><Protected><DashboardPage/></Protected></Route>
       <Route component={NotFound}/>

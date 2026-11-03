@@ -1,4 +1,4 @@
-import { Activity, ClipboardList, Users, UserRound, LayoutDashboard, LogOut, Radio } from 'lucide-react';
+import { Activity, ClipboardList, Users, UserRound, LayoutDashboard, LogOut, Radio, ListChecks, FileSpreadsheet } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { useClerk, useUser } from '@clerk/react';
 import type { ReactNode } from 'react';
@@ -9,6 +9,8 @@ const nav = [
   { href: '/admin/events', label: 'Eventos', icon: ClipboardList },
   { href: '/operacao', label: 'Operação', icon: Activity },
   { href: '/admin/roster', label: 'Atletas', icon: UserRound },
+  { href: '/admin/roster/manage', label: 'Equipes', icon: ListChecks },
+  { href: '/admin/roster/import', label: 'Importar duplas', icon: FileSpreadsheet },
   { href: '/admin/members', label: 'Equipe de operação', icon: Users },
 ];
 
@@ -40,5 +42,5 @@ export function PageHeading({ eyebrow, title, detail, children }: { eyebrow: str
 }
 
 export function LoadingRows() { return <div style={{display:'grid',gap:10}} aria-label="Carregando"><div className="skeleton"/><div className="skeleton"/><div className="skeleton"/></div>; }
-export function QueryError({ retry }: { retry: () => void }) { return <div className="error-box" role="alert"><span>Não foi possível conectar aos dados da operação.</span><button className="button small" onClick={retry}>Tentar novamente</button></div>; }
+export function QueryError({ retry, testId = 'button-query-retry' }: { retry: () => void; testId?: string }) { return <div className="error-box" role="alert"><span>Não foi possível conectar aos dados da operação.</span><button className="button small" data-testid={testId} onClick={retry}>Tentar novamente</button></div>; }
 export function EmptyState({ title, detail }: { title: string; detail: string }) { return <div className="empty"><div className="empty-mark"><Activity size={17}/></div><strong>{title}</strong><p>{detail}</p></div>; }

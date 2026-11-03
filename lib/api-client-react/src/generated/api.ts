@@ -54,6 +54,13 @@ import type {
   Zero3Result,
   Zero3ResultInput,
   Zero3ResultUpdate,
+  Zero3RosterImportApplyInput,
+  Zero3RosterImportApplyResponse,
+  Zero3RosterImportPreviewInput,
+  Zero3RosterImportPreviewResponse,
+  Zero3RosterManagementEntry,
+  Zero3RosterManagementUpdateInput,
+  Zero3RosterManagementUpdateResponse,
   Zero3Timer,
   Zero3TimerCommand
 } from './api.schemas';
@@ -1328,6 +1335,374 @@ export const useCreateZero3Registration = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCreateZero3RegistrationMutationOptions(options), queryClient);
+    }
+
+export const getGetZero3RosterManagementUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/roster-management`
+}
+
+/**
+ * @summary List event teams and registration statuses for administrators
+ */
+export const getZero3RosterManagement = async (eventId: string, options?: Parameters<typeof customFetch>[1]): Promise<Zero3RosterManagementEntry[]> => {
+
+  return customFetch<Zero3RosterManagementEntry[]>(getGetZero3RosterManagementUrl(eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetZero3RosterManagementQueryKey = (eventId: string,) => {
+    return [
+    `/api/zero3/events/${eventId}/roster-management`
+    ] as const;
+    }
+
+
+export const getGetZero3RosterManagementQueryOptions = <TData = Awaited<ReturnType<typeof getZero3RosterManagement>>, TError = ErrorType<void>>(eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RosterManagement>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetZero3RosterManagementQueryKey(eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getZero3RosterManagement>>> = ({ signal }) => getZero3RosterManagement(eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getZero3RosterManagement>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetZero3RosterManagementQueryResult = NonNullable<Awaited<ReturnType<typeof getZero3RosterManagement>>>
+export type GetZero3RosterManagementQueryError = ErrorType<void>
+
+
+export function useGetZero3RosterManagement<TData = Awaited<ReturnType<typeof getZero3RosterManagement>>, TError = ErrorType<void>>(
+ eventId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RosterManagement>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getZero3RosterManagement>>,
+          TError,
+          Awaited<ReturnType<typeof getZero3RosterManagement>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetZero3RosterManagement<TData = Awaited<ReturnType<typeof getZero3RosterManagement>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RosterManagement>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getZero3RosterManagement>>,
+          TError,
+          Awaited<ReturnType<typeof getZero3RosterManagement>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetZero3RosterManagement<TData = Awaited<ReturnType<typeof getZero3RosterManagement>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RosterManagement>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List event teams and registration statuses for administrators
+ */
+
+export function useGetZero3RosterManagement<TData = Awaited<ReturnType<typeof getZero3RosterManagement>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RosterManagement>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetZero3RosterManagementQueryOptions(eventId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateZero3RosterManagementUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/roster-management`
+}
+
+/**
+ * @summary Atomically update one or two event teams
+ */
+export const updateZero3RosterManagement = async (eventId: string,
+    zero3RosterManagementUpdateInput: Zero3RosterManagementUpdateInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3RosterManagementUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3RosterManagementUpdateResponse>(getUpdateZero3RosterManagementUrl(eventId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3RosterManagementUpdateInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateZero3RosterManagementMutationKey = () => ['updateZero3RosterManagement'] as const;
+
+export const getUpdateZero3RosterManagementMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateZero3RosterManagement>>, TError,UpdateZero3RosterManagementMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateZero3RosterManagement>>, TError,UpdateZero3RosterManagementMutationVariables, TContext> => {
+
+const mutationKey = getUpdateZero3RosterManagementMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateZero3RosterManagement>>, UpdateZero3RosterManagementMutationVariables> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  updateZero3RosterManagement(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateZero3RosterManagementMutationResult = NonNullable<Awaited<ReturnType<typeof updateZero3RosterManagement>>>
+    export type UpdateZero3RosterManagementMutationBody = BodyType<Zero3RosterManagementUpdateInput>
+    export type UpdateZero3RosterManagementMutationError = ErrorType<void>
+    export type UpdateZero3RosterManagementMutationVariables = {eventId: string;data: BodyType<Zero3RosterManagementUpdateInput>}
+
+    /**
+ * @summary Atomically update one or two event teams
+ */
+export const useUpdateZero3RosterManagement = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateZero3RosterManagement>>, TError,UpdateZero3RosterManagementMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateZero3RosterManagement>>,
+        TError,
+        UpdateZero3RosterManagementMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateZero3RosterManagementMutationOptions(options), queryClient);
+    }
+
+export const getPreviewZero3RosterImportUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/roster-import/preview`
+}
+
+/**
+ * @summary Simulate the approved roster import without writing data
+ */
+export const previewZero3RosterImport = async (eventId: string,
+    zero3RosterImportPreviewInput: Zero3RosterImportPreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3RosterImportPreviewResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3RosterImportPreviewResponse>(getPreviewZero3RosterImportUrl(eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3RosterImportPreviewInput)
+  }
+);}
+
+
+
+
+
+export const getPreviewZero3RosterImportMutationKey = () => ['previewZero3RosterImport'] as const;
+
+export const getPreviewZero3RosterImportMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewZero3RosterImport>>, TError,PreviewZero3RosterImportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewZero3RosterImport>>, TError,PreviewZero3RosterImportMutationVariables, TContext> => {
+
+const mutationKey = getPreviewZero3RosterImportMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewZero3RosterImport>>, PreviewZero3RosterImportMutationVariables> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  previewZero3RosterImport(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewZero3RosterImportMutationResult = NonNullable<Awaited<ReturnType<typeof previewZero3RosterImport>>>
+    export type PreviewZero3RosterImportMutationBody = BodyType<Zero3RosterImportPreviewInput>
+    export type PreviewZero3RosterImportMutationError = ErrorType<void>
+    export type PreviewZero3RosterImportMutationVariables = {eventId: string;data: BodyType<Zero3RosterImportPreviewInput>}
+
+    /**
+ * @summary Simulate the approved roster import without writing data
+ */
+export const usePreviewZero3RosterImport = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewZero3RosterImport>>, TError,PreviewZero3RosterImportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof previewZero3RosterImport>>,
+        TError,
+        PreviewZero3RosterImportMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPreviewZero3RosterImportMutationOptions(options), queryClient);
+    }
+
+export const getApplyZero3RosterImportUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/roster-import/apply`
+}
+
+/**
+ * @summary Apply a reviewed roster import atomically
+ */
+export const applyZero3RosterImport = async (eventId: string,
+    zero3RosterImportApplyInput: Zero3RosterImportApplyInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3RosterImportApplyResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3RosterImportApplyResponse>(getApplyZero3RosterImportUrl(eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3RosterImportApplyInput)
+  }
+);}
+
+
+
+
+
+export const getApplyZero3RosterImportMutationKey = () => ['applyZero3RosterImport'] as const;
+
+export const getApplyZero3RosterImportMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyZero3RosterImport>>, TError,ApplyZero3RosterImportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyZero3RosterImport>>, TError,ApplyZero3RosterImportMutationVariables, TContext> => {
+
+const mutationKey = getApplyZero3RosterImportMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyZero3RosterImport>>, ApplyZero3RosterImportMutationVariables> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  applyZero3RosterImport(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyZero3RosterImportMutationResult = NonNullable<Awaited<ReturnType<typeof applyZero3RosterImport>>>
+    export type ApplyZero3RosterImportMutationBody = BodyType<Zero3RosterImportApplyInput>
+    export type ApplyZero3RosterImportMutationError = ErrorType<void>
+    export type ApplyZero3RosterImportMutationVariables = {eventId: string;data: BodyType<Zero3RosterImportApplyInput>}
+
+    /**
+ * @summary Apply a reviewed roster import atomically
+ */
+export const useApplyZero3RosterImport = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyZero3RosterImport>>, TError,ApplyZero3RosterImportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof applyZero3RosterImport>>,
+        TError,
+        ApplyZero3RosterImportMutationVariables,
+        TContext
+      > => {
+      return useMutation(getApplyZero3RosterImportMutationOptions(options), queryClient);
     }
 
 export const getUpdateZero3RegistrationUrl = (eventId: string,

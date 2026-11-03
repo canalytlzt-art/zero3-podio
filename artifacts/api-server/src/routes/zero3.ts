@@ -69,6 +69,7 @@ import {
   zero3PodiumsTable,
   zero3ProofsTable,
   zero3RegistrationsTable,
+  zero3RegistrationMembersTable,
   zero3ResultRevisionsTable,
   zero3ResultsTable,
   zero3TimersTable,
@@ -82,6 +83,7 @@ import {
   type ResultPlacement,
   type ScoreProof,
 } from "../lib/zero3-scoring";
+import rosterRouter from "./zero3-roster";
 
 const router: IRouter = Router();
 const ADMIN_ROLES = ["ADMIN"] as const;
@@ -199,11 +201,16 @@ async function resultDto(
   result: ResultRow,
   placement?: ResultPlacement,
 ) {
-  const [registration] = await db
-    .select()
-    .from(zero3RegistrationsTable)
-    .where(eq(zero3RegistrationsTable.id, result.registrationId))
-    .limit(1);
+  const hasRosterSnapshot =
+    result.athleteIdsSnapshot.length > 0 &&
+    result.athleteNamesSnapshot.length === result.athleteIdsSnapshot.length;
+  const [registration] = hasRosterSnapshot
+    ? []
+    : await db
+        .select()
+        .from(zero3RegistrationsTable)
+        .where(eq(zero3RegistrationsTable.id, result.registrationId))
+        .limit(1);
   const [heat] = result.heatId
     ? await db
         .select()
@@ -231,8 +238,12 @@ async function resultDto(
     status: result.status,
     capturedAt: result.capturedAt,
     revision: result.revision,
-    names: registrationInfo?.athleteNames ?? [],
-    teamName: registrationInfo?.teamName ?? null,
+    names: hasRosterSnapshot
+      ? result.athleteNamesSnapshot
+      : registrationInfo?.athleteNames ?? [],
+    teamName: hasRosterSnapshot
+      ? result.teamNameSnapshot
+      : registrationInfo?.teamName ?? null,
     heatName: heat?.name ?? null,
   };
 }
@@ -911,12 +922,7 @@ router.post(
     const existing = await db
       .select()
       .from(zero3RegistrationsTable)
-      .where(
-        and(
-          eq(zero3RegistrationsTable.eventId, params.data.eventId),
-          eq(zero3RegistrationsTable.category, body.data.category),
-        ),
-      );
+      .where(eq(zero3RegistrationsTable.eventId, params.data.eventId));
     const candidateKey = [...athleteIds].sort().join(":");
     if (
       existing.some(
@@ -927,16 +933,37 @@ router.post(
       res.status(409).json({ error: "Esta equipe já está inscrita nesta categoria." });
       return;
     }
-    const [registration] = await db
-      .insert(zero3RegistrationsTable)
-      .values({
-        eventId: params.data.eventId,
-        category: body.data.category,
-        teamName: body.data.teamName?.trim() || null,
-        athleteIds,
-        laneLabel: body.data.laneLabel?.trim() || null,
-      })
-      .returning();
+    if (existing.some((registration) =>
+      registration.athleteIds.some((athleteId) => athleteIds.includes(athleteId)),
+    )) {
+      res.status(409).json({
+        error: "Um atleta já está inscrito em outra equipe nesta edição.",
+      });
+      return;
+    }
+    const registration = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(zero3RegistrationsTable)
+        .values({
+          eventId: params.data.eventId,
+          category: body.data.category,
+          teamName: body.data.teamName?.trim() || null,
+          athleteIds,
+          laneLabel: body.data.laneLabel?.trim() || null,
+          confirmationStatus: "PENDING",
+          paymentStatus: "UNVERIFIED",
+        })
+        .returning();
+      await tx.insert(zero3RegistrationMembersTable).values(
+        athleteIds.map((athleteId, index) => ({
+          registrationId: created.id,
+          eventId: params.data.eventId,
+          athleteId,
+          slot: index + 1,
+        })),
+      );
+      return created;
+    });
     res.status(201).json(
       CreateZero3RegistrationResponse.parse(
         await registrationDto(registration),
@@ -1338,6 +1365,7 @@ router.post(
         });
         return;
       }
+      const registrationSnapshot = await registrationDto(registration);
       const [created] = await db
         .insert(zero3ResultsTable)
         .values({
@@ -1347,6 +1375,9 @@ router.post(
           heatId: body.data.heatId ?? null,
           category: registration.category,
           laneLabel: registration.laneLabel,
+          athleteIdsSnapshot: registration.athleteIds,
+          athleteNamesSnapshot: registrationSnapshot.athleteNames,
+          teamNameSnapshot: registration.teamName,
           elapsedMs: null,
           rawValue:
             body.data.rawValue === undefined || body.data.rawValue === null
@@ -1475,6 +1506,7 @@ router.post(
         return;
       }
     }
+    const registrationSnapshot = await registrationDto(registration);
     const [result] = await db
       .insert(zero3ResultsTable)
       .values({
@@ -1483,6 +1515,9 @@ router.post(
         heatId: body.data.heatId ?? null,
         category: registration.category,
         laneLabel: registration.laneLabel,
+        athleteIdsSnapshot: registration.athleteIds,
+        athleteNamesSnapshot: registrationSnapshot.athleteNames,
+        teamNameSnapshot: registration.teamName,
         elapsedMs,
         syncErrorMs,
         status: body.data.status,
@@ -1847,5 +1882,7 @@ router.get(
     );
   },
 );
+
+router.use(rosterRouter);
 
 export default router;

@@ -342,6 +342,212 @@ export const CreateZero3RegistrationResponse = zod.object({
 
 
 /**
+ * @summary List event teams and registration statuses for administrators
+ */
+export const GetZero3RosterManagementParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+
+export const getZero3RosterManagementResponseResultCountMin = 0;
+
+
+
+export const GetZero3RosterManagementResponseItem = zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "category": zod.enum(['SC', 'RX']),
+  "teamName": zod.string().nullish(),
+  "athleteIds": zod.array(zod.string()).min(1),
+  "athleteNames": zod.array(zod.string()),
+  "confirmationStatus": zod.enum(['INTERESTED', 'PENDING', 'CONFIRMED', 'CANCELLED']),
+  "paymentStatus": zod.enum(['UNVERIFIED', 'PENDING', 'PAID', 'NOT_PAID']),
+  "resultCount": zod.number().int().min(getZero3RosterManagementResponseResultCountMin),
+  "sourceCodes": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "audit": zod.array(zod.object({
+  "id": zod.string(),
+  "actorId": zod.string(),
+  "reason": zod.string(),
+  "beforeState": zod.record(zod.string(), zod.unknown()),
+  "afterState": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+export const GetZero3RosterManagementResponse = zod.array(GetZero3RosterManagementResponseItem)
+
+
+/**
+ * @summary Atomically update one or two event teams
+ */
+export const UpdateZero3RosterManagementParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const updateZero3RosterManagementBodyEditsItemAthleteIdsMin = 2;
+export const updateZero3RosterManagementBodyEditsItemAthleteIdsMax = 2;
+
+export const updateZero3RosterManagementBodyEditsItemReasonMin = 3;
+
+export const updateZero3RosterManagementBodyEditsMax = 2;
+
+
+
+export const UpdateZero3RosterManagementBody = zod.object({
+  "edits": zod.array(zod.object({
+  "registrationId": zod.string(),
+  "teamName": zod.string().nullish(),
+  "category": zod.enum(['SC', 'RX']),
+  "athleteIds": zod.array(zod.string()).min(updateZero3RosterManagementBodyEditsItemAthleteIdsMin).max(updateZero3RosterManagementBodyEditsItemAthleteIdsMax),
+  "confirmationStatus": zod.enum(['INTERESTED', 'PENDING', 'CONFIRMED', 'CANCELLED']),
+  "paymentStatus": zod.enum(['UNVERIFIED', 'PENDING', 'PAID', 'NOT_PAID']),
+  "reason": zod.string().min(updateZero3RosterManagementBodyEditsItemReasonMin)
+})).min(1).max(updateZero3RosterManagementBodyEditsMax),
+  "confirmHistoryImpact": zod.boolean()
+})
+
+
+export const updateZero3RosterManagementResponseRegistrationsItemResultCountMin = 0;
+
+
+
+export const UpdateZero3RosterManagementResponse = zod.object({
+  "registrations": zod.array(zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "category": zod.enum(['SC', 'RX']),
+  "teamName": zod.string().nullish(),
+  "athleteIds": zod.array(zod.string()).min(1),
+  "athleteNames": zod.array(zod.string()),
+  "confirmationStatus": zod.enum(['INTERESTED', 'PENDING', 'CONFIRMED', 'CANCELLED']),
+  "paymentStatus": zod.enum(['UNVERIFIED', 'PENDING', 'PAID', 'NOT_PAID']),
+  "resultCount": zod.number().int().min(updateZero3RosterManagementResponseRegistrationsItemResultCountMin),
+  "sourceCodes": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "audit": zod.array(zod.object({
+  "id": zod.string(),
+  "actorId": zod.string(),
+  "reason": zod.string(),
+  "beforeState": zod.record(zod.string(), zod.unknown()),
+  "afterState": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+}))
+})
+
+
+/**
+ * @summary Simulate the approved roster import without writing data
+ */
+export const PreviewZero3RosterImportParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const PreviewZero3RosterImportBody = zod.object({
+  "scaleTargetCategory": zod.enum(['SC']),
+  "resolutions": zod.array(zod.object({
+  "sourceKey": zod.string(),
+  "action": zod.enum(['CREATE', 'REUSE']),
+  "athleteId": zod.string().nullable()
+}))
+})
+
+export const previewZero3RosterImportResponseTeamsItemSourceCellsMin = 2;
+export const previewZero3RosterImportResponseTeamsItemSourceCellsMax = 2;
+
+export const previewZero3RosterImportResponseTeamsItemAthleteNamesMin = 2;
+export const previewZero3RosterImportResponseTeamsItemAthleteNamesMax = 2;
+
+
+
+export const PreviewZero3RosterImportResponse = zod.object({
+  "event": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "proofName": zod.string(),
+  "status": zod.enum(['PLANNED', 'ACTIVE', 'FINISHED']),
+  "preparationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date()
+}),
+  "datasetKey": zod.string(),
+  "sourceFile": zod.string(),
+  "sourceSheet": zod.string(),
+  "contentHash": zod.string(),
+  "environment": zod.string(),
+  "alreadyApplied": zod.boolean(),
+  "isDemoTarget": zod.boolean(),
+  "people": zod.array(zod.object({
+  "sourceKey": zod.string(),
+  "sourceCode": zod.string(),
+  "sourceCell": zod.string(),
+  "fullName": zod.string(),
+  "candidates": zod.array(zod.object({
+  "id": zod.string(),
+  "fullName": zod.string(),
+  "createdAt": zod.coerce.date()
+})),
+  "resolutionAction": zod.union([zod.literal('CREATE'),zod.literal('REUSE'),zod.literal(null)]).nullable(),
+  "resolvedAthleteId": zod.string().nullable()
+})),
+  "teams": zod.array(zod.object({
+  "sourceCode": zod.string(),
+  "sourceCategory": zod.enum(['RX', 'SCALE']),
+  "sourceRow": zod.number().int(),
+  "sourceCells": zod.array(zod.string()).min(previewZero3RosterImportResponseTeamsItemSourceCellsMin).max(previewZero3RosterImportResponseTeamsItemSourceCellsMax),
+  "athleteNames": zod.array(zod.string()).min(previewZero3RosterImportResponseTeamsItemAthleteNamesMin).max(previewZero3RosterImportResponseTeamsItemAthleteNamesMax),
+  "targetCategory": zod.enum(['SC', 'RX']),
+  "existingRegistrationId": zod.string().nullable(),
+  "conflict": zod.string().nullable(),
+  "confirmationStatus": zod.enum(['INTERESTED', 'PENDING', 'CONFIRMED', 'CANCELLED']),
+  "paymentStatus": zod.enum(['UNVERIFIED', 'PENDING', 'PAID', 'NOT_PAID'])
+})),
+  "counts": zod.object({
+  "sourcePeople": zod.number().int(),
+  "sourceTeams": zod.number().int(),
+  "peopleToCreate": zod.number().int(),
+  "peopleToReuse": zod.number().int(),
+  "unresolvedPeople": zod.number().int(),
+  "teamsToCreate": zod.number().int(),
+  "teamsToReuse": zod.number().int(),
+  "conflicts": zod.number().int()
+}),
+  "excludedSourceNotes": zod.array(zod.object({
+  "cells": zod.array(zod.string()),
+  "text": zod.string()
+}))
+})
+
+
+/**
+ * @summary Apply a reviewed roster import atomically
+ */
+export const ApplyZero3RosterImportParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const ApplyZero3RosterImportBody = zod.object({
+  "scaleTargetCategory": zod.enum(['SC']),
+  "resolutions": zod.array(zod.object({
+  "sourceKey": zod.string(),
+  "action": zod.enum(['CREATE', 'REUSE']),
+  "athleteId": zod.string().nullable()
+})),
+  "contentHash": zod.string(),
+  "confirmDemoEvent": zod.boolean()
+})
+
+export const ApplyZero3RosterImportResponse = zod.object({
+  "batchId": zod.string(),
+  "alreadyApplied": zod.boolean(),
+  "createdPeople": zod.number().int(),
+  "reusedPeople": zod.number().int(),
+  "createdTeams": zod.number().int(),
+  "reusedTeams": zod.number().int(),
+  "registrationIds": zod.array(zod.string())
+})
+
+
+/**
  * @summary Add or edit a team name without changing its registration
  */
 export const UpdateZero3RegistrationParams = zod.object({

@@ -236,6 +236,222 @@ export interface Zero3RegistrationUpdate {
   teamName: string | null;
 }
 
+export type Zero3RegistrationConfirmationStatus = typeof Zero3RegistrationConfirmationStatus[keyof typeof Zero3RegistrationConfirmationStatus];
+
+
+export const Zero3RegistrationConfirmationStatus = {
+  INTERESTED: 'INTERESTED',
+  PENDING: 'PENDING',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type Zero3RegistrationPaymentStatus = typeof Zero3RegistrationPaymentStatus[keyof typeof Zero3RegistrationPaymentStatus];
+
+
+export const Zero3RegistrationPaymentStatus = {
+  UNVERIFIED: 'UNVERIFIED',
+  PENDING: 'PENDING',
+  PAID: 'PAID',
+  NOT_PAID: 'NOT_PAID',
+} as const;
+
+export type Zero3RosterManagementAuditEntryBeforeState = { [key: string]: unknown };
+
+export type Zero3RosterManagementAuditEntryAfterState = { [key: string]: unknown };
+
+export interface Zero3RosterManagementAuditEntry {
+  id: string;
+  actorId: string;
+  reason: string;
+  beforeState: Zero3RosterManagementAuditEntryBeforeState;
+  afterState: Zero3RosterManagementAuditEntryAfterState;
+  createdAt: string;
+}
+
+export interface Zero3RosterManagementEntry {
+  id: string;
+  eventId: string;
+  category: Zero3Category;
+  /** @nullable */
+  teamName?: string | null;
+  /** @minItems 1 */
+  athleteIds: string[];
+  athleteNames: string[];
+  confirmationStatus: Zero3RegistrationConfirmationStatus;
+  paymentStatus: Zero3RegistrationPaymentStatus;
+  /** @minimum 0 */
+  resultCount: number;
+  sourceCodes: string[];
+  createdAt: string;
+  audit: Zero3RosterManagementAuditEntry[];
+}
+
+export interface Zero3RosterManagementEdit {
+  registrationId: string;
+  /** @nullable */
+  teamName?: string | null;
+  category: Zero3Category;
+  /**
+     * @minItems 2
+     * @maxItems 2
+     */
+  athleteIds: string[];
+  confirmationStatus: Zero3RegistrationConfirmationStatus;
+  paymentStatus: Zero3RegistrationPaymentStatus;
+  /** @minLength 3 */
+  reason: string;
+}
+
+export interface Zero3RosterManagementUpdateInput {
+  /**
+     * @minItems 1
+     * @maxItems 2
+     */
+  edits: Zero3RosterManagementEdit[];
+  confirmHistoryImpact: boolean;
+}
+
+export interface Zero3RosterManagementUpdateResponse {
+  registrations: Zero3RosterManagementEntry[];
+}
+
+export type Zero3RosterImportResolutionAction = typeof Zero3RosterImportResolutionAction[keyof typeof Zero3RosterImportResolutionAction];
+
+
+export const Zero3RosterImportResolutionAction = {
+  CREATE: 'CREATE',
+  REUSE: 'REUSE',
+} as const;
+
+export interface Zero3RosterImportResolution {
+  sourceKey: string;
+  action: Zero3RosterImportResolutionAction;
+  /** @nullable */
+  athleteId: string | null;
+}
+
+export type Zero3RosterImportPreviewInputScaleTargetCategory = typeof Zero3RosterImportPreviewInputScaleTargetCategory[keyof typeof Zero3RosterImportPreviewInputScaleTargetCategory];
+
+
+export const Zero3RosterImportPreviewInputScaleTargetCategory = {
+  SC: 'SC',
+} as const;
+
+export interface Zero3RosterImportPreviewInput {
+  scaleTargetCategory: Zero3RosterImportPreviewInputScaleTargetCategory;
+  resolutions: Zero3RosterImportResolution[];
+}
+
+/**
+ * @nullable
+ */
+export type Zero3RosterImportPersonResolutionAction = typeof Zero3RosterImportPersonResolutionAction[keyof typeof Zero3RosterImportPersonResolutionAction] | null;
+
+
+export const Zero3RosterImportPersonResolutionAction = {
+  CREATE: 'CREATE',
+  REUSE: 'REUSE',
+} as const;
+
+export interface Zero3RosterImportPerson {
+  sourceKey: string;
+  sourceCode: string;
+  sourceCell: string;
+  fullName: string;
+  candidates: Zero3Athlete[];
+  /** @nullable */
+  resolutionAction: Zero3RosterImportPersonResolutionAction;
+  /** @nullable */
+  resolvedAthleteId: string | null;
+}
+
+export type Zero3RosterImportTeamSourceCategory = typeof Zero3RosterImportTeamSourceCategory[keyof typeof Zero3RosterImportTeamSourceCategory];
+
+
+export const Zero3RosterImportTeamSourceCategory = {
+  RX: 'RX',
+  SCALE: 'SCALE',
+} as const;
+
+export interface Zero3RosterImportTeam {
+  sourceCode: string;
+  sourceCategory: Zero3RosterImportTeamSourceCategory;
+  sourceRow: number;
+  /**
+     * @minItems 2
+     * @maxItems 2
+     */
+  sourceCells: string[];
+  /**
+     * @minItems 2
+     * @maxItems 2
+     */
+  athleteNames: string[];
+  targetCategory: Zero3Category;
+  /** @nullable */
+  existingRegistrationId: string | null;
+  /** @nullable */
+  conflict: string | null;
+  confirmationStatus: Zero3RegistrationConfirmationStatus;
+  paymentStatus: Zero3RegistrationPaymentStatus;
+}
+
+export type Zero3RosterImportPreviewResponseCounts = {
+  sourcePeople: number;
+  sourceTeams: number;
+  peopleToCreate: number;
+  peopleToReuse: number;
+  unresolvedPeople: number;
+  teamsToCreate: number;
+  teamsToReuse: number;
+  conflicts: number;
+};
+
+export type Zero3RosterImportPreviewResponseExcludedSourceNotesItem = {
+  cells: string[];
+  text: string;
+};
+
+export interface Zero3RosterImportPreviewResponse {
+  event: Zero3Event;
+  datasetKey: string;
+  sourceFile: string;
+  sourceSheet: string;
+  contentHash: string;
+  environment: string;
+  alreadyApplied: boolean;
+  isDemoTarget: boolean;
+  people: Zero3RosterImportPerson[];
+  teams: Zero3RosterImportTeam[];
+  counts: Zero3RosterImportPreviewResponseCounts;
+  excludedSourceNotes: Zero3RosterImportPreviewResponseExcludedSourceNotesItem[];
+}
+
+export type Zero3RosterImportApplyInputScaleTargetCategory = typeof Zero3RosterImportApplyInputScaleTargetCategory[keyof typeof Zero3RosterImportApplyInputScaleTargetCategory];
+
+
+export const Zero3RosterImportApplyInputScaleTargetCategory = {
+  SC: 'SC',
+} as const;
+
+export interface Zero3RosterImportApplyInput {
+  scaleTargetCategory: Zero3RosterImportApplyInputScaleTargetCategory;
+  resolutions: Zero3RosterImportResolution[];
+  contentHash: string;
+  confirmDemoEvent: boolean;
+}
+
+export interface Zero3RosterImportApplyResponse {
+  batchId: string;
+  alreadyApplied: boolean;
+  createdPeople: number;
+  reusedPeople: number;
+  createdTeams: number;
+  reusedTeams: number;
+  registrationIds: string[];
+}
+
 export interface Zero3Heat {
   id: string;
   eventId: string;

@@ -1,5 +1,8 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
+  foreignKey,
   integer,
   jsonb,
   numeric,
@@ -7,6 +10,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -65,13 +69,153 @@ export const zero3RegistrationsTable = pgTable(
     teamName: text("team_name"),
     athleteIds: jsonb("athlete_ids").$type<string[]>().notNull(),
     laneLabel: text("lane_label"),
+    confirmationStatus: text("confirmation_status").notNull().default("PENDING"),
+    paymentStatus: text("payment_status").notNull().default("UNVERIFIED"),
     createdAt: createdAt(),
   },
   (table) => ({
+    registrationEventUnique: unique("zero3_registration_id_event_unique").on(
+      table.id,
+      table.eventId,
+    ),
     eventCategoryIndex: uniqueIndex("zero3_registration_lane_unique").on(
       table.eventId,
       table.category,
       table.laneLabel,
+    ),
+  }),
+);
+
+export const zero3RegistrationMembersTable = pgTable(
+  "zero3_registration_members",
+  {
+    registrationId: uuid("registration_id").notNull(),
+    eventId: uuid("event_id").notNull(),
+    athleteId: uuid("athlete_id")
+      .notNull()
+      .references(() => zero3AthletesTable.id, { onDelete: "restrict" }),
+    slot: integer("slot").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.registrationId, table.slot] }),
+    distinctAthlete: uniqueIndex("zero3_registration_member_unique").on(
+      table.registrationId,
+      table.athleteId,
+    ),
+    athletePerEvent: uniqueIndex("zero3_event_athlete_unique").on(
+      table.eventId,
+      table.athleteId,
+    ),
+    registrationEventFk: foreignKey({
+      columns: [table.registrationId, table.eventId],
+      foreignColumns: [
+        zero3RegistrationsTable.id,
+        zero3RegistrationsTable.eventId,
+      ],
+      name: "zero3_registration_member_event_fk",
+    }).onDelete("cascade"),
+    slotCheck: check("zero3_registration_member_slot_check", sql`${table.slot} BETWEEN 1 AND 2`),
+  }),
+);
+
+export const zero3RegistrationAuditTable = pgTable(
+  "zero3_registration_audit",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => zero3EventsTable.id, { onDelete: "restrict" }),
+    registrationId: uuid("registration_id")
+      .notNull()
+      .references(() => zero3RegistrationsTable.id, { onDelete: "restrict" }),
+    actorId: text("actor_id").notNull(),
+    reason: text("reason").notNull(),
+    beforeState: jsonb("before_state").$type<Record<string, unknown>>().notNull(),
+    afterState: jsonb("after_state").$type<Record<string, unknown>>().notNull(),
+    createdAt: createdAt(),
+  },
+);
+
+export const zero3ImportBatchesTable = pgTable(
+  "zero3_import_batches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => zero3EventsTable.id, { onDelete: "restrict" }),
+    datasetKey: text("dataset_key").notNull(),
+    sourceFile: text("source_file").notNull(),
+    sourceSheet: text("source_sheet").notNull(),
+    sourceNotes: jsonb("source_notes")
+      .$type<{ cells: string[]; text: string }[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    contentHash: text("content_hash").notNull(),
+    sourceTeamCount: integer("source_team_count").notNull(),
+    sourcePeopleCount: integer("source_people_count").notNull(),
+    appliedBy: text("applied_by").notNull(),
+    appliedAt: createdAt(),
+  },
+  (table) => ({
+    eventDatasetUnique: uniqueIndex("zero3_import_batch_event_dataset_unique").on(
+      table.eventId,
+      table.datasetKey,
+    ),
+  }),
+);
+
+export const zero3ImportPeopleTable = pgTable(
+  "zero3_import_people",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => zero3ImportBatchesTable.id, { onDelete: "cascade" }),
+    sourceKey: text("source_key").notNull(),
+    sourceName: text("source_name").notNull(),
+    sourceCell: text("source_cell").notNull(),
+    athleteId: uuid("athlete_id")
+      .notNull()
+      .references(() => zero3AthletesTable.id, { onDelete: "restrict" }),
+    createdAt: createdAt(),
+  },
+  (table) => ({
+    batchSourceKeyUnique: uniqueIndex("zero3_import_person_source_unique").on(
+      table.batchId,
+      table.sourceKey,
+    ),
+  }),
+);
+
+export const zero3ImportTeamsTable = pgTable(
+  "zero3_import_teams",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => zero3ImportBatchesTable.id, { onDelete: "cascade" }),
+    sourceCode: text("source_code").notNull(),
+    sourceCategory: text("source_category").notNull(),
+    sourceRow: integer("source_row").notNull(),
+    sourceCells: jsonb("source_cells").$type<[string, string]>().notNull(),
+    sourceAthleteNames: jsonb("source_athlete_names")
+      .$type<[string, string]>()
+      .notNull(),
+    targetCategory: text("target_category").notNull(),
+    registrationId: uuid("registration_id")
+      .notNull()
+      .references(() => zero3RegistrationsTable.id, { onDelete: "restrict" }),
+    createdAt: createdAt(),
+  },
+  (table) => ({
+    batchSourceCodeUnique: uniqueIndex("zero3_import_team_source_unique").on(
+      table.batchId,
+      table.sourceCode,
+    ),
+    batchRegistrationUnique: uniqueIndex("zero3_import_registration_unique").on(
+      table.batchId,
+      table.registrationId,
     ),
   }),
 );
@@ -150,6 +294,9 @@ export const zero3ResultsTable = pgTable(
     }),
     category: text("category").notNull(),
     laneLabel: text("lane_label"),
+    athleteIdsSnapshot: jsonb("athlete_ids_snapshot").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    athleteNamesSnapshot: jsonb("athlete_names_snapshot").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    teamNameSnapshot: text("team_name_snapshot"),
     elapsedMs: integer("elapsed_ms"),
     rawValue: numeric("raw_value", { precision: 12, scale: 3 }),
     syncErrorMs: integer("sync_error_ms"),

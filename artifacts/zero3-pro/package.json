@@ -9,7 +9,8 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:auth-redirect": "node --experimental-strip-types --test src/lib/auth-redirect.test.ts",
-    "test:navigation": "node --experimental-strip-types --test src/lib/auth-redirect.test.ts src/lib/tv-navigation.test.ts"
+    "test:auth-session-cache": "node --experimental-strip-types --test src/lib/session-query-cache.test.ts",
+    "test:navigation": "node --experimental-strip-types --test src/lib/auth-redirect.test.ts src/lib/tv-navigation.test.ts src/lib/roster-import-review.test.ts"
   },
   "devDependencies": {
     "@clerk/react": "^6.18.4",

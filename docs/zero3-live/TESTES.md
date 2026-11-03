@@ -208,3 +208,41 @@ O erro Cloudflare de 02/11/2026 não teve causa comprovada nesta rodada. Não ho
 - `/api/zero3/me` anônimo → **401 JSON**. Duas leituras consecutivas de `/api/zero3/public-board` divergiram: primeira **500 `API_INTERNAL_ERROR`**, requestId `336f064e-cd0b-4dc9-8f99-317dcaf2afd6`, cf-ray `a546f4e1a893d5a9-YYZ`; segunda **200**, cf-ray `a546f5419f1cb7cd-ORD`. Isso confirma uma falha 5xx intermitente no Worker, não a causa dela. Logs Cloudflare não estavam disponíveis; os logs do API Server do Replit são de outro ambiente e não comprovam a causa Cloudflare.
 - Login autorizado, `/api/zero3/me` 200, leitura administrativa de eventos, 403 real, logout, refresh/nova aba autenticados, expiração de sessão e lançamentos/correções isolados: **pendentes**, por dependerem de uma sessão Clerk legítima e/ou correlação com logs do Worker. Testes SDK/helpers não foram tratados como prova real.
 - Nenhum dado, papel, chave, instância Clerk ou binding foi alterado; não houve commit/push/deploy. A causa do 500, o branch Neon remoto e o acesso administrativo real permanecem pendentes.
+
+## Sessão inválida — verificação adicional
+
+| Verificação | Resultado | Limite |
+|---|---|---|
+| Guard do frontend | Passou por inspeção: a query `/api/zero3/me` só monta após `isLoaded && isSignedIn`. | Não comprova o estado de uma sessão no domínio Cloudflare. |
+| Transporte do navegador | Same-origin, `credentials: same-origin`, `no-store`; nenhum Bearer getter registrado no web app. | Sem Network/HAR da tentativa real, não sabemos se o Worker recebeu cookie ou Authorization. |
+| Classificação do `/me` | 401 somente para sessão Clerk ausente/incompleta ou usuário Clerk não encontrado; 403 para função ZERO3 ausente/inativa; 503 para dependência; 500 para falha interna. | Os testes cobrem os ramos de código, não a configuração remota/identidade real. |
+| Limpeza do cache ao reautenticar | **2 testes passaram**: remove queries privadas ZERO3 e preserva public-board e chaves não relacionadas. | A interação de logout real requer sessão Clerk. |
+| `test:auth-session` / `test:api-errors` | **3/3** e **10/10**. | Não valida o segredo Clerk remoto nem a conta real. |
+| `test:worker-logger` / `test:request-tracing` | **3/3** e **3/3**. | Os logs locais são de Development; logs do Worker Cloudflare não foram acessados. |
+| `test:auth-transport` / `test:navigation` | **3/3** e **19/19**. | O teste de renovação Bearer é da capacidade genérica opcional do cliente; o web app não registra esse getter. |
+| Typecheck frontend / `pnpm run check:cloudflare` | **Passaram**; dry-run reconheceu Hyperdrive e os assets. | Não é login, leitura autenticada do Neon ou deploy. |
+| Preview `/admin` após reiniciar | Formulário Clerk visível; apenas avisos esperados de Development/autocomplete no console. | Captura não autentica a conta organizacional nem expõe a Network real. |
+| API autenticada no Preview Replit | `/api/zero3/me` → **200** em duas requisições; lookup Clerk e membro ativo concluídos; eventos/dashboard → **200**. | Evidência do backend Node/Replit, não do adapter/Worker Cloudflare nem confirmação da identidade usada. |
+| `/api/zero3/me` com sessão organizacional no domínio Cloudflare | **Pendente**. | Faltam requestId/CF-Ray e log do Worker da mesma tentativa. Não se pode distinguir cookie ausente, sessão inválida, configuração/instância incompatível ou Clerk user 404 apenas pelo texto do frontend. |
+
+Nenhuma alteração de usuário, papel, banco, instância Clerk ou chave; nenhum commit, push ou deploy nesta rodada. A hipótese sobre `VITE_CLERK_PROXY_URL` permanece não comprovada e não foi aplicada.
+
+## Roster — importação segura e gestão de equipes
+
+| Check | Resultado | Evidência/limite |
+|---|---|---|
+| Origem da planilha | **29 duplas / 58 atletas** | Testes confirmam distribuição RX/SCALE, linhagem de planilha/aba/linha/célula e exclusão da linha H6; sem mesclagem automática por nome. |
+| `test:roster-source` | **3 passaram** | Quantidade, linhagem, exclusão e candidatos de identidade. |
+| `test:roster-import` | **7 passaram** | Digest estável, resolução explícita de pessoas, duplicidade, reaplicação idempotente, composição e preservação do resultado. |
+| Resoluções da prévia | **3 passaram** | Sem candidato: sugestão `CREATE`; com candidato: decisão continua pendente; mantém escolha do operador e mapeamento de lote aplicado. Incluído em `test:navigation`, agora **22/22**. |
+| `test:scoring` | **5 passaram** | Regras de pontuação preexistentes preservadas. |
+| `pnpm install --frozen-lockfile` | **Passou** | pnpm fixado em 10.26.1. |
+| `pnpm run check:cloudflare` | **Passou** | Typegen, typecheck e build/dry-run Wrangler; o ID HYPERDRIVE foi reconhecido. Não é deploy nem acesso ao Neon remoto pelo Wrangler. |
+| `pnpm run build` | **Passou** | Interface em `artifacts/zero3-pro/dist/public/`; avisos não fatais de source map de `tooltip.tsx` e bundle acima de 500 kB. |
+| Wrangler local + PostgreSQL efêmero | **Passou** | Com chave Clerk sintética e banco descartável: `healthz` 200, placar público 200 com 4 provas/6 inscrições/24 resultados, roster management anônimo 401. Não valida login real. |
+| Migração de schema | **Passou em Development e Neon de teste** | Contagens estáveis: Dev 1/13/6/12/0 auditorias/0 lotes/0 equipes importadas/24 snapshots; Neon 1/12/6/12/0/0/0/24. O banco Replit foi preservado; não houve migração de produção. |
+| Backup e restauração | **Passou em cluster PostgreSQL temporário** | Schema vazio + migração + seed sintético; dump custom e restore em database isolado. Contagens iguais: 1 evento, 12 atletas, 6 inscrições, 12 vínculos, 24 resultados, 1 auditoria, 1 lote, 2 mapeamentos de pessoas, 1 de equipe e 2 pódios. Nome/status editados e histórico permaneceram presentes. Dados apenas sintéticos; Development e Neon não foram usados. |
+| Preview autenticado | **Leitura administrativa 200** | Logs do backend Replit registraram `/api/zero3/me` e `/api/zero3/events/{id}/roster-management` em 200. A captura isolada segue sem sessão; não houve edição/aplicação nem validação do Worker Cloudflare. |
+| Importação das 29 duplas | **Não aplicada** | Nenhum lote ou equipe importada. SCALE→SC foi confirmado para esta planilha e o evento demo de Development foi escolhido para a prévia. O endpoint requer ADMIN; a captura não consegue executar a prévia, revisar correspondências ou aplicar dados. |
+
+As telas de gestão e importação ficam protegidas por ADMIN. O endpoint de apply só é habilitado em Development/teste, exige confirmação de evento de demonstração e não sobrescreve resultados. Não houve commit, push, deploy ou alteração em banco de produção.

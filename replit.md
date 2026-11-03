@@ -21,8 +21,11 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - `artifacts/zero3-pro/src/pages/PublicEntry.tsx` — optional public navigation at `/inicio`.
 - `artifacts/zero3-pro/src/pages/OperationPage.tsx` — proof setup, provisional scoring inputs, review, and corrections at protected `/operacao`.
 - `artifacts/zero3-pro/src/pages/AdminPages.tsx` — existing events, roster, registrations, heats, timer, and manual podium workflow.
+- `artifacts/zero3-pro/src/pages/RosterImportPage.tsx` and `RosterManagePage.tsx` — ADMIN-only import preview/apply and audited team management.
 - `artifacts/zero3-pro/src/index.css` — shared styling and TV layout.
 - `artifacts/api-server/src/routes/zero3.ts` — authenticated operations and public board API.
+- `artifacts/api-server/src/routes/zero3-roster.ts` — guarded roster import and team-management endpoints.
+- `docs/zero3-roster-import.md` — source lineage, safeguards, migration, and backup/restore guidance.
 - `artifacts/api-server/src/lib/zero3-scoring.ts` — server-owned per-proof and overall scoring.
 - `lib/db/src/schema/zero3.ts` — PostgreSQL schema; preserve existing IDs and records.
 - `lib/api-spec/openapi.yaml` — API source contract. Generated clients live under `lib/api-client-react` and `lib/api-zod`.
@@ -36,6 +39,7 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - For configured proofs, validated results receive 1, 2, 3… points by placement; the lower overall sum wins. The server recalculates from stored results after corrections. Provisional results earn no official points; missing proofs are not zero; incomplete entries are not final champions. Do not invent tie-breakers.
 - Preserve timer, registrations, IDs, prior results, role checks, and audit history when changing the app. Keep SC and RX as stored; do not infer that SC means SCALE.
 - Fictional seed records and preloaded podium fixtures are marked as demo data and must never be presented as official registrations or results.
+- The current spreadsheet contains 29 source teams and has not been applied. For this workbook only, the user approved mapping SCALE to SC; do not generalize that mapping to other sources. Select a destination event, review candidate identities, and explicitly apply; never merge athletes by name.
 
 ## Operational cautions
 
@@ -48,7 +52,8 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - Browser API requests use Clerk's same-origin session cookie; do not register `getToken()`/`setAuthTokenGetter()` for this web app. Keep Bearer-token support limited to clients without a browser cookie jar.
 - For Cloudflare builds, verify the published Clerk key mode and explicitly configure the public `VITE_CLERK_PROXY_URL` when using the first-party `/api/__clerk` proxy. Replit's managed-key swapping is not a substitute for Cloudflare Build configuration. Never derive or rotate Clerk keys from the `workers.dev` hostname.
 - `zero3_members` currently authorizes by the Clerk-verified primary email; it does not persist a Clerk user ID. Do not silently remap or elevate existing members. Any provider-ID migration must be additive and based on verified account identity.
-- Protected ZERO3 API requests use same-origin credentials and may attach a Clerk session token only to this app’s own protected `/api/zero3/*` endpoints. A stale-token recovery retries a GET at most once; never replay score writes.
+- The browser uses same-origin credentials for protected ZERO3 APIs; the optional Bearer-token getter is not registered for this web app. Do not add Bearer transport without evidence from the real request. If another client registers the getter, it is restricted to protected `/api/zero3/*` paths and may retry one GET, never score writes.
+- On sign-out or identity change, remove only private ZERO3 query data; preserve the public-board cache.
 - API responses are private/no-store and ETags are disabled to avoid stale 304 responses across session changes. For `/api/zero3/me`, Worker diagnostics correlate `requestId` with Cloudflare `cf-ray` and time Clerk configuration/validation/user lookup, Hyperdrive context/connection, role query, and response. Server-side exceptions retain sanitized message/cause/code/stack; cookies, JWTs, keys, connection strings, and emails must never be logged or returned to clients.
 - The browser capture environment cannot validate a real organization login. A local anonymous 401 is not evidence of the reported post-login failure; correlate a real attempt with its response `requestId` before diagnosing Cloudflare/Clerk settings.
 
