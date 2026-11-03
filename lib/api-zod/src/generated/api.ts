@@ -143,6 +143,91 @@ export const CreateZero3EventResponse = zod.object({
 
 
 /**
+ * @summary Restore an event from its exported backup
+ */
+export const restoreZero3EventBackupBodyBackupDigestMin = 64;
+export const restoreZero3EventBackupBodyBackupDigestMax = 64;
+
+
+
+export const RestoreZero3EventBackupBody = zod.object({
+  "backup": zod.object({
+  "format": zod.literal("zero3-event-backup"),
+  "version": zod.literal(1),
+  "eventId": zod.string(),
+  "eventName": zod.string(),
+  "exportedAt": zod.coerce.date(),
+  "counts": zod.record(zod.string(), zod.number().int()),
+  "data": zod.object({
+  "event": zod.record(zod.string(), zod.unknown()),
+  "athletes": zod.array(zod.record(zod.string(), zod.unknown())),
+  "proofs": zod.array(zod.record(zod.string(), zod.unknown())),
+  "registrations": zod.array(zod.record(zod.string(), zod.unknown())),
+  "registrationMembers": zod.array(zod.record(zod.string(), zod.unknown())),
+  "registrationAudit": zod.array(zod.record(zod.string(), zod.unknown())),
+  "importBatches": zod.array(zod.record(zod.string(), zod.unknown())),
+  "importPeople": zod.array(zod.record(zod.string(), zod.unknown())),
+  "importTeams": zod.array(zod.record(zod.string(), zod.unknown())),
+  "heats": zod.array(zod.record(zod.string(), zod.unknown())),
+  "heatEntries": zod.array(zod.record(zod.string(), zod.unknown())),
+  "activeHeats": zod.array(zod.record(zod.string(), zod.unknown())),
+  "results": zod.array(zod.record(zod.string(), zod.unknown())),
+  "resultRevisions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "timers": zod.array(zod.record(zod.string(), zod.unknown())),
+  "podiumVersions": zod.array(zod.record(zod.string(), zod.unknown()))
+}),
+  "digest": zod.string().min(restoreZero3EventBackupBodyBackupDigestMin).max(restoreZero3EventBackupBodyBackupDigestMax)
+})
+})
+
+export const RestoreZero3EventBackupResponse = zod.object({
+  "eventId": zod.string(),
+  "restored": zod.boolean()
+})
+
+
+/**
+ * @summary Export a complete recoverable event backup
+ */
+export const GetZero3EventDeletionBackupParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const getZero3EventDeletionBackupResponseDigestMin = 64;
+export const getZero3EventDeletionBackupResponseDigestMax = 64;
+
+
+
+export const GetZero3EventDeletionBackupResponse = zod.object({
+  "format": zod.literal("zero3-event-backup"),
+  "version": zod.literal(1),
+  "eventId": zod.string(),
+  "eventName": zod.string(),
+  "exportedAt": zod.coerce.date(),
+  "counts": zod.record(zod.string(), zod.number().int()),
+  "data": zod.object({
+  "event": zod.record(zod.string(), zod.unknown()),
+  "athletes": zod.array(zod.record(zod.string(), zod.unknown())),
+  "proofs": zod.array(zod.record(zod.string(), zod.unknown())),
+  "registrations": zod.array(zod.record(zod.string(), zod.unknown())),
+  "registrationMembers": zod.array(zod.record(zod.string(), zod.unknown())),
+  "registrationAudit": zod.array(zod.record(zod.string(), zod.unknown())),
+  "importBatches": zod.array(zod.record(zod.string(), zod.unknown())),
+  "importPeople": zod.array(zod.record(zod.string(), zod.unknown())),
+  "importTeams": zod.array(zod.record(zod.string(), zod.unknown())),
+  "heats": zod.array(zod.record(zod.string(), zod.unknown())),
+  "heatEntries": zod.array(zod.record(zod.string(), zod.unknown())),
+  "activeHeats": zod.array(zod.record(zod.string(), zod.unknown())),
+  "results": zod.array(zod.record(zod.string(), zod.unknown())),
+  "resultRevisions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "timers": zod.array(zod.record(zod.string(), zod.unknown())),
+  "podiumVersions": zod.array(zod.record(zod.string(), zod.unknown()))
+}),
+  "digest": zod.string().min(getZero3EventDeletionBackupResponseDigestMin).max(getZero3EventDeletionBackupResponseDigestMax)
+})
+
+
+/**
  * @summary Update an event
  */
 export const UpdateZero3EventParams = zod.object({
@@ -182,6 +267,31 @@ export const UpdateZero3EventResponse = zod.object({
   "preparationSeconds": zod.number().int(),
   "categories": zod.array(zod.string().min(1).max(updateZero3EventResponseCategoriesItemMax)).min(1).max(updateZero3EventResponseCategoriesMax),
   "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Permanently delete an event after backup and confirmation
+ */
+export const DeleteZero3EventParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const deleteZero3EventBodyConfirmationMax = 160;
+
+export const deleteZero3EventBodyBackupDigestMin = 64;
+export const deleteZero3EventBodyBackupDigestMax = 64;
+
+
+
+export const DeleteZero3EventBody = zod.object({
+  "confirmation": zod.string().min(1).max(deleteZero3EventBodyConfirmationMax),
+  "backupDigest": zod.string().min(deleteZero3EventBodyBackupDigestMin).max(deleteZero3EventBodyBackupDigestMax)
+})
+
+export const DeleteZero3EventResponse = zod.object({
+  "eventId": zod.string(),
+  "deleted": zod.boolean()
 })
 
 

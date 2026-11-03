@@ -48,6 +48,7 @@ import {
 } from "./d1-staging-shared";
 import { normalizeEventCategories, validateEventCategories } from "./zero3-categories";
 import { parseZero3TeamName } from "./zero3-team-name";
+import { handleD1StagingEventLifecycle } from "./d1-staging-event-lifecycle";
 
 type EventRow = {
   id: string; name: string; proof_name: string; status: string;
@@ -113,6 +114,7 @@ export async function handleD1StagingAdmin(
   DB: D1Database,
 ): Promise<boolean> {
   const route = req.path.slice("/api/zero3".length);
+  if (await handleD1StagingEventLifecycle(req, res, DB)) return true;
 
   if (route === "/events" && req.method === "POST") {
     if (!await requireD1Member(req, res, DB, EVENT_ROLES)) return true;

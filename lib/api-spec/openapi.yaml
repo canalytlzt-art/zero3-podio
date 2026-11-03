@@ -89,7 +89,56 @@ paths:
                 $ref: "#/components/schemas/Zero3Event"
         "401":
           description: Authentication required
+  /zero3/events/restore:
+    post:
+      operationId: restoreZero3EventBackup
+      tags: [zero3]
+      summary: Restore an event from its exported backup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3EventRestoreInput"
+      responses:
+        "201":
+          description: Event restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3EventRestoreResult"
+        "400":
+          description: Invalid backup
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "409":
+          description: Event or global athlete data conflicts with the backup
   /zero3/events/{eventId}:
+    get:
+      operationId: getZero3EventDeletionBackup
+      tags: [zero3]
+      summary: Export a complete recoverable event backup
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Complete event backup; global athlete records are references and are not deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3EventBackup"
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Event not found
     patch:
       operationId: updateZero3Event
       tags: [zero3]
@@ -117,6 +166,37 @@ paths:
           description: Authentication required
         "404":
           description: Event not found
+    delete:
+      operationId: deleteZero3Event
+      tags: [zero3]
+      summary: Permanently delete an event after backup and confirmation
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Zero3EventDeleteInput"
+      responses:
+        "200":
+          description: Event and event-owned records deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3EventDeleteResult"
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Event not found
+        "409":
+          description: Backup is stale or confirmation does not match
   /zero3/events/{eventId}/proofs:
     get:
       operationId: listZero3Proofs
@@ -882,6 +962,62 @@ components:
           uniqueItems: true
           items: { $ref: "#/components/schemas/Zero3Category" }
       minProperties: 1
+    Zero3EventBackup:
+      type: object
+      required: [format, version, eventId, eventName, exportedAt, counts, data, digest]
+      properties:
+        format: { type: string, const: zero3-event-backup }
+        version: { type: integer, const: 1 }
+        eventId: { type: string }
+        eventName: { type: string }
+        exportedAt: { type: string, format: date-time }
+        counts:
+          type: object
+          additionalProperties: { type: integer }
+        data:
+          type: object
+          required: [event, athletes, proofs, registrations, registrationMembers, registrationAudit, importBatches, importPeople, importTeams, heats, heatEntries, activeHeats, results, resultRevisions, timers, podiumVersions]
+          properties:
+            event: { type: object, additionalProperties: true }
+            athletes: { type: array, items: { type: object, additionalProperties: true } }
+            proofs: { type: array, items: { type: object, additionalProperties: true } }
+            registrations: { type: array, items: { type: object, additionalProperties: true } }
+            registrationMembers: { type: array, items: { type: object, additionalProperties: true } }
+            registrationAudit: { type: array, items: { type: object, additionalProperties: true } }
+            importBatches: { type: array, items: { type: object, additionalProperties: true } }
+            importPeople: { type: array, items: { type: object, additionalProperties: true } }
+            importTeams: { type: array, items: { type: object, additionalProperties: true } }
+            heats: { type: array, items: { type: object, additionalProperties: true } }
+            heatEntries: { type: array, items: { type: object, additionalProperties: true } }
+            activeHeats: { type: array, items: { type: object, additionalProperties: true } }
+            results: { type: array, items: { type: object, additionalProperties: true } }
+            resultRevisions: { type: array, items: { type: object, additionalProperties: true } }
+            timers: { type: array, items: { type: object, additionalProperties: true } }
+            podiumVersions: { type: array, items: { type: object, additionalProperties: true } }
+        digest: { type: string, minLength: 64, maxLength: 64 }
+    Zero3EventDeleteInput:
+      type: object
+      required: [confirmation, backupDigest]
+      properties:
+        confirmation: { type: string, minLength: 1, maxLength: 160 }
+        backupDigest: { type: string, minLength: 64, maxLength: 64 }
+    Zero3EventRestoreInput:
+      type: object
+      required: [backup]
+      properties:
+        backup: { $ref: "#/components/schemas/Zero3EventBackup" }
+    Zero3EventDeleteResult:
+      type: object
+      required: [eventId, deleted]
+      properties:
+        eventId: { type: string }
+        deleted: { type: boolean }
+    Zero3EventRestoreResult:
+      type: object
+      required: [eventId, restored]
+      properties:
+        eventId: { type: string }
+        restored: { type: boolean }
     Zero3ProofMetric:
       type: string
       enum: [TIME, REPETITIONS, LOAD, CUSTOM, UNCONFIGURED]

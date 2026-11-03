@@ -15,6 +15,7 @@ import {
   useSetZero3ActiveHeat,
   useSaveZero3PodiumDraft, usePublishZero3Podium,
   useGetZero3PublicBoard,
+   getZero3EventDeletionBackup, useDeleteZero3Event, useRestoreZero3EventBackup,
 } from '@workspace/api-client-react';
 import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
@@ -34,6 +35,7 @@ const categoryName = (category: string) => category === 'SC' ? 'SC / Scale' : ca
 
 export function DashboardPage() {
   const q = useGetZero3Dashboard({query:{refetchInterval:10000}});
+  const me = useGetZero3Me();
   const health = useHealthCheck({query:{refetchInterval:15000}});
   const events = useListZero3Events({query:{refetchInterval:15000}});
   const dashboard = q.data;
@@ -52,7 +54,7 @@ export function DashboardPage() {
         </section>
       </div>
       <section className="panel" style={{marginTop:16}}><div className="panel-pad" style={{paddingBottom:5}}><h2 className="panel-title">Eventos</h2></div>
-        {events.isLoading ? <div style={{padding:20}}><LoadingRows/></div> : events.isError ? <QueryError retry={()=>events.refetch()}/> : (events.data||[]).length===0 ? <EmptyState title="Sua agenda está vazia" detail="Crie o primeiro evento para preparar heats, equipes e resultados."/> : events.data?.slice(0,5).map(e=><EventRow key={e.id} event={e}/>)}
+        {events.isLoading ? <div style={{padding:20}}><LoadingRows/></div> : events.isError ? <QueryError retry={()=>events.refetch()}/> : (events.data||[]).length===0 ? <EmptyState title="Sua agenda está vazia" detail="Crie o primeiro evento para preparar heats, equipes e resultados."/> : events.data?.slice(0,5).map(e=><EventRow key={e.id} event={e} isAdmin={me.data?.role==='ADMIN'}/>)}
       </section>
     </>}
   </AdminShell>;
@@ -64,26 +66,83 @@ function EventSummary({event}:{event:Zero3Event}) {
   return <div className="panel-pad" style={{paddingTop:0}}><div style={{fontSize:18,fontWeight:800,letterSpacing:'-.04em'}}>{event.name}</div><p className="lede" style={{margin:'5px 0 16px'}}>{event.proofName} · preparação {event.preparationSeconds}s</p><div className="toolbar"><span className="pill">{pretty(event.status)}</span><Link href={`/admin/events/${event.id}`} className="button small">Abrir operação</Link><button className="button small" disabled={update.isPending} onClick={()=>update.mutate({eventId:event.id,data:{status:next as typeof Zero3EventStatus[keyof typeof Zero3EventStatus]}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});}})}>{event.status==='ACTIVE'?'Finalizar evento':'Ativar evento'}</button></div></div>;
 }
 
-function EventRow({event}:{event:Zero3Event}) {
+function EventRow({event,isAdmin=false}:{event:Zero3Event;isAdmin?:boolean}) {
  const update=useUpdateZero3Event();const qc=useQueryClient();const next=event.status==='PLANNED'?'ACTIVE':event.status==='ACTIVE'?'FINISHED':null;
+ const remove=useDeleteZero3Event();
  const [editingCategories,setEditingCategories]=useState(false);
   const [categories,setCategories]=useState<string[]>(event.categories);
   const [newCategory,setNewCategory]=useState('');
  const [categoryError,setCategoryError]=useState('');
+ const [deleting,setDeleting]=useState(false);
+ const [backup,setBackup]=useState<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>|null>(null);
+ const [backupLoading,setBackupLoading]=useState(false);
+ const [backupSaved,setBackupSaved]=useState(false);
+ const [confirmation,setConfirmation]=useState('');
+ const [deleteError,setDeleteError]=useState('');
  useEffect(()=>setCategories(event.categories),[event.categories]);
   const saveCategories=()=>{setCategoryError('');const ordered=orderCategories(categories);if(ordered.length>10||ordered.some(item=>!item.trim()||item.trim().length>32)||new Set(ordered.map(item=>item.trim().toLocaleLowerCase())).size!==ordered.length){setCategoryError('Use de 1 a 10 categorias únicas, com até 32 caracteres cada.');return;}update.mutate({eventId:event.id,data:{categories:ordered}},{onSuccess:()=>{setEditingCategories(false);qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId:event.id})});},onError:err=>setCategoryError(feedback(err))});};
   const addCategory=()=>{const value=newCategory.trim();if(!value)return;if(categories.some(item=>item.toLocaleLowerCase()===value.toLocaleLowerCase())){setCategoryError('Essa categoria já está habilitada.');return;}if(value.length>32||categories.length>=10){setCategoryError('Use até 10 categorias com no máximo 32 caracteres cada.');return;}setCategories(current=>[...current,value]);setNewCategory('');setCategoryError('');};
-  return <div><div className="event-row"><Link href={`/admin/events/${event.id}`} className="event-row-link"><div><div className="event-name">{event.name}</div><div className="event-sub">{event.proofName} · {event.preparationSeconds}s de preparação · Categorias: {event.categories.map(categoryName).join(', ')}</div></div></Link><div className="event-actions"><span className={`pill ${pillTone(event.status)}`}>{pretty(event.status)}</span><button className="button small" onClick={()=>{setCategories(event.categories);setEditingCategories(value=>!value);setCategoryError('');}}>Categorias</button>{next&&<button className="button small" disabled={update.isPending} data-testid={`button-event-status-${event.id}`} onClick={()=>update.mutate({eventId:event.id,data:{status:next as typeof Zero3EventStatus[keyof typeof Zero3EventStatus]}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});}})}>{next==='ACTIVE'?'Ativar':'Finalizar'}</button>}<Link href={`/admin/events/${event.id}`} className="button small">Abrir <span aria-hidden>↗</span></Link></div></div>
-  {editingCategories&&<div className="panel-pad event-category-editor"><strong>Categorias habilitadas</strong><div className="toolbar">{(['SC','RX'] as const).map(category=><label key={category} className="field-help"><input type="checkbox" checked={categories.includes(category)} onChange={e=>setCategories(current=>e.target.checked?[...current,category]:current.filter(item=>item!==category))}/> {categoryName(category)}</label>)}{categories.filter(category=>category!=='SC'&&category!=='RX').map(category=><label key={category} className="field-help"><input type="checkbox" checked onChange={()=>setCategories(current=>current.filter(item=>item!==category))}/> {category}</label>)}</div><div className="toolbar"><input aria-label="Nova categoria" value={newCategory} maxLength={32} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria"/><button type="button" className="button small" onClick={addCategory}>Adicionar</button></div><div className="toolbar"><button className="button small primary" disabled={!categories.length||update.isPending} onClick={saveCategories}>{update.isPending?'Salvando…':'Salvar categorias'}</button><button className="button small" onClick={()=>setEditingCategories(false)}>Cancelar</button>{categoryError&&<span role="alert" style={{color:'#a34238',fontSize:11}}>{categoryError}</span>}</div><p className="field-help">Uma categoria não pode ser removida enquanto houver inscrições, baterias, resultados ou pódios vinculados.</p></div>}</div>;
+ const startDelete=()=>{setDeleting(true);setBackup(null);setBackupSaved(false);setConfirmation('');setDeleteError('');};
+ const downloadBackup=async()=>{
+  setBackupLoading(true);setDeleteError('');
+  try{
+   const archive=await getZero3EventDeletionBackup(event.id);
+   const file=new Blob([JSON.stringify(archive,null,2)],{type:'application/json'});
+   const url=URL.createObjectURL(file);const anchor=document.createElement('a');
+   const safeName=event.name.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'evento';
+    anchor.href=url;anchor.download=`zero3-backup-${safeName}-${event.id}.json`;anchor.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+   setBackup(archive);setBackupSaved(false);
+  }catch(error){setDeleteError(feedback(error));}
+  finally{setBackupLoading(false);}
+ };
+ const confirmDelete=()=>{
+  if(!backup)return;
+  setDeleteError('');
+  remove.mutate({eventId:event.id,data:{confirmation,backupDigest:backup.digest}},{
+   onSuccess:()=>{
+    setDeleting(false);
+    qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});
+    qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});
+    qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId:event.id})});
+   },
+   onError:error=>{setDeleteError(feedback(error));setBackup(null);setBackupSaved(false);},
+  });
+ };
+  return <div>
+   <div className="event-row">
+    <Link href={`/admin/events/${event.id}`} className="event-row-link"><div><div className="event-name">{event.name}</div><div className="event-sub">{event.proofName} · {event.preparationSeconds}s de preparação · Categorias: {event.categories.map(categoryName).join(', ')}</div></div></Link>
+    <div className="event-actions"><span className={`pill ${pillTone(event.status)}`}>{pretty(event.status)}</span>
+     <button className="button small" onClick={()=>{setCategories(event.categories);setEditingCategories(value=>!value);setCategoryError('');}}>Categorias</button>
+     {next&&<button className="button small" disabled={update.isPending} data-testid={`button-event-status-${event.id}`} onClick={()=>update.mutate({eventId:event.id,data:{status:next as typeof Zero3EventStatus[keyof typeof Zero3EventStatus]}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});}})}>{next==='ACTIVE'?'Ativar':'Finalizar'}</button>}
+     <Link href={`/admin/events/${event.id}`} className="button small">Abrir <span aria-hidden>↗</span></Link>
+     {isAdmin&&<button type="button" className="button small" onClick={startDelete} aria-label={`Excluir evento ${event.name}`}><Trash2 size={13}/> Excluir Evento</button>}
+    </div>
+   </div>
+   {editingCategories&&<div className="panel-pad event-category-editor"><strong>Categorias habilitadas</strong><div className="toolbar">{(['SC','RX'] as const).map(category=><label key={category} className="field-help"><input type="checkbox" checked={categories.includes(category)} onChange={e=>setCategories(current=>e.target.checked?[...current,category]:current.filter(item=>item!==category))}/> {categoryName(category)}</label>)}{categories.filter(category=>category!=='SC'&&category!=='RX').map(category=><label key={category} className="field-help"><input type="checkbox" checked onChange={()=>setCategories(current=>current.filter(item=>item!==category))}/> {category}</label>)}</div><div className="toolbar"><input aria-label="Nova categoria" value={newCategory} maxLength={32} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria"/><button type="button" className="button small" onClick={addCategory}>Adicionar</button></div><div className="toolbar"><button className="button small primary" disabled={!categories.length||update.isPending} onClick={saveCategories}>{update.isPending?'Salvando…':'Salvar categorias'}</button><button className="button small" onClick={()=>setEditingCategories(false)}>Cancelar</button>{categoryError&&<span role="alert" style={{color:'#a34238',fontSize:11}}>{categoryError}</span>}</div><p className="field-help">Uma categoria não pode ser removida enquanto houver inscrições, baterias, resultados ou pódios vinculados.</p></div>}
+   {deleting&&<div role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget&&!remove.isPending)setDeleting(false);}} style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(5,8,12,.78)',display:'grid',placeItems:'center',padding:16}}>
+    <section role="dialog" aria-modal="true" aria-labelledby={`delete-event-title-${event.id}`} aria-describedby={`delete-event-warning-${event.id}`} className="panel panel-pad" style={{width:'min(680px,100%)',maxHeight:'90vh',overflow:'auto',boxShadow:'0 24px 90px rgba(0,0,0,.5)'}}>
+     <h2 id={`delete-event-title-${event.id}`} className="panel-title">Excluir evento definitivamente</h2>
+     <p id={`delete-event-warning-${event.id}`} role="alert" style={{color:'#9b312b',fontWeight:700}}>Esta ação é irreversível para os dados operacionais. O evento, suas inscrições, provas, baterias, resultados, revisões, cronômetro, pódios e dados de importação serão removidos. Os atletas cadastrados e os outros eventos serão preservados.</p>
+     <p><strong>{event.name}</strong> · {pretty(event.status)}</p>
+     {backup&&<div className="panel" style={{padding:12,margin:'12px 0'}}><strong>Registros incluídos no backup</strong><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:6,marginTop:8}}>{Object.entries(backup.counts).map(([key,count])=><span key={key} className="field-help">{key}: <b>{count}</b></span>)}</div></div>}
+     <div className="toolbar"><button type="button" className="button" onClick={downloadBackup} disabled={backupLoading||remove.isPending}>{backupLoading?'Gerando backup…':'Baixar backup JSON'}</button><span className="field-help">Guarde o arquivo com segurança; ele contém dados do evento e referências a atletas.</span></div>
+     {backup&&<label className="field-help" style={{display:'flex',gap:8,marginTop:12}}><input type="checkbox" checked={backupSaved} onChange={event=>setBackupSaved(event.target.checked)}/> Confirmei que baixei e guardei o arquivo de backup.</label>}
+     <div className="field" style={{marginTop:12}}><label htmlFor={`delete-confirmation-${event.id}`}>Para confirmar, digite EXCLUIR {event.name}</label><input id={`delete-confirmation-${event.id}`} value={confirmation} onChange={event=>setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} placeholder={`EXCLUIR ${event.name}`} disabled={!backupSaved||remove.isPending}/></div>
+     {deleteError&&<p role="alert" style={{color:'#9b312b'}}>{deleteError}</p>}
+     <div className="toolbar"><button type="button" className="button" onClick={()=>setDeleting(false)} disabled={remove.isPending}>Cancelar</button><button type="button" className="button" onClick={confirmDelete} disabled={!backup||!backupSaved||confirmation!==`EXCLUIR ${event.name}`||remove.isPending} style={{borderColor:'#9b312b',color:'#9b312b'}}>{remove.isPending?'Excluindo…':'Excluir definitivamente'}</button></div>
+    </section>
+   </div>}
+  </div>;
 }
 
 export function EventsPage() {
- const q=useListZero3Events({query:{refetchInterval:15000}}); const create=useCreateZero3Event(); const qc=useQueryClient(); const [show,setShow]=useState(false); const [error,setError]=useState(''); const [categories,setCategories]=useState<string[]>(['SC','RX']); const [newCategory,setNewCategory]=useState('');
- return <AdminShell><PageHeading eyebrow="Agenda" title="Eventos" detail="Configure provas, preparação e status."><button className="button primary" onClick={()=>setShow(v=>!v)} data-testid="button-create-event"><Plus size={15}/> Novo evento</button></PageHeading>
+ const q=useListZero3Events({query:{refetchInterval:15000}}); const me=useGetZero3Me(); const create=useCreateZero3Event(); const restore=useRestoreZero3EventBackup(); const qc=useQueryClient(); const fileRef=useRef<HTMLInputElement>(null); const [show,setShow]=useState(false); const [error,setError]=useState(''); const [categories,setCategories]=useState<string[]>(['SC','RX']); const [newCategory,setNewCategory]=useState(''); const [restoreMessage,setRestoreMessage]=useState('');
+  return <AdminShell><PageHeading eyebrow="Agenda" title="Eventos" detail="Configure provas, preparação e status.">{me.data?.role==='ADMIN'&&<><button className="button" onClick={()=>fileRef.current?.click()} disabled={restore.isPending}>Restaurar backup JSON</button><input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={async event=>{const file=event.target.files?.[0];event.target.value='';if(!file)return;setRestoreMessage('');try{const backup=JSON.parse(await file.text());restore.mutate({data:{backup}},{onSuccess:result=>{setRestoreMessage(`Evento ${result.eventId} restaurado.`);qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});},onError:error=>setRestoreMessage(feedback(error))});}catch{setRestoreMessage('Não foi possível ler um arquivo JSON válido.');}}}/></>}<button className="button primary" onClick={()=>setShow(v=>!v)} data-testid="button-create-event"><Plus size={15}/> Novo evento</button></PageHeading>
+  {restoreMessage&&<p role="status" style={{marginTop:8}}>{restoreMessage}</p>}
   {show && <form className="panel panel-pad" style={{marginBottom:16}} onSubmit={e=>{e.preventDefault();setError('');const fd=new FormData(e.currentTarget);const selectedCategories=orderCategories(fd.getAll('categories').map(String));if(!selectedCategories.length||selectedCategories.length>10||selectedCategories.some(item=>!item.trim()||item.trim().length>32)||new Set(selectedCategories.map(item=>item.trim().toLocaleLowerCase())).size!==selectedCategories.length){setError('Configure de 1 a 10 categorias únicas, com até 32 caracteres cada.');return;}create.mutate({data:{name:String(fd.get('name')).trim(),preparationSeconds:Number(fd.get('preparationSeconds')),categories:selectedCategories}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});setShow(false);setCategories(['SC','RX']);setNewCategory('');},onError:err=>setError(feedback(err))});}}>
     <h2 className="panel-title">Novo evento</h2><Field label="Nome do evento" name="name" required placeholder="Nome oficial"/><Field label="Tempo de preparação (segundos)" name="preparationSeconds" type="number" min="0" max="120" defaultValue="10" required/><div className="field"><span className="field-help">Categorias do evento</span><div className="toolbar">{(['SC','RX'] as const).map(category=><label key={category} className="field-help"><input type="checkbox" name="categories" value={category} checked={categories.includes(category)} onChange={e=>setCategories(current=>e.target.checked?[...current,category]:current.filter(item=>item!==category))}/> {categoryName(category)}</label>)}{categories.filter(category=>category!=='SC'&&category!=='RX').map(category=><label key={category} className="field-help"><input type="checkbox" name="categories" value={category} checked onChange={()=>setCategories(current=>current.filter(item=>item!==category))}/> {category}</label>)}</div><div className="toolbar"><input aria-label="Nova categoria para o evento" value={newCategory} maxLength={32} onChange={e=>setNewCategory(e.target.value)} placeholder="Nova categoria"/><button type="button" className="button small" onClick={()=>{const value=newCategory.trim();if(!value)return;if(categories.some(item=>item.toLocaleLowerCase()===value.toLocaleLowerCase())){setError('Essa categoria já está configurada.');return;}if(categories.length>=10||value.length>32){setError('Use até 10 categorias com no máximo 32 caracteres cada.');return;}setCategories(current=>[...current,value]);setNewCategory('');setError('');}}>Adicionar</button></div></div><p className="field-help">As quatro provas são configuradas separadamente em Operação e resultados.</p><div className="toolbar"><button className="button primary" disabled={create.isPending}><Save size={14}/>{create.isPending?'Salvando…':'Salvar evento'}</button><button className="button" type="button" onClick={()=>setShow(false)}>Cancelar</button>{error&&<span style={{color:'#a34238',fontSize:11}}>{error}</span>}</div>
  </form>}
- <section className="panel">{q.isLoading?<div style={{padding:18}}><LoadingRows/></div>:q.isError?<QueryError retry={()=>q.refetch()}/>:q.data?.length===0?<EmptyState title="Ainda não há eventos" detail="Crie um evento para montar baterias e acompanhar a competição."/>:q.data?.map(e=><EventRow event={e} key={e.id}/>)}</section>
+  <section className="panel">{q.isLoading?<div style={{padding:18}}><LoadingRows/></div>:q.isError?<QueryError retry={()=>q.refetch()}/>:q.data?.length===0?<EmptyState title="Ainda não há eventos" detail="Crie um evento para montar baterias e acompanhar a competição."/>:q.data?.map(e=><EventRow event={e} key={e.id} isAdmin={me.data?.role==='ADMIN'}/>)}</section>
  </AdminShell>;
 }
 

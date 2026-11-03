@@ -98,6 +98,7 @@ export function createApp(options: AppOptions = {}): Express {
     }
   });
   app.use(instrumentRequestMiddleware("clerk_validation", clerkAuthMiddleware));
+  app.use("/api/zero3/events/restore", express.json({ limit: "10mb" }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 

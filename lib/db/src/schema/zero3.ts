@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   foreignKey,
+  index,
   integer,
   jsonb,
   numeric,
@@ -380,3 +381,22 @@ export const zero3MembersTable = pgTable("zero3_members", {
     .notNull()
     .defaultNow(),
 });
+
+export const zero3EventDeletionAuditTable = pgTable(
+  "zero3_event_deletion_audit",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id").notNull(),
+    eventName: text("event_name").notNull(),
+    actorId: text("actor_id").notNull(),
+    backupDigest: text("backup_digest").notNull(),
+    recordCounts: jsonb("record_counts").$type<Record<string, number>>().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    eventIndex: index("zero3_event_deletion_audit_event_idx").on(
+      table.eventId,
+      table.deletedAt,
+    ),
+  }),
+);

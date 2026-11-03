@@ -165,6 +165,101 @@ export interface Zero3EventUpdate {
   categories?: Zero3Category[];
 }
 
+export type Zero3EventBackupCounts = {[key: string]: number};
+
+export type Zero3EventBackupDataEvent = { [key: string]: unknown };
+
+export type Zero3EventBackupDataAthletesItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataProofsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataRegistrationsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataRegistrationMembersItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataRegistrationAuditItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataImportBatchesItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataImportPeopleItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataImportTeamsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataHeatsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataHeatEntriesItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataActiveHeatsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataResultsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataResultRevisionsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataTimersItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataPodiumVersionsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupData = {
+  event: Zero3EventBackupDataEvent;
+  athletes: Zero3EventBackupDataAthletesItem[];
+  proofs: Zero3EventBackupDataProofsItem[];
+  registrations: Zero3EventBackupDataRegistrationsItem[];
+  registrationMembers: Zero3EventBackupDataRegistrationMembersItem[];
+  registrationAudit: Zero3EventBackupDataRegistrationAuditItem[];
+  importBatches: Zero3EventBackupDataImportBatchesItem[];
+  importPeople: Zero3EventBackupDataImportPeopleItem[];
+  importTeams: Zero3EventBackupDataImportTeamsItem[];
+  heats: Zero3EventBackupDataHeatsItem[];
+  heatEntries: Zero3EventBackupDataHeatEntriesItem[];
+  activeHeats: Zero3EventBackupDataActiveHeatsItem[];
+  results: Zero3EventBackupDataResultsItem[];
+  resultRevisions: Zero3EventBackupDataResultRevisionsItem[];
+  timers: Zero3EventBackupDataTimersItem[];
+  podiumVersions: Zero3EventBackupDataPodiumVersionsItem[];
+};
+
+export interface Zero3EventBackup {
+  format: 'zero3-event-backup';
+  version: 1;
+  eventId: string;
+  eventName: string;
+  exportedAt: string;
+  counts: Zero3EventBackupCounts;
+  data: Zero3EventBackupData;
+  /**
+     * @minLength 64
+     * @maxLength 64
+     */
+  digest: string;
+}
+
+export interface Zero3EventDeleteInput {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  confirmation: string;
+  /**
+     * @minLength 64
+     * @maxLength 64
+     */
+  backupDigest: string;
+}
+
+export interface Zero3EventRestoreInput {
+  backup: Zero3EventBackup;
+}
+
+export interface Zero3EventDeleteResult {
+  eventId: string;
+  deleted: boolean;
+}
+
+export interface Zero3EventRestoreResult {
+  eventId: string;
+  restored: boolean;
+}
+
 export type Zero3ProofMetric = typeof Zero3ProofMetric[keyof typeof Zero3ProofMetric];
 
 

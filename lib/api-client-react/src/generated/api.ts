@@ -35,7 +35,12 @@ import type {
   Zero3Category,
   Zero3Dashboard,
   Zero3Event,
+  Zero3EventBackup,
+  Zero3EventDeleteInput,
+  Zero3EventDeleteResult,
   Zero3EventInput,
+  Zero3EventRestoreInput,
+  Zero3EventRestoreResult,
   Zero3EventUpdate,
   Zero3Heat,
   Zero3HeatInput,
@@ -589,6 +594,195 @@ export const useCreateZero3Event = <TError = ErrorType<void>,
       return useMutation(getCreateZero3EventMutationOptions(options), queryClient);
     }
 
+export const getRestoreZero3EventBackupUrl = () => {
+
+
+
+
+  return `/api/zero3/events/restore`
+}
+
+/**
+ * @summary Restore an event from its exported backup
+ */
+export const restoreZero3EventBackup = async (zero3EventRestoreInput: Zero3EventRestoreInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3EventRestoreResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3EventRestoreResult>(getRestoreZero3EventBackupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3EventRestoreInput)
+  }
+);}
+
+
+
+
+
+export const getRestoreZero3EventBackupMutationKey = () => ['restoreZero3EventBackup'] as const;
+
+export const getRestoreZero3EventBackupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreZero3EventBackup>>, TError,RestoreZero3EventBackupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof restoreZero3EventBackup>>, TError,RestoreZero3EventBackupMutationVariables, TContext> => {
+
+const mutationKey = getRestoreZero3EventBackupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restoreZero3EventBackup>>, RestoreZero3EventBackupMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  restoreZero3EventBackup(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestoreZero3EventBackupMutationResult = NonNullable<Awaited<ReturnType<typeof restoreZero3EventBackup>>>
+    export type RestoreZero3EventBackupMutationBody = BodyType<Zero3EventRestoreInput>
+    export type RestoreZero3EventBackupMutationError = ErrorType<void>
+    export type RestoreZero3EventBackupMutationVariables = {data: BodyType<Zero3EventRestoreInput>}
+
+    /**
+ * @summary Restore an event from its exported backup
+ */
+export const useRestoreZero3EventBackup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreZero3EventBackup>>, TError,RestoreZero3EventBackupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof restoreZero3EventBackup>>,
+        TError,
+        RestoreZero3EventBackupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRestoreZero3EventBackupMutationOptions(options), queryClient);
+    }
+
+export const getGetZero3EventDeletionBackupUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}`
+}
+
+/**
+ * @summary Export a complete recoverable event backup
+ */
+export const getZero3EventDeletionBackup = async (eventId: string, options?: Parameters<typeof customFetch>[1]): Promise<Zero3EventBackup> => {
+
+  return customFetch<Zero3EventBackup>(getGetZero3EventDeletionBackupUrl(eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetZero3EventDeletionBackupQueryKey = (eventId: string,) => {
+    return [
+    `/api/zero3/events/${eventId}`
+    ] as const;
+    }
+
+
+export const getGetZero3EventDeletionBackupQueryOptions = <TData = Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError = ErrorType<void>>(eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetZero3EventDeletionBackupQueryKey(eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>> = ({ signal }) => getZero3EventDeletionBackup(eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetZero3EventDeletionBackupQueryResult = NonNullable<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>>
+export type GetZero3EventDeletionBackupQueryError = ErrorType<void>
+
+
+export function useGetZero3EventDeletionBackup<TData = Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError = ErrorType<void>>(
+ eventId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getZero3EventDeletionBackup>>,
+          TError,
+          Awaited<ReturnType<typeof getZero3EventDeletionBackup>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetZero3EventDeletionBackup<TData = Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getZero3EventDeletionBackup>>,
+          TError,
+          Awaited<ReturnType<typeof getZero3EventDeletionBackup>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetZero3EventDeletionBackup<TData = Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Export a complete recoverable event backup
+ */
+
+export function useGetZero3EventDeletionBackup<TData = Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetZero3EventDeletionBackupQueryOptions(eventId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getUpdateZero3EventUrl = (eventId: string,) => {
 
 
@@ -676,6 +870,95 @@ export const useUpdateZero3Event = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdateZero3EventMutationOptions(options), queryClient);
+    }
+
+export const getDeleteZero3EventUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}`
+}
+
+/**
+ * @summary Permanently delete an event after backup and confirmation
+ */
+export const deleteZero3Event = async (eventId: string,
+    zero3EventDeleteInput: Zero3EventDeleteInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3EventDeleteResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3EventDeleteResult>(getDeleteZero3EventUrl(eventId),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3EventDeleteInput)
+  }
+);}
+
+
+
+
+
+export const getDeleteZero3EventMutationKey = () => ['deleteZero3Event'] as const;
+
+export const getDeleteZero3EventMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteZero3Event>>, TError,DeleteZero3EventMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteZero3Event>>, TError,DeleteZero3EventMutationVariables, TContext> => {
+
+const mutationKey = getDeleteZero3EventMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteZero3Event>>, DeleteZero3EventMutationVariables> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  deleteZero3Event(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteZero3EventMutationResult = NonNullable<Awaited<ReturnType<typeof deleteZero3Event>>>
+    export type DeleteZero3EventMutationBody = BodyType<Zero3EventDeleteInput>
+    export type DeleteZero3EventMutationError = ErrorType<void>
+    export type DeleteZero3EventMutationVariables = {eventId: string;data: BodyType<Zero3EventDeleteInput>}
+
+    /**
+ * @summary Permanently delete an event after backup and confirmation
+ */
+export const useDeleteZero3Event = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteZero3Event>>, TError,DeleteZero3EventMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteZero3Event>>,
+        TError,
+        DeleteZero3EventMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteZero3EventMutationOptions(options), queryClient);
     }
 
 export const getListZero3ProofsUrl = (eventId: string,) => {
