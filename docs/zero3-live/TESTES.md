@@ -1,5 +1,13 @@
 # ZERO3 PRO — testes e homologação
 
+## Conta administrativa — inspeção real, sem escrita
+
+Ver [ADMIN-ACCESS-VERIFICATION.md](ADMIN-ACCESS-VERIFICATION.md).
+SDK Clerk: uma identidade com primário verificado. SQL READ ONLY nos dois bancos:
+Development já ADMIN ativo; Neon sem vínculo alvo. Cloudflare: páginas 200 HTML,
+/me e /events anônimos 401, placar público 200 e /tv renderizada.
+Não houve login real, grant remoto ou teste com outra conta autenticada.
+
 ## Diagnóstico de autorização — verificação mais recente
 
 Ver [relatório de evidências](AUTH-500-DIAGNOSTICO.md): 35 testes passaram,

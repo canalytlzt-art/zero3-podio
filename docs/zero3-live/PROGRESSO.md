@@ -1,5 +1,14 @@
 # ZERO3 PRO — progresso
 
+## Verificação da conta administrativa
+
+[Relatório por ambiente e procedimento restrito](ADMIN-ACCESS-VERIFICATION.md).
+Development: identidade Clerk única com primário verificado e vínculo já ADMIN
+ativo; nenhuma escrita necessária. Neon consultado: vínculo ausente, sem escrita
+porque destino efetivo do Hyperdrive e identidade do backend Worker não foram
+confirmados. Frontend publicado usa a mesma chave test; isso não prova runtime.
+TV pública e APIs anônimas conferidas; login real e grant remoto não comprovados.
+
 ## Diagnóstico de autorização — instrumentação local
 
 Relatório: [AUTH-500-DIAGNOSTICO.md](AUTH-500-DIAGNOSTICO.md).
