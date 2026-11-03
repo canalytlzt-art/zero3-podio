@@ -1,5 +1,25 @@
 # ZERO3 PRO — progresso
 
+## Preparação de migração D1 — Bloco 1
+
+Inventário e baseline em [BLOCO-1-BASELINE-MIGRACAO-D1.md](BLOCO-1-BASELINE-MIGRACAO-D1.md).
+Nenhum banco ou binding alterado. Replit Development é PostgreSQL;
+`NEON_TEST_DATABASE_URL` é um Neon isolado consultado anteriormente, mas não
+está provado que seja a origem usada pelo Worker. Hyperdrive remoto,
+projeto/branch e versão ativa ainda precisam de confirmação. Cloudflare D1 do
+ZERO3 Games ainda não está configurado neste projeto. Produção permanece no
+PostgreSQL atual até aprovação explícita do corte.
+
+## Preparação de migração D1 — Bloco 2
+
+Migration SQLite/D1 inicial criada em `lib/db/d1-migrations/0001_zero3_initial.sql`
+para 17 tabelas ZERO3, com IDs texto UUID, JSON validado em TEXT, booleanos
+0/1, instantes ISO UTC em TEXT, milissegundos INTEGER e valores `numeric(12,3)`
+em TEXT para evitar perda de precisão. D1 não gera UUID automaticamente nessa
+migration; antes de usar D1 como runtime, a aplicação precisará gerar IDs no
+servidor. Exportação/importação/conciliação de dados reais não executadas:
+origem não confirmada. Não existe corte ou alteração de produção.
+
 ## Verificação da conta administrativa
 
 [Relatório por ambiente e procedimento restrito](ADMIN-ACCESS-VERIFICATION.md).
