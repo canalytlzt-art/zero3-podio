@@ -7,3 +7,4 @@
 - [Cloudflare PostgreSQL boundary](cloudflare-postgres-boundary.md) — Keep Neon/Hyperdrive separate, preserve Neon Auth metadata, and publish through the GitHub integration.
 - [Drizzle composite foreign keys](drizzle-composite-fk.md) — Use table-level unique constraints for composite FK targets so fresh Drizzle pushes create parent keys before child references.
 - [ZERO3 Git history](zero3-github-history.md) — Preserve existing branch/checkpoint history; the user chose not to rewrite it during GitHub preparation.
+- [Workerd network errors](workerd-network-errors.md) — PostgreSQL TCP failures may lack Node codes; classify only with specific SQL context, never from timing alone.

@@ -47,6 +47,7 @@ test("records protected-request credential presence without logging values", () 
   let finish: (() => void) | undefined;
   const response = {
     statusCode: 401,
+    once() { return this; },
     setHeader(name: string, value: string) {
       headers.set(name.toLowerCase(), value);
     },
@@ -114,4 +115,41 @@ test("records auth-header presence only as booleans", () => {
   assert.match(lines[0], /"cookiePresent":true/);
   assert.match(lines[0], /"authorizationPresent":true/);
   assert.doesNotMatch(lines[0], /sensitive-token|sensitive-cookie/);
+});
+
+test("retains falsy thrown values instead of silently dropping diagnostics", () => {
+  const lines: string[] = [];
+  const previous = console.error;
+  console.error = (line?: unknown) => { lines.push(String(line)); };
+  try {
+    for (const error of [null, 0, "", false]) {
+      workerLogger.error({ error }, "failure");
+    }
+  } finally {
+    console.error = previous;
+  }
+  assert.equal(lines.length, 4);
+  for (const line of lines) assert.ok(JSON.parse(line).error);
+});
+
+test("response wait is correlated and its timer is cleared on completion", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const lines: string[] = [];
+  context.mock.method(console, "info", (line: unknown) => lines.push(String(line)));
+  const callbacks = new Map<string, () => void>();
+  const req = { method: "GET", path: "/api/zero3/me", headers: { "cf-ray": "fixture-ray" } } as unknown as Request;
+  const res = {
+    statusCode: 500,
+    setHeader() {},
+    once(event: string, callback: () => void) { callbacks.set(event, callback); },
+    on(event: string, callback: () => void) { callbacks.set(event, callback); },
+  } as unknown as Response;
+  workerRequestLogger()(req, res, () => {});
+  context.mock.timers.tick(5000);
+  callbacks.get("finish")?.();
+  context.mock.timers.tick(10000);
+  const records = lines.map(line => JSON.parse(line));
+  assert.deepEqual(records.map(record => record.stageEvent), ["start", "still_running", "finish"]);
+  assert.equal(records[1].durationMs, 5000);
+  assert.ok(records.every(record => record.requestId === records[0].requestId && record.cfRayId === "fixture-ray"));
 });

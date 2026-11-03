@@ -45,7 +45,7 @@ function writeLog(
   const record = {
     level,
     message,
-    ...(context.error
+    ...(Object.prototype.hasOwnProperty.call(context, "error")
       ? {
           error: {
             ...serializeSafeError(context.error),
@@ -110,6 +110,17 @@ export function workerRequestLogger(): RequestHandler {
     response.setHeader("x-request-id", requestId);
     const startedAt = Date.now();
     const traceAuthorization = request.path === "/api/zero3/me";
+    let completed = false;
+    const pendingTimer = traceAuthorization ? setTimeout(() => {
+      if (completed) return;
+      workerLogger.info({
+        requestId, cfRayId, stage: "response", stageEvent: "still_running",
+        durationMs: Date.now() - startedAt,
+      }, "request still running");
+    }, 5_000) : undefined;
+    response.once("close", () => {
+      if (pendingTimer) clearTimeout(pendingTimer);
+    });
     if (traceAuthorization) {
       workerLogger.info(
         {
@@ -126,6 +137,8 @@ export function workerRequestLogger(): RequestHandler {
       );
     }
     response.on("finish", () => {
+      completed = true;
+      if (pendingTimer) clearTimeout(pendingTimer);
       workerLogger.info(
         {
           requestId,

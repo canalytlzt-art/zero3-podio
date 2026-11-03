@@ -71,8 +71,14 @@ export function isAuthorizationProviderUnavailable(error: unknown): boolean {
 export function isDatabaseUnavailable(error: unknown): boolean {
   return getErrorChain(error).some(
     (item) =>
-      typeof item.code === "string" &&
-      DATABASE_UNAVAILABLE_CODES.has(item.code),
+      (typeof item.code === "string" &&
+        DATABASE_UNAVAILABLE_CODES.has(item.code)) ||
+      // Workerd can reject a TCP connection without a Node error code.
+      // Require the observed Drizzle wrapper as well as the exact cause;
+      // do not infer a connection failure from elapsed time or generic text.
+      (item.message.startsWith("Failed query: ") &&
+        item.cause instanceof Error &&
+        item.cause.message === "connection attempt failed"),
   );
 }
 

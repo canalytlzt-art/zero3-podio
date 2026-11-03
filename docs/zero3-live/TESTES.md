@@ -1,5 +1,13 @@
 # ZERO3 PRO — testes e homologação
 
+## Diagnóstico de autorização — verificação mais recente
+
+Ver [relatório de evidências](AUTH-500-DIAGNOSTICO.md): 35 testes passaram,
+check:cloudflare passou, Wrangler local iniciou e respondeu healthz 200,
+/me anônimo 401, banco TCP indisponível 503. Preview /admin exibe login.
+Cloudflare anônimo /me 401 foi confirmado; login real, 403 de uma conta real,
+conexão autenticada ao Neon e causa do 500 remoto continuam não comprovados.
+
 ## Resultado
 
 Validação técnica executada em Development; nenhuma publicação foi feita. O placar público e o bloqueio de operação sem autorização foram conferidos. A tela autenticada, a captura real por usuário logado e dispositivos físicos ainda exigem ensaio operacional.

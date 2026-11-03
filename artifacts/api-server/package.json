@@ -12,6 +12,7 @@
     "test:roster-source": "esbuild src/lib/zero3-roster-source.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-roster-source.test.mjs && node --test /tmp/zero3-roster-source.test.mjs",
     "test:roster-import": "esbuild src/lib/zero3-roster-import.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-roster-import.test.mjs && node --test /tmp/zero3-roster-import.test.mjs",
     "test:auth-session": "esbuild src/lib/auth-session.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-auth-session.test.mjs && node --test /tmp/zero3-auth-session.test.mjs",
+    "test:auth-guard": "node scripts/test-auth-guard.mjs",
     "test:db-connection-error": "esbuild ../../lib/db/src/database-connection-error.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-db-connection-error.test.mjs && node --test /tmp/zero3-db-connection-error.test.mjs",
     "test:worker-logger": "esbuild src/lib/worker-logger.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-worker-logger.test.mjs && node --test /tmp/zero3-worker-logger.test.mjs",
     "test:safe-error": "esbuild src/lib/safe-error.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-safe-error.test.mjs && node --test /tmp/zero3-safe-error.test.mjs",

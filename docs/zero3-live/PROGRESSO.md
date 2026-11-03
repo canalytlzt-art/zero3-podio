@@ -1,5 +1,15 @@
 # ZERO3 PRO — progresso
 
+## Diagnóstico de autorização — instrumentação local
+
+Relatório: [AUTH-500-DIAGNOSTICO.md](AUTH-500-DIAGNOSTICO.md).
+O incidente remoto de 15 segundos permanece sem causa comprovada por falta
+dos logs Cloudflare correlacionados. Patch local preserva erros falsos,
+redige parâmetros SQL/códigos sensíveis e mede espera da resposta.
+Uma falha TCP sem código foi reproduzida no Wrangler e passou de 500 para 503
+no placar; não foi atribuída ao incidente /me. 35 testes e check:cloudflare passaram.
+Sem publicação ou alterações de banco/permissões.
+
 ## Estado
 
 Implementação e correções finais de entrada/autorização preparadas em Development. Nova build local validada; não publicada. A base de produção não foi consultada nem alterada.

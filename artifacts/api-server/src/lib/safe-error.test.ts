@@ -47,3 +47,23 @@ test("serializes nested errors while redacting credentials and personal identifi
     /db-user|db-pass|secret-value|fake-token|eyJhbGci|test@example\.com|fake-cookie|fake-refresh/,
   );
 });
+
+test("redacts query parameter values and credential-shaped error codes", () => {
+  const error = Object.assign(new Error("Failed query: select id\nparams: Pessoa privada,123"), {
+    code: "sk_test_fixture_private",
+  });
+  const text = JSON.stringify(serializeSafeError(error));
+  assert.doesNotMatch(text, /Pessoa privada|123|sk_test_fixture_private/);
+  assert.match(text, /REDACTED_QUERY_PARAMETERS/);
+  assert.match(text, /REDACTED_CLERK_KEY/);
+});
+
+test("bounds cycles, aggregate causes, and non-Error thrown values", () => {
+  const error: Record<string, unknown> = { name: "ForeignError", message: "failure", code: "ECONNRESET" };
+  error.cause = error;
+  error.errors = [null, 0, false, "failure", "excluded"];
+  const serialized = serializeSafeError(error);
+  assert.equal(serialized.errors?.length, 4);
+  assert.match(JSON.stringify(serialized), /ErrorCauseDepthLimit/);
+  assert.equal(serializeSafeError(new Error("x".repeat(20000))).message?.length, 12012);
+});

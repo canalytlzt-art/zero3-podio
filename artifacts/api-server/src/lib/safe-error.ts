@@ -8,6 +8,7 @@ export type SafeErrorDetails = {
 };
 
 const REDACTIONS: Array<[RegExp, string]> = [
+  [/^params:.*$/gim, "params: [REDACTED_QUERY_PARAMETERS]"],
   [/\bpostgres(?:ql)?:\/\/[^\s"'<>]+/gi, "[REDACTED_DATABASE_URL]"],
   [/\b(?:set-cookie|cookie)\s*[:=]\s*[^\r\n]*/gi, "[REDACTED_COOKIE]"],
   [
@@ -56,7 +57,7 @@ export function serializeSafeError(
       typeof candidate.code === "string" &&
       /^[A-Za-z0-9_.-]{1,100}$/.test(candidate.code)
     ) {
-      details.code = candidate.code;
+      details.code = sanitizeErrorText(candidate.code, 100);
     } else if (typeof candidate.code === "string") {
       details.code = sanitizeErrorText(candidate.code, 100);
     }
@@ -97,7 +98,7 @@ export function serializeSafeError(
       typeof code === "string" &&
       /^[A-Za-z0-9_.-]{1,100}$/.test(code)
     ) {
-      details.code = code;
+      details.code = sanitizeErrorText(code, 100);
     } else if (typeof code === "string") {
       details.code = sanitizeErrorText(code, 100);
     }

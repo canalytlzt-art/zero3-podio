@@ -32,6 +32,27 @@ test("times authorization stages and correlates them to request and Cloudflare R
   assert.match(lines[1], /"durationMs":\d+/);
 });
 
+test("Clerk and DB stages retain wait, failure cause, and correlation", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const records: Array<Record<string, unknown>> = [];
+  const capture = (line: unknown) => records.push(JSON.parse(String(line)));
+  context.mock.method(console, "info", capture);
+  context.mock.method(console, "error", capture);
+  const request = {
+    id: "controlled-failure", originalUrl: "/api/zero3/me",
+    headers: { "cf-ray": "controlled-ray" },
+  } as unknown as Request;
+  for (const stage of ["clerk_validation", "clerk_user_lookup", "hyperdrive_connection", "authorization_role_query"] as const) {
+    const finish = beginRequestStage(request, stage);
+    context.mock.timers.tick(5000);
+    finish(Object.assign(new Error("controlled failure"), { code: "ETIMEDOUT" }));
+    const entries = records.filter(record => record.stage === stage);
+    assert.deepEqual(entries.map(record => record.stageEvent), ["start", "still_running", "finish"]);
+    assert.ok(entries.every(record => record.requestId === "controlled-failure" && record.cfRayId === "controlled-ray"));
+    assert.equal((entries[2].error as { code: string }).code, "ETIMEDOUT");
+  }
+});
+
 test("does not emit authorization stage logs for unrelated requests", () => {
   const request = {
     id: "request-fixture",

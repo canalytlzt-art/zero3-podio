@@ -1,5 +1,9 @@
 # ZERO3 PRO
 
+Authorization incident evidence and local-only diagnostic changes are documented
+in `docs/zero3-live/AUTH-500-DIAGNOSTICO.md`. Do not treat the isolated Workerd
+TCP failure reproduction as the cause of the reported authenticated Cloudflare 500.
+
 Competition operations for SC/RX events: roster and registrations, heats, a shared sports timer, provisional result capture and correction, manually published podiums, and one public TV leaderboard. The UI is Portuguese.
 
 ## Run & operate

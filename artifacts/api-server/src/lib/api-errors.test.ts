@@ -62,6 +62,16 @@ test("classifies PostgreSQL connectivity errors as dependency failures", () => {
   );
 });
 
+test("classifies the reproduced Workerd TCP rejection only inside a SQL failure", () => {
+  const cause = new Error("connection attempt failed");
+  const wrapped = new Error("Failed query: select id from zero3_events", { cause });
+  assert.equal(capturedApiFailure(wrapped).status, 503);
+  assert.equal(isDatabaseUnavailable(cause), false);
+  assert.equal(isDatabaseUnavailable(new Error("Failed query: invalid syntax", {
+    cause: new Error("syntax error"),
+  })), false);
+});
+
 test("classifies PostgreSQL authentication SQLSTATE as a database failure", () => {
   for (const code of ["28000", "28P01"]) {
     const error = Object.assign(new Error("database authentication failed"), {
