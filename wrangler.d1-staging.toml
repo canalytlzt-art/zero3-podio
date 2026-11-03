@@ -1,6 +1,6 @@
 # Isolated D1 test Worker configuration. This is not the production config.
-# Replace database_id only after creating/confirming the dedicated remote D1.
-# The zero ID is a local-only placeholder and must never be deployed.
+# This configuration targets only the user-identified Development D1.
+# Do not copy this binding into the production wrangler.toml.
 name = "zero3-games-d1-staging"
 main = "artifacts/api-server/src/worker.ts"
 compatibility_date = "2026-10-30"
@@ -19,5 +19,5 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "zero3-games-d1-staging"
-database_id = "00000000000000000000000000000000"
+database_id = "60416dac-0da6-48d9-a2d2-c267760f4b7a"
 migrations_dir = "lib/db/d1-migrations"

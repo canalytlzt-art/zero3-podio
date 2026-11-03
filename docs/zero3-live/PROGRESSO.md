@@ -20,6 +20,21 @@ migration; antes de usar D1 como runtime, a aplicação precisará gerar IDs no
 servidor. Exportação/importação/conciliação de dados reais não executadas:
 origem não confirmada. Não existe corte ou alteração de produção.
 
+## D1 Development — tentativa de provisionamento
+
+`wrangler.d1-staging.toml` agora aponta o binding DB ao D1 de Development
+informado pelo usuário; a configuração de produção `wrangler.toml` permanece
+intacta. A migration e fixture fictícia aplicaram no D1 local isolado usando o
+mesmo ID de binding e retornaram 1 evento, 4 provas, 1 atleta, 1 inscrição,
+1 resultado, 1 timer e 1 pódio.
+
+Aplicar migration remota não foi possível: `wrangler whoami` informou sessão
+não autenticada; o comando remoto exige `CLOUDFLARE_API_TOKEN`. Nenhuma
+solicitação de token foi feita. O Worker/API ainda não consome env.DB; execução
+local do Worker com staging não valida D1 e retornou 500 pela ausência da
+secret Clerk local. Não publicar ou remover PostgreSQL até concluir a integração
+D1 e validar o caminho completo.
+
 ## Verificação da conta administrativa
 
 [Relatório por ambiente e procedimento restrito](ADMIN-ACCESS-VERIFICATION.md).
