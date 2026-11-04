@@ -19,30 +19,42 @@ export function rosterIdentityChanged(
   original: { category: string; athleteIds: readonly string[] },
   next: { category: string; athleteIds: readonly string[] },
 ): boolean {
-  return original.category !== next.category ||
-    [...original.athleteIds].sort().join("|") !== [...next.athleteIds].sort().join("|");
+  const changes = rosterIdentityChanges(original, next);
+  return changes.categoryChanged || changes.athleteIdsChanged;
 }
 
 /**
- * Changing the registration identity after it has been used would make its
- * existing results, heats, import links, or podium point at a different team.
- * Keep those links intact; only registrations without such references can have
- * their athletes or category changed.
+ * Import records and heat entries point to the stable registration ID, so an
+ * athlete replacement before results are recorded can preserve those links.
+ * A category change still requires rebuilding any category-specific heat.
+ * Results and published podiums are historical records and lock identity edits.
  */
+export function rosterIdentityChanges(
+  original: { category: string; athleteIds: readonly string[] },
+  next: { category: string; athleteIds: readonly string[] },
+): { athleteIdsChanged: boolean; categoryChanged: boolean } {
+  return {
+    categoryChanged: original.category !== next.category,
+    athleteIdsChanged: [...original.athleteIds].sort().join("|") !==
+      [...next.athleteIds].sort().join("|"),
+  };
+}
+
 export function rosterIdentityEditConflict(
-  identityChanged: boolean,
+  changes: { athleteIdsChanged: boolean; categoryChanged: boolean },
   history: RosterIdentityHistory,
 ): string | null {
-  if (!identityChanged) return null;
+  if (!changes.athleteIdsChanged && !changes.categoryChanged) return null;
 
   const linked: string[] = [];
   if (history.resultCount) linked.push(`${history.resultCount} resultado(s)`);
-  if (history.heatEntryCount) linked.push(`${history.heatEntryCount} bateria(s)`);
-  if (history.importCount) linked.push(`${history.importCount} vínculo(s) de importação`);
-  if (history.podiumCount) linked.push(`${history.podiumCount} pódio(s)`);
+  if (history.podiumCount) linked.push(`${history.podiumCount} pódio(s) publicado(s)`);
+  if (changes.categoryChanged && history.heatEntryCount) {
+    linked.push(`${history.heatEntryCount} bateria(s) que usam a categoria atual`);
+  }
   if (linked.length === 0) return null;
 
-  return `Não é possível trocar atletas ou categoria: esta inscrição está vinculada a ${linked.join(", ")}. Preserve a inscrição e revise esses vínculos antes da alteração.`;
+  return `Não é possível trocar atletas ou categoria: esta inscrição tem ${linked.join(" e ")}. A edição comum preserva a identidade histórica da inscrição.`;
 }
 
 export type RosterImportRegistration = {

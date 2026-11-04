@@ -60,11 +60,13 @@ import {
   desc,
   eq,
   inArray,
+  ne,
   sql,
 } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { getAuth } from "@clerk/express";
 import { parseZero3TeamName, resolveZero3DisplayTeamName } from "../lib/zero3-team-name";
+import { resolveHeatRegistrationAssignments } from "../lib/zero3-heat-assignments";
 import {
   db,
   zero3ActiveHeatsTable,
@@ -1240,10 +1242,6 @@ router.post(
       return;
     }
     const registrationIds = body.data.registrationIds ?? [];
-    if (new Set(registrationIds).size !== registrationIds.length) {
-      res.status(400).json({ error: "Há inscrições duplicadas na bateria." });
-      return;
-    }
     const registrations = registrationIds.length
       ? await db
           .select()
@@ -1253,15 +1251,29 @@ router.post(
               inArray(zero3RegistrationsTable.id, registrationIds),
               eq(zero3RegistrationsTable.eventId, params.data.eventId),
               eq(zero3RegistrationsTable.category, body.data.category),
+              ne(zero3RegistrationsTable.confirmationStatus, "CANCELLED"),
             ),
           )
       : [];
-    if (registrations.length !== registrationIds.length) {
-      res.status(400).json({
-        error: "Cada inscrição precisa pertencer à prova e categoria da bateria.",
-      });
+    const assignments = resolveHeatRegistrationAssignments(
+      registrationIds,
+      registrations.map((registration) => ({
+        id: registration.id,
+        eventId: registration.eventId,
+        category: registration.category,
+        athleteIds: registration.athleteIds,
+      })),
+      params.data.eventId,
+      body.data.category,
+    );
+    if (!assignments.ok) {
+      res.status(400).json({ error: assignments.error });
       return;
     }
+    const registrationsById = new Map(registrations.map((registration) => [registration.id, registration]));
+    const selectedRegistrations = assignments.registrations.map((registration) =>
+      registrationsById.get(registration.id)!,
+    );
     const [existingHeat] = await db
       .select()
       .from(zero3HeatsTable)
@@ -1285,7 +1297,7 @@ router.post(
         .returning();
       if (registrations.length) {
         await tx.insert(zero3HeatEntriesTable).values(
-          registrations.map((registration) => ({
+        selectedRegistrations.map((registration) => ({
             heatId: createdHeat.id,
             registrationId: registration.id,
             laneLabel: registration.laneLabel,
@@ -1295,7 +1307,7 @@ router.post(
       return createdHeat;
     });
     const heatRegistrations = await Promise.all(
-      registrations.map(registrationDto),
+      selectedRegistrations.map(registrationDto),
     );
     res.status(201).json(
       CreateZero3HeatResponse.parse({
@@ -1469,6 +1481,17 @@ router.post(
       .where(eq(zero3ResultsTable.idempotencyKey, body.data.idempotencyKey))
       .limit(1);
     if (existing) {
+      const sameRequest = existing.eventId === body.data.eventId &&
+        existing.registrationId === body.data.registrationId &&
+        existing.proofId === (body.data.proofId ?? null) &&
+        existing.heatId === (body.data.heatId ?? null) &&
+        existing.status === body.data.status &&
+        (body.data.rawValue == null || existing.rawValue === String(body.data.rawValue)) &&
+        (body.data.elapsedMs == null || existing.elapsedMs === body.data.elapsedMs);
+      if (!sameRequest) {
+        res.status(409).json({ error: "A chave de idempotência já foi usada por outro lançamento." });
+        return;
+      }
       res.status(201).json(
         CaptureZero3ResultResponse.parse(await resultDto(existing)),
       );
@@ -1479,11 +1502,7 @@ router.post(
       .from(zero3RegistrationsTable)
       .where(eq(zero3RegistrationsTable.id, body.data.registrationId))
       .limit(1);
-    if (
-      !registration ||
-      registration.eventId !== body.data.eventId ||
-      (body.data.heatId && !registration)
-    ) {
+    if (!registration || registration.eventId !== body.data.eventId) {
       res.status(400).json({ error: "Inscrição inválida para esta prova." });
       return;
     }
@@ -1509,7 +1528,41 @@ router.post(
         res.status(400).json({ error: "Prova inválida para este evento." });
         return;
       }
-      if (proofDto(proof).configured && body.data.rawValue == null) {
+      if (!body.data.heatId) {
+        res.status(400).json({ error: "Informe a bateria para este resultado." });
+        return;
+      }
+      const [heat] = await db
+        .select()
+        .from(zero3HeatsTable)
+        .where(and(
+          eq(zero3HeatsTable.id, body.data.heatId),
+          eq(zero3HeatsTable.eventId, body.data.eventId),
+          eq(zero3HeatsTable.category, registration.category),
+        ))
+        .limit(1);
+      if (!heat) {
+        res.status(400).json({ error: "A bateria não pertence à prova e ao evento informados." });
+        return;
+      }
+      const [heatEntry] = await db
+        .select()
+        .from(zero3HeatEntriesTable)
+        .where(and(
+          eq(zero3HeatEntriesTable.heatId, heat.id),
+          eq(zero3HeatEntriesTable.registrationId, registration.id),
+        ))
+        .limit(1);
+      if (!heatEntry) {
+        res.status(400).json({ error: "A equipe não está atribuída a esta bateria." });
+        return;
+      }
+      const rawValue = body.data.rawValue ?? (
+        proof.metricType === "TIME" && body.data.elapsedMs != null
+          ? body.data.elapsedMs / 1000
+          : null
+      );
+      if (proofDto(proof).configured && rawValue == null) {
         res.status(400).json({
           error: `Informe o resultado da prova ${proof.order}.`,
         });
@@ -1519,6 +1572,10 @@ router.post(
         res.status(409).json({
           error: "Configure nome, métrica e direção antes de lançar resultados.",
         });
+        return;
+      }
+      if (rawValue === null || !Number.isFinite(rawValue) || rawValue < 0 || rawValue > 999999999.999) {
+        res.status(400).json({ error: "O resultado deve ser um valor finito dentro da precisão permitida." });
         return;
       }
       const [duplicate] = await db
@@ -1548,15 +1605,12 @@ router.post(
           proofId: proof.id,
           heatId: body.data.heatId ?? null,
           category: registration.category,
-          laneLabel: registration.laneLabel,
+          laneLabel: heatEntry.laneLabel ?? registration.laneLabel,
           athleteIdsSnapshot: registration.athleteIds,
           athleteNamesSnapshot: registrationSnapshot.athleteNames,
           teamNameSnapshot: registration.teamName,
-          elapsedMs: null,
-          rawValue:
-            body.data.rawValue === undefined || body.data.rawValue === null
-              ? null
-              : String(body.data.rawValue),
+          elapsedMs: body.data.elapsedMs ?? (proof.metricType === "TIME" ? Math.round(rawValue * 1000) : null),
+          rawValue: String(rawValue),
           syncErrorMs: null,
           status: "PROVISIONAL",
           idempotencyKey: body.data.idempotencyKey,
@@ -1570,6 +1624,16 @@ router.post(
           .where(eq(zero3ResultsTable.idempotencyKey, body.data.idempotencyKey))
           .limit(1);
         if (byIdempotency) {
+          const sameRequest = byIdempotency.eventId === body.data.eventId &&
+            byIdempotency.registrationId === body.data.registrationId &&
+            byIdempotency.proofId === proof.id &&
+            byIdempotency.heatId === body.data.heatId &&
+            byIdempotency.rawValue === String(rawValue) &&
+            byIdempotency.elapsedMs === (body.data.elapsedMs ?? (proof.metricType === "TIME" ? Math.round(rawValue * 1000) : null));
+          if (!sameRequest) {
+            res.status(409).json({ error: "A chave de idempotência já foi usada por outro lançamento." });
+            return;
+          }
           res.status(201).json(
             CaptureZero3ResultResponse.parse(await resultDto(byIdempotency)),
           );
@@ -1737,37 +1801,72 @@ router.patch(
       res.status(404).json({ error: "Resultado não encontrado." });
       return;
     }
+    if ((body.data.expectedEventId && existing.eventId !== body.data.expectedEventId) ||
+      (body.data.expectedProofId && existing.proofId !== body.data.expectedProofId) ||
+      (body.data.expectedHeatId && existing.heatId !== body.data.expectedHeatId)) {
+      res.status(409).json({ error: "Este resultado não pertence à prova e à bateria abertas. Atualize a lista." });
+      return;
+    }
+    if (body.data.expectedRevision !== undefined && existing.revision !== body.data.expectedRevision) {
+      res.status(409).json({ error: "O resultado foi revisado em outra operação. Atualize a lista antes de corrigir." });
+      return;
+    }
+    const nextStatus = body.data.status ?? existing.status;
+    const nextRawValue = body.data.rawValue === undefined
+      ? existing.rawValue
+      : body.data.rawValue === null ? null : String(body.data.rawValue);
+    if (nextStatus === "VALIDATED") {
+      const [proof] = existing.proofId
+        ? await db.select().from(zero3ProofsTable).where(and(
+          eq(zero3ProofsTable.id, existing.proofId),
+          eq(zero3ProofsTable.eventId, existing.eventId),
+        )).limit(1)
+        : [];
+      const numericValue = nextRawValue === null ? Number.NaN : Number(nextRawValue);
+      if (!proof || !proofDto(proof).configured || !Number.isFinite(numericValue) || numericValue < 0) {
+        res.status(400).json({ error: "Um resultado só pode ser validado com valor válido e regra de prova configurada." });
+        return;
+      }
+    }
     const member = (req as Zero3Request).zero3Member;
-    const updated = await db.transaction(async (tx) => {
-      await tx.insert(zero3ResultRevisionsTable).values({
-        resultId: existing.id,
-        previousStatus: existing.status,
-        previousElapsedMs: existing.elapsedMs,
-        previousRawValue: existing.rawValue,
-        reason: body.data.reason,
-        actorId: member?.email ?? "unknown",
+    let updated;
+    try {
+      updated = await db.transaction(async (tx) => {
+        await tx.insert(zero3ResultRevisionsTable).values({
+          resultId: existing.id,
+          previousStatus: existing.status,
+          previousElapsedMs: existing.elapsedMs,
+          previousRawValue: existing.rawValue,
+          reason: body.data.reason,
+          actorId: member?.email ?? "unknown",
+        });
+        const [result] = await tx
+          .update(zero3ResultsTable)
+          .set({
+            ...(body.data.status ? { status: body.data.status } : {}),
+            ...(body.data.elapsedMs !== undefined
+              ? { elapsedMs: body.data.elapsedMs }
+              : {}),
+            ...(body.data.rawValue !== undefined
+              ? { rawValue: body.data.rawValue === null ? null : String(body.data.rawValue) }
+              : {}),
+            revision: existing.revision + 1,
+          })
+          .where(and(
+            eq(zero3ResultsTable.id, existing.id),
+            eq(zero3ResultsTable.revision, existing.revision),
+          ))
+          .returning();
+        if (!result) throw new Error("RESULT_REVISION_CONFLICT");
+        return result;
       });
-      const [result] = await tx
-        .update(zero3ResultsTable)
-        .set({
-          ...(body.data.status ? { status: body.data.status } : {}),
-          ...(body.data.elapsedMs !== undefined
-            ? { elapsedMs: body.data.elapsedMs }
-            : {}),
-          ...(body.data.rawValue !== undefined
-            ? {
-                rawValue:
-                  body.data.rawValue === null
-                    ? null
-                    : String(body.data.rawValue),
-              }
-            : {}),
-          revision: existing.revision + 1,
-        })
-        .where(eq(zero3ResultsTable.id, existing.id))
-        .returning();
-      return result;
-    });
+    } catch (error) {
+      if (error instanceof Error && error.message === "RESULT_REVISION_CONFLICT") {
+        res.status(409).json({ error: "O resultado foi alterado por outra operação. Recarregue e tente novamente." });
+        return;
+      }
+      throw error;
+    }
     res.json(UpdateZero3ResultResponse.parse(await resultDto(updated)));
   },
 );

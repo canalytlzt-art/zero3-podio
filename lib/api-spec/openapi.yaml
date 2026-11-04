@@ -1508,6 +1508,8 @@ components:
           enum: [prepare, start, pause, resume, finish, reset]
         expectedVersion: { type: integer, minimum: 0 }
         commandId: { type: string, minLength: 1 }
+        expectedProofId: { type: string, minLength: 1 }
+        expectedBatteryOrder: { type: integer, minimum: 1 }
       required: [action, expectedVersion, commandId]
     Zero3Result:
       type: object
@@ -1552,7 +1554,11 @@ components:
         status: { $ref: "#/components/schemas/Zero3ResultStatus" }
         elapsedMs: { type: ["integer", "null"], minimum: 0 }
         rawValue: { type: ["number", "null"], minimum: 0 }
-        reason: { type: string, minLength: 1 }
+        reason: { type: string, minLength: 3 }
+        expectedEventId: { type: string }
+        expectedProofId: { type: string }
+        expectedHeatId: { type: string }
+        expectedRevision: { type: integer, minimum: 1 }
       required: [reason]
       minProperties: 2
     Zero3Podium:
@@ -1649,6 +1655,9 @@ components:
         completedBatteries:
           type: array
           items: { $ref: "#/components/schemas/Zero3CompletedBattery" }
+        batteryTimers:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3Timer" }
         event: { $ref: "#/components/schemas/Zero3Event" }
         timer: { $ref: "#/components/schemas/Zero3Timer" }
         results:

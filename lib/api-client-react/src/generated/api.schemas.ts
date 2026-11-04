@@ -755,6 +755,10 @@ export interface Zero3TimerCommand {
   expectedVersion: number;
   /** @minLength 1 */
   commandId: string;
+  /** @minLength 1 */
+  expectedProofId?: string;
+  /** @minimum 1 */
+  expectedBatteryOrder?: number;
 }
 
 export interface Zero3ResultInput {
@@ -791,8 +795,13 @@ export interface Zero3ResultUpdate {
      * @nullable
      */
   rawValue?: number | null;
-  /** @minLength 1 */
+  /** @minLength 3 */
   reason: string;
+  expectedEventId?: string;
+  expectedProofId?: string;
+  expectedHeatId?: string;
+  /** @minimum 1 */
+  expectedRevision?: number;
 }
 
 export interface Zero3Podium {
@@ -1029,6 +1038,7 @@ export interface Zero3PublicBoard {
   batteryOperationsEnabled?: boolean;
   activeBattery?: Zero3PublicBattery | null;
   completedBatteries?: Zero3CompletedBattery[];
+  batteryTimers?: Zero3Timer[];
   event?: Zero3Event;
   timer?: Zero3Timer;
   results: Zero3PublicResult[];

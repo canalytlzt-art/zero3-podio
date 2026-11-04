@@ -45,22 +45,25 @@ test("warns about existing athlete links, including cancelled history", () => {
   assert.deepEqual(findAthleteRegistrationConflicts("", registrations), []);
 });
 
-test("locks only identity changes that would reassign existing history", () => {
+test("allows swaps only when results and published podiums do not lock the registration", () => {
   const original = { category: "RX", athleteIds: ["a", "b"] };
-  const same = { category: "RX", athleteIds: ["a", "b"] };
-  const changed = { category: "SC", athleteIds: ["a", "c"] };
-  assert.equal(registrationIdentityEditLock(original, same, {
-    resultCount: 2, heatEntryCount: 1, podiumCount: 1, sourceCodes: ["RX01"],
-  }), null);
-  assert.equal(registrationIdentityEditLock(original, { category: "RX", athleteIds: ["b", "a"] }, {
-    resultCount: 2, heatEntryCount: 1, podiumCount: 1, sourceCodes: ["RX01"],
-  }), null);
-  assert.match(registrationIdentityEditLock(original, changed, {
-    resultCount: 2, heatEntryCount: 1, podiumCount: 1, sourceCodes: ["RX01"],
-  }) ?? "", /2 resultado\(s\).*1 bateria\(s\).*1 vínculo\(s\) de importação.*1 pódio\(s\)/);
+  const changed = { category: "RX", athleteIds: ["a", "c"] };
   assert.equal(registrationIdentityEditLock(original, changed, {
-    resultCount: 0, heatEntryCount: 0, podiumCount: 0, sourceCodes: [],
+    resultCount: 2, heatEntryCount: 1, podiumCount: 1, sourceCodes: ["RX01"],
+  }), "Não é possível trocar atletas ou categoria: esta inscrição tem 2 resultado(s) e 1 pódio(s) publicado(s). A edição comum preserva a identidade histórica da inscrição.");
+  assert.equal(registrationIdentityEditLock(original, changed, {
+    resultCount: 0, heatEntryCount: 1, podiumCount: 0, sourceCodes: ["RX01"],
   }), null);
+});
+
+test("blocks category changes that would invalidate an assigned battery", () => {
+  const original = { category: "RX", athleteIds: ["a", "b"] };
+  assert.equal(registrationIdentityEditLock(original, { category: "RX", athleteIds: ["b", "a"] }, {
+    resultCount: 0, heatEntryCount: 1, podiumCount: 0, sourceCodes: ["RX01"],
+  }), null);
+  assert.match(registrationIdentityEditLock(original, { category: "SC", athleteIds: ["a", "b"] }, {
+    resultCount: 0, heatEntryCount: 1, podiumCount: 0, sourceCodes: [],
+  }) ?? "", /categoria atual/);
 });
 
 test("uses the event category label while leaving custom names intact", () => {

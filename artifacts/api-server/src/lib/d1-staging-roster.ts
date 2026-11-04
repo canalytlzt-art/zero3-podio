@@ -15,7 +15,7 @@ import {
 } from "@workspace/api-zod";
 import {
   buildRosterImportPlan,
-  rosterIdentityChanged,
+  rosterIdentityChanges,
   rosterIdentityEditConflict,
   rosterSourceContentHash,
   validateRosterManagementEdit,
@@ -191,7 +191,7 @@ async function managedRows(DB: D1Database, eventId: string) {
     DB.prepare(`SELECT registration_id FROM zero3_heat_entries
       WHERE registration_id IN (${registrationIds.map(() => "?").join(",")})`)
       .bind(...registrationIds).all<{ registration_id: string }>(),
-    DB.prepare(`SELECT registration_ids FROM zero3_podium_versions WHERE event_id=?`)
+    DB.prepare(`SELECT registration_ids FROM zero3_podium_versions WHERE event_id=? AND published=1`)
       .bind(eventId).all<{ registration_ids: string }>(),
   ]);
   const resultCount = new Map(resultCounts.results.map((row) => [row.registration_id, row.count]));
@@ -319,7 +319,7 @@ export async function handleD1StagingRoster(
         DB.prepare(`SELECT registration_id FROM zero3_import_teams
           WHERE registration_id IN (${ids.map(() => "?").join(",")})`)
           .bind(...ids).all<{ registration_id: string }>(),
-        DB.prepare(`SELECT registration_ids FROM zero3_podium_versions WHERE event_id=?`)
+        DB.prepare(`SELECT registration_ids FROM zero3_podium_versions WHERE event_id=? AND published=1`)
           .bind(params.data.eventId).all<{ registration_ids: string }>(),
       ]);
       const counts = new Map(resultRows.results.map((row) => [row.registration_id, row.count]));
@@ -337,16 +337,17 @@ export async function handleD1StagingRoster(
       const planned = edits.map((edit) => {
         const row = currentById.get(edit.registrationId)!;
         const teamName = edit.teamName === undefined ? row.team_name : edit.teamName;
-        const changed = edit.category !== row.category ||
-          edit.athleteIds.join("|") !== d1JsonArray(row.athlete_ids).join("|");
-        return { edit, row, teamName, changed, resultCount: counts.get(row.id) ?? 0 };
+        return {
+          edit, row, teamName,
+          identityChanges: rosterIdentityChanges(
+            { category: row.category, athleteIds: d1JsonArray(row.athlete_ids) },
+            edit,
+          ),
+          resultCount: counts.get(row.id) ?? 0,
+        };
       });
       for (const item of planned) {
-        const identityChanged = rosterIdentityChanged(
-          { category: item.row.category, athleteIds: d1JsonArray(item.row.athlete_ids) },
-          item.edit,
-        );
-        const conflict = rosterIdentityEditConflict(identityChanged, {
+        const conflict = rosterIdentityEditConflict(item.identityChanges, {
           resultCount: counts.get(item.row.id) ?? 0,
           heatEntryCount: heatCounts.get(item.row.id) ?? 0,
           importCount: importCounts.get(item.row.id) ?? 0,
@@ -372,25 +373,21 @@ export async function handleD1StagingRoster(
       const historyPredicates: string[] = [];
       const historyValues: unknown[] = [];
       for (const item of planned) {
-        const identityChanged = rosterIdentityChanged(
-          { category: item.row.category, athleteIds: d1JsonArray(item.row.athlete_ids) },
-          item.edit,
-        );
-        if (identityChanged) {
+        if (item.identityChanges.athleteIdsChanged || item.identityChanges.categoryChanged) {
           historyPredicates.push(
             "NOT EXISTS (SELECT 1 FROM zero3_results WHERE registration_id=?)",
-            "NOT EXISTS (SELECT 1 FROM zero3_heat_entries WHERE registration_id=?)",
-            "NOT EXISTS (SELECT 1 FROM zero3_import_teams WHERE registration_id=?)",
             `NOT EXISTS (SELECT 1 FROM zero3_podium_versions p, json_each(p.registration_ids) j
-              WHERE p.event_id=? AND j.value=?)`,
+              WHERE p.event_id=? AND p.published=1 AND j.value=?)`,
           );
           historyValues.push(
-            item.row.id,
-            item.row.id,
             item.row.id,
             params.data.eventId,
             item.row.id,
           );
+          if (item.identityChanges.categoryChanged) {
+            historyPredicates.push("NOT EXISTS (SELECT 1 FROM zero3_heat_entries WHERE registration_id=?)");
+            historyValues.push(item.row.id);
+          }
         }
       }
       const historyGuardSql = historyPredicates.length ? historyPredicates.join(" AND ") : "1=1";

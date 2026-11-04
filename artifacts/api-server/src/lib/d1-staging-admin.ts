@@ -52,6 +52,7 @@ import {
   newD1Id,
   requireD1Member,
 } from "./d1-staging-shared";
+import { resolveHeatRegistrationAssignments } from "./zero3-heat-assignments";
 import { normalizeEventCategories, validateEventCategories } from "./zero3-categories";
 import { parseZero3TeamName } from "./zero3-team-name";
 import { handleD1StagingEventLifecycle } from "./d1-staging-event-lifecycle";
@@ -617,7 +618,6 @@ export async function handleD1StagingAdmin(
     const body = CreateZero3HeatBody.safeParse(req.body);
     if (!body.success) { res.status(400).json({ error: body.error.message }); return true; }
     const registrationIds = body.data.registrationIds ?? [];
-    if (new Set(registrationIds).size !== registrationIds.length) { res.status(400).json({ error: "Há inscrições duplicadas na bateria." }); return true; }
     try {
       if (!body.data.proofId) { res.status(400).json({error:"Selecione a prova desta bateria."}); return true; }
       const proof = await DB.prepare("SELECT id FROM zero3_proofs WHERE id=? AND event_id=?")
@@ -625,12 +625,25 @@ export async function handleD1StagingAdmin(
       if (!proof) { res.status(400).json({error:"A prova precisa pertencer ao evento selecionado."}); return true; }
       const rows = registrationIds.length
         ? await DB.prepare(`SELECT * FROM zero3_registrations WHERE event_id=? AND category=?
+          AND confirmation_status<>'CANCELLED'
           AND id IN (${registrationIds.map(() => "?").join(",")})`)
           .bind(heatMatch[1], body.data.category, ...registrationIds).all<RegistrationRow>()
         : { results: [] as RegistrationRow[] };
-      if (rows.results.length !== registrationIds.length) {
-        res.status(400).json({ error: "Cada inscrição precisa pertencer ao evento e categoria da bateria." }); return true;
+      const assignments = resolveHeatRegistrationAssignments(
+        registrationIds,
+        rows.results.map((row) => ({
+          ...row,
+          eventId: row.event_id,
+          athleteIds: d1JsonArray(row.athlete_ids),
+        })),
+        heatMatch[1],
+        body.data.category,
+      );
+      if (!assignments.ok) {
+        res.status(400).json({ error: assignments.error });
+        return true;
       }
+      const registrations = assignments.registrations;
       const orderRow = await DB.prepare(`SELECT COALESCE(MAX("order"),0)+1 AS next_order
         FROM zero3_heats WHERE event_id=? AND category=?`)
         .bind(heatMatch[1],body.data.category).first<{next_order:number}>();
@@ -639,7 +652,7 @@ export async function handleD1StagingAdmin(
       await DB.batch([
         DB.prepare(`INSERT INTO zero3_heats(id,event_id,category,name,"order",proof_id,battery_order) VALUES(?,?,?,?,?,?,?)`)
           .bind(heatId, heatMatch[1], heat.category, heat.name.trim(), orderRow?.next_order??1, heat.proofId, heat.order),
-        ...rows.results.map((registration) => DB.prepare(`INSERT INTO zero3_heat_entries
+        ...registrations.map((registration) => DB.prepare(`INSERT INTO zero3_heat_entries
           (heat_id,registration_id,lane_label) VALUES(?,?,?)`)
           .bind(heatId, registration.id, registration.lane_label)),
       ]);
@@ -650,7 +663,7 @@ export async function handleD1StagingAdmin(
         id:created!.id,eventId: created!.event_id,category:created!.category,
         proofId:created!.proof_id,proofName:proofRow?.name??null,proofOrder:proofRow?.proof_order??null,
         name:created!.name,order:created!.battery_order??created!.order,
-        registrations: await Promise.all(rows.results.map((row) => registrationDto(DB, row))),
+        registrations: await Promise.all(registrations.map((row) => registrationDto(DB, row))),
       };
       res.status(201).json(CreateZero3HeatResponse.parse(response));
     } catch { d1ApiError(req, res, 409, "HEAT_CONFLICT", "A ordem da bateria já está ocupada ou a operação conflitou."); }

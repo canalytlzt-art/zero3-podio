@@ -80,7 +80,6 @@ export async function selectD1ActiveBattery(
     .bind(eventId).first<{id:string;categories:string}>();
   if (!event) throw new BatteryConflict("Evento não encontrado.", 404, "EVENT_NOT_FOUND");
 
-  const current = await readD1ActiveBattery(DB, eventId);
   let next: D1ActiveBattery | null = null;
   if (heatId) {
     const row = await DB.prepare(`SELECT h.id,h.event_id,h.category,h.name,h.proof_id,
@@ -107,16 +106,6 @@ export async function selectD1ActiveBattery(
       categories: children.results.map((heat) => heat.category),
       heatIds: children.results.map((heat) => heat.id),
     };
-  }
-
-  if (current && (!next || current.proofId !== next.proofId || current.order !== next.order)) {
-    const running = await DB.prepare(`SELECT state FROM zero3_heat_runs
-      WHERE event_id=? AND proof_id=? AND battery_order=?`)
-      .bind(eventId, current.proofId, current.order)
-      .first<{state:string}>();
-    if (running && ["PREPARATION","RUNNING","PAUSED"].includes(running.state)) {
-      throw new BatteryConflict("Encerre ou zere o cronômetro antes de trocar a bateria exibida.", 409, "BATTERY_TIMER_ACTIVE");
-    }
   }
 
   const categories = d1JsonArray(event.categories);

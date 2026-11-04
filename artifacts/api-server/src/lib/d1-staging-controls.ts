@@ -22,12 +22,9 @@ import {
 } from "./d1-staging-shared";
 import { readD1ActiveBattery } from "./d1-staging-batteries";
 import { handleD1BatteryFinalization } from "./d1-staging-finalization";
+import { advanceD1TimerPreparation, d1TimerDto, type D1HeatRunRow } from "./d1-staging-timer";
 
-type TimerRow = {
-  event_id: string; proof_id:string; battery_order:number; state: string; elapsed_ms: number; started_at: string | null;
-  preparation_ends_at: string | null; version: number; last_command_id: string | null;
-  updated_at: string;
-};
+type TimerRow = D1HeatRunRow;
 type EventRow = { id: string; preparation_seconds: number };
 type PodiumRow = {
   event_id: string; category: string; registration_ids: string; published: number;
@@ -37,27 +34,6 @@ type PodiumRow = {
 
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
 const PODIUM_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
-
-function timerDto(row: TimerRow, preparationSeconds: number, now = new Date()) {
-  const elapsedMs = Math.floor(row.elapsed_ms +
-    (row.state === "RUNNING" && row.started_at
-      ? Math.max(0, now.getTime() - Date.parse(row.started_at))
-      : 0));
-  return {
-    eventId: row.event_id,
-    state: row.state,
-    elapsedMs,
-    preparationRemainingMs: row.state === "PREPARATION" && row.preparation_ends_at
-      ? Math.max(0, Math.ceil(Date.parse(row.preparation_ends_at) - now.getTime()))
-      : 0,
-    preparationSeconds,
-    startedAt: d1Date(row.started_at),
-    version: row.version,
-    updatedAt: d1Date(row.updated_at),
-    proofId:row.proof_id,
-    batteryOrder:row.battery_order,
-  };
-}
 
 function podiumDto(row: PodiumRow | null) {
   if (!row) return null;
@@ -106,14 +82,20 @@ export async function handleD1StagingControls(
     try {
       const activeBattery=await readD1ActiveBattery(DB,event.id);
       if(!activeBattery){d1ApiError(req,res,409,"BATTERY_NOT_SELECTED","Selecione uma bateria vinculada a uma prova antes de controlar o cronômetro.");return true;}
+      if (body.data.expectedProofId !== activeBattery.proofId ||
+          body.data.expectedBatteryOrder !== activeBattery.order) {
+        d1ApiError(req,res,409,"BATTERY_SELECTION_CONFLICT","A bateria exibida mudou. Atualize antes de controlar o cronômetro.");
+        return true;
+      }
       await DB.prepare(`INSERT OR IGNORE INTO zero3_heat_runs(event_id,proof_id,battery_order)
         VALUES(?,?,?)`).bind(event.id,activeBattery.proofId,activeBattery.order).run();
       let timer = await DB.prepare(`SELECT * FROM zero3_heat_runs
         WHERE event_id=? AND proof_id=? AND battery_order=?`)
         .bind(event.id,activeBattery.proofId,activeBattery.order).first<TimerRow>();
       if (!timer) { d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível consultar o cronômetro."); return true; }
+      timer = await advanceD1TimerPreparation(DB, timer, now);
       if (timer.last_command_id === body.data.commandId) {
-        res.json(ControlZero3TimerResponse.parse(timerDto(timer, event.preparation_seconds, now)));
+        res.json(ControlZero3TimerResponse.parse(d1TimerDto(timer,event.id,event.preparation_seconds,now)));
         return true;
       }
       if (timer.version !== body.data.expectedVersion) {
@@ -165,21 +147,26 @@ export async function handleD1StagingControls(
       const saved = await DB.prepare(`UPDATE zero3_heat_runs SET state=?,elapsed_ms=?,started_at=?,
         preparation_ends_at=?,version=version+1,last_command_id=?,updated_at=?
         WHERE event_id=? AND proof_id=? AND battery_order=? AND version=?
-        AND (last_command_id IS NULL OR last_command_id<>?)`)
+        AND (last_command_id IS NULL OR last_command_id<>?)
+        AND EXISTS(SELECT 1 FROM zero3_active_heats ah
+          JOIN zero3_heats active_heat ON active_heat.id=ah.heat_id
+          WHERE ah.event_id=? AND active_heat.event_id=? AND active_heat.proof_id=?
+            AND COALESCE(active_heat.battery_order,active_heat."order")=?)`)
         .bind(next.state, next.elapsed_ms, next.started_at, next.preparation_ends_at,
           body.data.commandId, nowIso, event.id, activeBattery.proofId, activeBattery.order,
-          body.data.expectedVersion, body.data.commandId).run();
+          body.data.expectedVersion, body.data.commandId, event.id, event.id,
+          activeBattery.proofId, activeBattery.order).run();
       timer = await DB.prepare(`SELECT * FROM zero3_heat_runs
         WHERE event_id=? AND proof_id=? AND battery_order=?`)
         .bind(event.id,activeBattery.proofId,activeBattery.order).first<TimerRow>();
       if ((saved.meta.changes ?? 0) !== 1) {
         if (timer?.last_command_id === body.data.commandId) {
-          res.json(ControlZero3TimerResponse.parse(timerDto(timer, event.preparation_seconds, now)));
+          res.json(ControlZero3TimerResponse.parse(d1TimerDto(timer,event.id,event.preparation_seconds,now)));
         } else d1ApiError(req, res, 409, "TIMER_VERSION_CONFLICT", "O timer mudou em outra tela. Atualize e tente novamente.");
         return true;
       }
       if (!timer) { d1ApiError(req, res, 500, "API_INTERNAL_ERROR", "Cronômetro atualizado, mas não foi possível recuperá-lo."); return true; }
-      res.json(ControlZero3TimerResponse.parse(timerDto(timer, event.preparation_seconds, now)));
+       res.json(ControlZero3TimerResponse.parse(d1TimerDto(timer,event.id,event.preparation_seconds,now)));
     } catch { d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível atualizar o cronômetro."); }
     return true;
   }

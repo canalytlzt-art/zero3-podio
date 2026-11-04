@@ -1,10 +1,10 @@
 ---
 name: ZERO3 event-specific duplas
-description: The ZERO3 data model keeps athletes global while pairings and categories are event-specific.
+description: Event registrations keep stable IDs while eligible athlete swaps preserve linked batteries and import lineage.
 ---
 
-Only individual athlete records are permanent and reusable across events. A dupla is an event-specific registration linking two athletes, one event, and one event-configured category. Start with RX and SC, but support custom category names. Do not create permanent/shared team records. Do not change athlete membership or category once results, heat entries, imports, or podiums reference the registration. A custom team name is a display label, not registration identity: it may be changed while keeping IDs, results, podium references, and historical snapshots intact; current displays resolve the label by registration ID. Delete only unlinked registrations and offer cancellation when identity history exists.
+Only individual athlete records are permanent and reusable across events. A dupla is an event-specific registration linking athletes, one event, and one event-configured category. Do not create permanent/shared team records. Before results or a published podium exist, replacing an athlete may keep the same registration ID even when a heat or import references it; update member-slot rows and audit while preserving heat-entry IDs. Do not change category while the registration is assigned to a category-specific heat. Results and published podiums protect registration identity from ordinary edits. Custom team names are display labels, not registration identity; they may change while historical result and podium snapshots retain their prior references.
 
-**Why:** the user clarified athletes may pair with different partners and compete in different categories at future events, and that display names can change without reassigning existing results or published podium placements.
+**Why:** the user explicitly clarified that a heat or import link alone must not block a pre-result athlete swap. Results and published podiums remain historical records tied to the existing registration.
 
-**How to apply:** Keep stable athlete and registration IDs; treat category and athlete membership as registration-scoped; resolve current custom names by registration ID for TV, results, heats, leaderboard, and podiums, while keeping snapshots as historical records. Preserve identity history when editing or cancelling a registration.
+**How to apply:** Keep the registration ID as the battery reference. For eligible athlete swaps, update the registration and slot-membership rows atomically, preserve heat entries/import lineage, and audit before/after identities. Category changes with heat entries need a separate battery reorganization.

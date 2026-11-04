@@ -21,6 +21,7 @@ export interface Zero3PublicBoard {
   batteryOperationsEnabled?: boolean;
   activeBattery?: Zero3PublicBattery | null;
   completedBatteries?: Zero3CompletedBattery[];
+  batteryTimers?: Zero3Timer[];
   event?: Zero3Event;
   timer?: Zero3Timer;
   results: Zero3PublicResult[];

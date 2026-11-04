@@ -10,5 +10,5 @@
 - [ZERO3 Git history](zero3-github-history.md) — Preserve existing branch/checkpoint history; the user chose not to rewrite it during GitHub preparation.
 - [Workerd network errors](workerd-network-errors.md) — PostgreSQL TCP failures may lack Node codes; classify only with specific SQL context, never from timing alone.
 - [Wrangler D1 query limits](wrangler-d1-query-limits.md) — Large compound SELECT count queries can be rejected by remote D1; use scalar subqueries or separate SELECTs.
-- [ZERO3 event-specific duplas](zero3-event-specific-duplas.md) — Athletes are reusable; event categories are extensible, while linked registration identity and published podium references stay stable.
+- [ZERO3 event-specific duplas](zero3-event-specific-duplas.md) — Athletes are reusable; pre-result swaps keep the event registration ID and battery links, while result and published podium history stays protected.
 - [ZERO3 logical batteries](zero3-logical-batteries.md) — Group category heats by event, proof, and number; timer, TV selection, and reviewed battery publication remain separate.

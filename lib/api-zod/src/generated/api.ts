@@ -1034,10 +1034,14 @@ export const controlZero3TimerBodyExpectedVersionMin = 0;
 
 
 
+
+
 export const ControlZero3TimerBody = zod.object({
   "action": zod.enum(['prepare', 'start', 'pause', 'resume', 'finish', 'reset']),
   "expectedVersion": zod.number().int().min(controlZero3TimerBodyExpectedVersionMin),
-  "commandId": zod.string().min(1)
+  "commandId": zod.string().min(1),
+  "expectedProofId": zod.string().min(1).optional(),
+  "expectedBatteryOrder": zod.number().int().min(1).optional()
 })
 
 export const controlZero3TimerResponseElapsedMsMin = 0;
@@ -1127,6 +1131,8 @@ export const updateZero3ResultBodyElapsedMsMin = 0;
 
 export const updateZero3ResultBodyRawValueMin = 0;
 
+export const updateZero3ResultBodyReasonMin = 3;
+
 
 
 
@@ -1134,7 +1140,11 @@ export const UpdateZero3ResultBody = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']).optional(),
   "elapsedMs": zod.number().int().min(updateZero3ResultBodyElapsedMsMin).nullish(),
   "rawValue": zod.number().min(updateZero3ResultBodyRawValueMin).nullish(),
-  "reason": zod.string().min(1)
+  "reason": zod.string().min(updateZero3ResultBodyReasonMin),
+  "expectedEventId": zod.string().optional(),
+  "expectedProofId": zod.string().optional(),
+  "expectedHeatId": zod.string().optional(),
+  "expectedRevision": zod.number().int().min(1).optional()
 })
 
 export const updateZero3ResultResponseCategoryMax = 32;
@@ -1399,6 +1409,10 @@ export const getZero3PublicBoardResponseCompletedBatteriesItemLeaderboardsItemEn
 export const getZero3PublicBoardResponseCompletedBatteriesItemPendingResultCountMin = 0;
 
 
+export const getZero3PublicBoardResponseBatteryTimersItemElapsedMsMin = 0;
+
+export const getZero3PublicBoardResponseBatteryTimersItemPreparationRemainingMsMin = 0;
+
 export const getZero3PublicBoardResponseEventCategoriesItemMax = 32;
 
 export const getZero3PublicBoardResponseEventCategoriesMax = 10;
@@ -1582,6 +1596,18 @@ export const GetZero3PublicBoardResponse = zod.object({
   "finalizationCurrent": zod.boolean(),
   "finalizationVersion": zod.number().int().min(1),
   "finalizedAt": zod.coerce.date()
+})).optional(),
+  "batteryTimers": zod.array(zod.object({
+  "eventId": zod.string(),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseBatteryTimersItemElapsedMsMin),
+  "preparationRemainingMs": zod.number().int().min(getZero3PublicBoardResponseBatteryTimersItemPreparationRemainingMsMin),
+  "preparationSeconds": zod.number().int(),
+  "startedAt": zod.coerce.date().nullish(),
+  "version": zod.number().int(),
+  "updatedAt": zod.coerce.date(),
+  "proofId": zod.string().nullish(),
+  "batteryOrder": zod.number().int().nullish()
 })).optional(),
   "event": zod.object({
   "id": zod.string(),

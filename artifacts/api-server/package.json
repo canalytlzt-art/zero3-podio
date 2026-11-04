@@ -10,6 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:scoring": "esbuild src/lib/zero3-scoring.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-scoring.test.mjs && node --test /tmp/zero3-scoring.test.mjs",
     "test:batteries": "esbuild src/lib/d1-staging-batteries.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-staging-batteries.test.mjs && node --test /tmp/zero3-staging-batteries.test.mjs",
+    "test:timer": "esbuild src/lib/d1-staging-timer.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-staging-timer.test.mjs && node --test /tmp/zero3-staging-timer.test.mjs",
+    "test:heat-assignments": "esbuild src/lib/zero3-heat-assignments.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-heat-assignments.test.mjs && node --test /tmp/zero3-heat-assignments.test.mjs",
     "test:finalization": "esbuild src/lib/d1-staging-finalization.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-staging-finalization.test.mjs && node --test /tmp/zero3-staging-finalization.test.mjs",
     "test:ranking": "esbuild src/lib/d1-staging-ranking.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-staging-ranking.test.mjs && node --test /tmp/zero3-staging-ranking.test.mjs",
     "test:categories": "esbuild src/lib/zero3-categories.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-categories.test.mjs && node --test /tmp/zero3-categories.test.mjs",

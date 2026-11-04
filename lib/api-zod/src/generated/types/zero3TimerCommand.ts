@@ -13,4 +13,8 @@ export interface Zero3TimerCommand {
   expectedVersion: number;
   /** @minLength 1 */
   commandId: string;
+  /** @minLength 1 */
+  expectedProofId?: string;
+  /** @minimum 1 */
+  expectedBatteryOrder?: number;
 }

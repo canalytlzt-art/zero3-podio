@@ -39,7 +39,7 @@ import { parseZero3TeamName } from "../lib/zero3-team-name";
 import { describeRosterAuditChange } from "../lib/zero3-roster-audit";
 import {
   buildRosterImportPlan,
-  rosterIdentityChanged,
+  rosterIdentityChanges,
   rosterSourceContentHash,
   rosterIdentityEditConflict,
   validateRosterManagementEdit,
@@ -188,7 +188,10 @@ async function rosterManagementRows(eventId: string) {
     db.select({ registrationId: zero3HeatEntriesTable.registrationId })
       .from(zero3HeatEntriesTable).where(inArray(zero3HeatEntriesTable.registrationId, registrationIds)),
     db.select({ registrationIds: zero3PodiumsTable.registrationIds })
-      .from(zero3PodiumsTable).where(eq(zero3PodiumsTable.eventId, eventId)),
+      .from(zero3PodiumsTable).where(and(
+        eq(zero3PodiumsTable.eventId, eventId),
+        eq(zero3PodiumsTable.published, true),
+      )),
   ]);
   const athleteNameById = new Map(athletes.map((athlete) => [athlete.id, athlete.fullName]));
   const resultCountByRegistration = new Map<string, number>();
@@ -370,7 +373,10 @@ router.put(
             .where(inArray(zero3ImportTeamsTable.registrationId, editIds)),
           tx.select({ registrationIds: zero3PodiumsTable.registrationIds })
             .from(zero3PodiumsTable)
-            .where(eq(zero3PodiumsTable.eventId, params.data.eventId)),
+            .where(and(
+              eq(zero3PodiumsTable.eventId, params.data.eventId),
+              eq(zero3PodiumsTable.published, true),
+            )),
         ]);
         const resultsByRegistration = new Map<string, number>();
         for (const row of resultRows) {
@@ -392,8 +398,8 @@ router.put(
           }
         }
         for (const { edit, registration } of editedRegistrations) {
-          const identityChanged = rosterIdentityChanged(registration, edit);
-          const conflict = rosterIdentityEditConflict(identityChanged, {
+          const changes = rosterIdentityChanges(registration, edit);
+          const conflict = rosterIdentityEditConflict(changes, {
             resultCount: resultsByRegistration.get(registration.id) ?? 0,
             heatEntryCount: heatCountByRegistration.get(registration.id) ?? 0,
             importCount: importCountByRegistration.get(registration.id) ?? 0,

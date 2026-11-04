@@ -7,6 +7,7 @@ import {
 import {
   buildRosterImportPlan,
   rosterIdentityChanged,
+  rosterIdentityChanges,
   rosterIdentityEditConflict,
   rosterSourceContentHash,
   validateRosterManagementEdit,
@@ -151,19 +152,42 @@ describe("registration history edit guard", () => {
     ), false);
   });
 
-  it("blocks identity changes when result, heat, import, or podium references exist", () => {
-    for (const history of [
-      { resultCount: 1, heatEntryCount: 0, importCount: 0, podiumCount: 0 },
-      { resultCount: 0, heatEntryCount: 1, importCount: 0, podiumCount: 0 },
-      { resultCount: 0, heatEntryCount: 0, importCount: 1, podiumCount: 0 },
-      { resultCount: 0, heatEntryCount: 0, importCount: 0, podiumCount: 1 },
-    ]) {
-      assert.ok(rosterIdentityEditConflict(true, history));
-    }
+  it("allows replacing an athlete while the stable registration is linked to a heat or import", () => {
+    const changes = rosterIdentityChanges(
+      { category: "RX", athleteIds: ["a", "b"] },
+      { category: "RX", athleteIds: ["a", "c"] },
+    );
+    assert.equal(rosterIdentityEditConflict(changes, {
+      resultCount: 0, heatEntryCount: 1, importCount: 1, podiumCount: 0,
+    }), null);
+  });
+
+  it("blocks identity changes after results or a published podium", () => {
+    const changes = rosterIdentityChanges(
+      { category: "RX", athleteIds: ["a", "b"] },
+      { category: "RX", athleteIds: ["a", "c"] },
+    );
+    assert.match(rosterIdentityEditConflict(changes, {
+      resultCount: 1, heatEntryCount: 1, importCount: 1, podiumCount: 0,
+    }) ?? "", /1 resultado\(s\)/);
+    assert.match(rosterIdentityEditConflict(changes, {
+      resultCount: 0, heatEntryCount: 1, importCount: 1, podiumCount: 1,
+    }) ?? "", /1 pódio\(s\) publicado\(s\)/);
+  });
+
+  it("blocks changing category while preserving a category-specific battery assignment", () => {
+    const changes = rosterIdentityChanges(
+      { category: "RX", athleteIds: ["a", "b"] },
+      { category: "SC", athleteIds: ["a", "b"] },
+    );
+    assert.deepEqual(changes, { athleteIdsChanged: false, categoryChanged: true });
+    assert.match(rosterIdentityEditConflict(changes, {
+      resultCount: 0, heatEntryCount: 1, importCount: 0, podiumCount: 0,
+    }) ?? "", /categoria.*bateria/s);
   });
 
   it("allows display-name changes while preserving podium registration references", () => {
-    assert.equal(rosterIdentityEditConflict(false, {
+    assert.equal(rosterIdentityEditConflict({ athleteIdsChanged: false, categoryChanged: false }, {
       resultCount: 0, heatEntryCount: 0, importCount: 0, podiumCount: 1,
     }), null);
   });

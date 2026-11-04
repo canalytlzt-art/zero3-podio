@@ -19,6 +19,11 @@ export interface Zero3ResultUpdate {
      * @nullable
      */
   rawValue?: number | null;
-  /** @minLength 1 */
+  /** @minLength 3 */
   reason: string;
+  expectedEventId?: string;
+  expectedProofId?: string;
+  expectedHeatId?: string;
+  /** @minimum 1 */
+  expectedRevision?: number;
 }

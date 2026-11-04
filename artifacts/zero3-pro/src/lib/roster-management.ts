@@ -57,17 +57,19 @@ export function registrationIdentityEditLock(
   draft: { category: string; athleteIds: string[]; teamName?: string | null },
   history: RegistrationHistoryLinks,
 ): string | null {
-  const identityChanged = original.category !== draft.category ||
-    [...original.athleteIds].sort().join("|") !== draft.athleteIds.filter(Boolean).sort().join("|");
-  if (!identityChanged) return null;
+  const categoryChanged = original.category !== draft.category;
+  const athleteIdsChanged = [...original.athleteIds].sort().join("|") !==
+    draft.athleteIds.filter(Boolean).sort().join("|");
+  if (!categoryChanged && !athleteIdsChanged) return null;
 
   const links: string[] = [];
   if (history.resultCount) links.push(`${history.resultCount} resultado(s)`);
-  if (history.heatEntryCount) links.push(`${history.heatEntryCount} bateria(s)`);
-  if (history.sourceCodes.length) links.push(`${history.sourceCodes.length} vínculo(s) de importação`);
-  if (history.podiumCount) links.push(`${history.podiumCount} pódio(s)`);
+  if (history.podiumCount) links.push(`${history.podiumCount} pódio(s) publicado(s)`);
+  if (categoryChanged && history.heatEntryCount) {
+    links.push(`${history.heatEntryCount} bateria(s) que usam a categoria atual`);
+  }
   if (!links.length) return null;
-  return `Não é possível trocar atletas ou categoria: esta inscrição está vinculada a ${links.join(", ")}. Preserve a inscrição e revise esses vínculos antes da alteração.`;
+  return `Não é possível trocar atletas ou categoria: esta inscrição tem ${links.join(" e ")}. A edição comum preserva a identidade histórica da inscrição.`;
 }
 
 export function categoryDisplayName(category: string): string {
