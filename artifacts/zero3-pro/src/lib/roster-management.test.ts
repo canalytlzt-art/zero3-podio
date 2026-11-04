@@ -4,6 +4,7 @@ import {
   categoryDisplayName,
   findAthleteRegistrationConflicts,
   normalizeTeamNameInput,
+  removeManagedRegistrationDraft,
   registrationIdentityEditLock,
   summarizeManagedRegistrations,
   teamNameInputError,
@@ -54,6 +55,25 @@ test("allows swaps only when results and published podiums do not lock the regis
   assert.equal(registrationIdentityEditLock(original, changed, {
     resultCount: 0, heatEntryCount: 1, podiumCount: 0, sourceCodes: ["RX01"],
   }), null);
+});
+
+test("a payment-only draft does not trigger identity history locks", () => {
+  const original = { category: "RX", athleteIds: ["a", "b"] };
+  const paymentOnly = { ...original, paymentStatus: "PAID" };
+  assert.equal(registrationIdentityEditLock(original, paymentOnly, {
+    resultCount: 0, heatEntryCount: 1, podiumCount: 0, sourceCodes: [],
+  }), null);
+});
+
+test("deselecting a registration removes its unsaved draft only", () => {
+  const drafts = {
+    selected: { category: "SC", paymentStatus: "PAID" },
+    other: { category: "RX", paymentStatus: "PENDING" },
+  };
+  assert.deepEqual(removeManagedRegistrationDraft(drafts, "selected"), {
+    other: { category: "RX", paymentStatus: "PENDING" },
+  });
+  assert.deepEqual(removeManagedRegistrationDraft(drafts, "missing"), drafts);
 });
 
 test("blocks category changes that would invalidate an assigned battery", () => {

@@ -15,6 +15,7 @@ import {
 } from "@workspace/api-zod";
 import {
   buildRosterImportPlan,
+  changedRosterManagementFields,
   rosterIdentityChanges,
   rosterIdentityEditConflict,
   rosterSourceContentHash,
@@ -52,6 +53,10 @@ const parseJsonRecord = (value: string) => {
   try { return JSON.parse(value) as Record<string, unknown>; }
   catch { return {}; }
 };
+function isD1IntegrityConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /constraint failed|constraint violation|foreign key|unique constraint/i.test(message);
+}
 const eventDto = (row: EventRow) => ({
   id: row.id, name: row.name, proofName: row.proof_name,
   status: row.status, preparationSeconds: row.preparation_seconds,
@@ -140,7 +145,7 @@ function afterStateGuard(
   }>,
 ): { sql: string; values: unknown[] } {
   const terms = edits.map(() =>
-    "(id=? AND team_name IS ? AND category=? AND athlete_ids=? AND confirmation_status=? AND payment_status=?)",
+    "(id=? AND team_name IS ? AND category=? AND json(athlete_ids)=json(?) AND confirmation_status=? AND payment_status=?)",
   ).join(" OR ");
   const values = edits.flatMap((edit) => [
     edit.registrationId, edit.teamName, edit.category, JSON.stringify(edit.athleteIds),
@@ -337,12 +342,26 @@ export async function handleD1StagingRoster(
       const planned = edits.map((edit) => {
         const row = currentById.get(edit.registrationId)!;
         const teamName = edit.teamName === undefined ? row.team_name : edit.teamName;
+        const fieldChanges = changedRosterManagementFields({
+          teamName: row.team_name,
+          category: row.category,
+          athleteIds: d1JsonArray(row.athlete_ids),
+          confirmationStatus: row.confirmation_status,
+          paymentStatus: row.payment_status,
+        }, {
+          teamName,
+          category: edit.category,
+          athleteIds: edit.athleteIds,
+          confirmationStatus: edit.confirmationStatus,
+          paymentStatus: edit.paymentStatus,
+        });
         return {
           edit, row, teamName,
           identityChanges: rosterIdentityChanges(
             { category: row.category, athleteIds: d1JsonArray(row.athlete_ids) },
             edit,
           ),
+          fieldChanges,
           resultCount: counts.get(row.id) ?? 0,
         };
       });
@@ -358,21 +377,39 @@ export async function handleD1StagingRoster(
           return true;
         }
       }
+      const changedItems = planned.filter((item) => Object.values(item.fieldChanges).some(Boolean));
+      if (!changedItems.length) {
+        res.json(UpdateZero3RosterManagementResponse.parse({
+          registrations: await managedRows(DB, params.data.eventId),
+        }));
+        return true;
+      }
+
       const beforeGuard = beforeStateGuard(params.data.eventId, planned.map((item) => item.row));
-      const updateAssignments = [
-        ["team_name", planned.map((item) => [item.edit.registrationId, item.teamName])],
-        ["category", planned.map((item) => [item.edit.registrationId, item.edit.category])],
-        ["athlete_ids", planned.map((item) => [item.edit.registrationId, JSON.stringify(item.edit.athleteIds)])],
-        ["confirmation_status", planned.map((item) => [item.edit.registrationId, item.edit.confirmationStatus])],
-        ["payment_status", planned.map((item) => [item.edit.registrationId, item.edit.paymentStatus])],
-      ] as Array<[string, unknown[][]]>;
+      type PlannedRosterEdit = (typeof planned)[number];
+      type ChangedField = keyof PlannedRosterEdit["fieldChanges"];
+      const updateAssignments: Array<[string, Array<[string, unknown]>]> = [];
+      const addAssignment = (
+        column: string,
+        field: ChangedField,
+        value: (item: PlannedRosterEdit) => unknown,
+      ) => {
+        const pairs = changedItems.filter((item) => item.fieldChanges[field])
+          .map((item): [string, unknown] => [item.edit.registrationId, value(item)]);
+        if (pairs.length) updateAssignments.push([column, pairs]);
+      };
+      addAssignment("team_name", "teamName", (item) => item.teamName);
+      addAssignment("category", "category", (item) => item.edit.category);
+      addAssignment("athlete_ids", "athleteIds", (item) => JSON.stringify(item.edit.athleteIds));
+      addAssignment("confirmation_status", "confirmationStatus", (item) => item.edit.confirmationStatus);
+      addAssignment("payment_status", "paymentStatus", (item) => item.edit.paymentStatus);
       const setSql = updateAssignments.map(([column, pairs]) =>
         `${column}=CASE id ${pairs.map(() => "WHEN ? THEN ?").join(" ")} ELSE ${column} END`,
       ).join(",");
       const setValues = updateAssignments.flatMap(([, pairs]) => pairs.flat());
       const historyPredicates: string[] = [];
       const historyValues: unknown[] = [];
-      for (const item of planned) {
+      for (const item of changedItems) {
         if (item.identityChanges.athleteIdsChanged || item.identityChanges.categoryChanged) {
           historyPredicates.push(
             "NOT EXISTS (SELECT 1 FROM zero3_results WHERE registration_id=?)",
@@ -391,12 +428,13 @@ export async function handleD1StagingRoster(
         }
       }
       const historyGuardSql = historyPredicates.length ? historyPredicates.join(" AND ") : "1=1";
-      const idList = ids.map(() => "?").join(",");
+      const changedIds = changedItems.map((item) => item.edit.registrationId);
+      const changedIdList = changedIds.map(() => "?").join(",");
       const updateSql = `UPDATE zero3_registrations SET ${setSql}
-        WHERE event_id=? AND id IN (${idList})
+        WHERE event_id=? AND id IN (${changedIdList})
         AND ${beforeGuard.sql} AND ${historyGuardSql}`;
       const updateValues = [
-        ...setValues, params.data.eventId, ...ids,
+        ...setValues, params.data.eventId, ...changedIds,
         ...beforeGuard.values, ...historyValues,
       ];
       const after = planned.map((item) => ({
@@ -404,19 +442,27 @@ export async function handleD1StagingRoster(
         category: item.edit.category, athleteIds: item.edit.athleteIds,
         confirmationStatus: item.edit.confirmationStatus, paymentStatus: item.edit.paymentStatus,
       }));
-      const afterGuard = afterStateGuard(params.data.eventId, after);
+      const afterForChanged = after.filter((target) => changedIds.includes(target.registrationId));
+      const afterGuard = afterStateGuard(params.data.eventId, afterForChanged);
       const stamp = d1IsoNow();
-      const statements: D1PreparedStatement[] = [
-        DB.prepare(updateSql).bind(...updateValues),
-        DB.prepare(`DELETE FROM zero3_registration_members WHERE registration_id IN (${idList})
-          AND ${afterGuard.sql}`).bind(...ids, ...afterGuard.values),
-      ];
-      for (const item of planned) {
-        for (const [slot, athleteId] of item.edit.athleteIds.entries()) {
-          statements.push(DB.prepare(`INSERT INTO zero3_registration_members(registration_id,event_id,athlete_id,slot)
-            SELECT ?,?,?,? WHERE ${afterGuard.sql} ON CONFLICT DO NOTHING`)
-            .bind(item.edit.registrationId, params.data.eventId, athleteId, slot + 1, ...afterGuard.values));
+      const statements: D1PreparedStatement[] = [DB.prepare(updateSql).bind(...updateValues)];
+      const membershipChangedItems = changedItems.filter((item) => item.fieldChanges.athleteIds);
+      if (membershipChangedItems.length) {
+        const memberIds = membershipChangedItems.map((item) => item.edit.registrationId);
+        const memberIdList = memberIds.map(() => "?").join(",");
+        const memberAfter = after.filter((target) => memberIds.includes(target.registrationId));
+        const memberGuard = afterStateGuard(params.data.eventId, memberAfter);
+        statements.push(DB.prepare(`DELETE FROM zero3_registration_members WHERE registration_id IN (${memberIdList})
+          AND ${memberGuard.sql}`).bind(...memberIds, ...memberGuard.values));
+        for (const item of membershipChangedItems) {
+          for (const [slot, athleteId] of item.edit.athleteIds.entries()) {
+            statements.push(DB.prepare(`INSERT INTO zero3_registration_members(registration_id,event_id,athlete_id,slot)
+              SELECT ?,?,?,? WHERE ${memberGuard.sql} ON CONFLICT DO NOTHING`)
+              .bind(item.edit.registrationId, params.data.eventId, athleteId, slot + 1, ...memberGuard.values));
+          }
         }
+      }
+      for (const item of changedItems) {
         const before = {
           teamName: item.row.team_name, category: item.row.category,
           athleteIds: d1JsonArray(item.row.athlete_ids),
@@ -434,17 +480,23 @@ export async function handleD1StagingRoster(
             JSON.stringify(before), JSON.stringify(afterState), stamp, ...afterGuard.values));
       }
       try { await DB.batch(statements); }
-      catch {
-        d1ApiError(req, res, 409, "ROSTER_CONFLICT", "A atualização conflitou com outra operação. Recarregue as equipes e tente novamente.");
+      catch (cause) {
+        if (isD1IntegrityConflict(cause)) {
+          d1ApiError(req, res, 409, "ROSTER_CONFLICT",
+            "A atualização conflitou com um vínculo ou outra operação. Recarregue as equipes e tente novamente.");
+        } else {
+          d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE",
+            "Não foi possível salvar as alterações no banco. Nenhuma atualização parcial foi confirmada.");
+        }
         return true;
       }
       const verified = await DB.prepare(`SELECT * FROM zero3_registrations WHERE event_id=?
-        AND id IN (${idList})`).bind(params.data.eventId, ...ids).all<RegistrationRow>();
+        AND id IN (${ids.map(() => "?").join(",")})`).bind(params.data.eventId, ...ids).all<RegistrationRow>();
       const afterById = new Map(after.map((row) => [row.registrationId, row]));
       const allApplied = verified.results.length === after.length && verified.results.every((row) => {
         const target = afterById.get(row.id)!;
         return row.category === target.category && row.team_name === target.teamName &&
-          row.athlete_ids === JSON.stringify(target.athleteIds) &&
+          JSON.stringify(d1JsonArray(row.athlete_ids)) === JSON.stringify(target.athleteIds) &&
           row.confirmation_status === target.confirmationStatus &&
           row.payment_status === target.paymentStatus;
       });

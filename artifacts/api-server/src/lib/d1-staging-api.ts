@@ -591,6 +591,25 @@ export function d1StagingApi(
     if (!req.path.startsWith("/api/zero3/")) { next(); return; }
     void (async () => {
       const route = req.path.slice("/api/zero3".length);
+      const legacyFinalizeMatch = route.match(/^\/events\/[^/]+\/batteries\/[^/]+\/\d+\/finalize$/);
+      const legacyTimerBody = typeof req.body === "object" && req.body !== null
+        ? req.body as Record<string, unknown>
+        : null;
+      const legacyBatteryMutation =
+        (req.method === "POST" && /^\/events\/[^/]+\/heats$/.test(route)) ||
+        (req.method === "PUT" && /^\/events\/[^/]+\/heats\/[^/]+\/proof$/.test(route)) ||
+        (req.method === "PUT" && /^\/events\/[^/]+\/active-heats\/[^/]+$/.test(route)) ||
+        (req.method === "PUT" && /^\/events\/[^/]+\/active-battery$/.test(route)) ||
+        (req.method === "PUT" && /^\/events\/[^/]+\/timer$/.test(route) && !("expectedBatteryId" in (legacyTimerBody ?? {}))) ||
+        (req.method === "POST" && Boolean(legacyFinalizeMatch));
+      if (legacyBatteryMutation) {
+        const roles = legacyFinalizeMatch
+          ? ["ADMIN", "JUIZ_CHEFE"]
+          : ["ADMIN", "JUIZ_CHEFE", "JUIZ"];
+        if (!await requireD1Role(req, res, DB, roles)) return;
+        error(res, 410, "EVENT_BATTERY_MODEL", "Use baterias vinculadas ao evento; as rotas antigas por prova/categoria são somente históricas.", req);
+        return;
+      }
       if (route === "/me" && req.method === "GET") {
         const auth = getAuth(req);
         if (!hasSignedInUserSession(auth) || !auth.userId) {
@@ -726,11 +745,6 @@ export function d1StagingApi(
           let targetHeatId=body.data.heatId??null;
           let targetLaneLabel=reg.lane_label;
           if(targetBatteryId){
-            const selected=await DB.prepare("SELECT battery_id FROM zero3_active_batteries WHERE event_id=?")
-              .bind(body.data.eventId).first<{battery_id:string|null}>();
-            if(selected?.battery_id!==targetBatteryId){
-              error(res,409,"BATTERY_SELECTION_CONFLICT","A bateria exibida mudou. Atualize antes de lançar.",req);return;
-            }
             const battery=await DB.prepare("SELECT id FROM zero3_batteries WHERE id=? AND event_id=?")
               .bind(targetBatteryId,body.data.eventId).first<{id:string}>();
             if(!battery){res.status(400).json({error:"A bateria não pertence a este evento."});return;}

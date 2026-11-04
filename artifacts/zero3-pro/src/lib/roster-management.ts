@@ -31,6 +31,16 @@ export function normalizeTeamNameInput(value: string): string | null {
   return value.trim().replace(/\s+/gu, " ") || null;
 }
 
+export function removeManagedRegistrationDraft<T>(
+  drafts: Readonly<Record<string, T>>,
+  registrationId: string,
+): Record<string, T> {
+  if (!(registrationId in drafts)) return { ...drafts };
+  const next = { ...drafts };
+  delete next[registrationId];
+  return next;
+}
+
 export function summarizeManagedRegistrations(
   registrations: readonly ManagedRegistrationSummary[],
 ) {

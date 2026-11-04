@@ -259,6 +259,14 @@ tbody tr:last-child td { border-bottom:0; }
 .op-score-table th {max-width:150px;min-width:90px}.score-pending {font:9px var(--font-data);color:#a27a53;text-transform:uppercase}
 .op-review-list {display:grid}.op-review-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #e9e6dd}.op-review-row:last-child {border:0}.op-review-row>div:first-child {display:grid;gap:5px;min-width:0}.op-review-row strong {font-size:12px}.op-review-row span {font-size:10px;color:#858980}
 .op-review-form {display:flex;align-items:end;flex-wrap:wrap;gap:8px}.op-review-form label {display:grid;gap:5px;font-size:10px;color:#777c74}.op-review-form input {width:130px;padding:8px;border:1px solid #d6d3c8;border-radius:5px;background:#fffefa;font:11px var(--font-ui)}
+.battery-readiness-panel {display:grid;gap:10px;margin:12px 0;padding:12px;border:1px solid #d9c7a5;border-radius:8px;background:#fbf7ed}
+.battery-readiness-list {display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.battery-readiness-item {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border:1px solid #e8dfcc;border-radius:6px;background:#fffefa}
+.battery-readiness-item>span {display:grid;gap:3px;min-width:0}
+.battery-readiness-item b {font-size:12px}
+.battery-readiness-item small {font-size:11px;color:#777c74}
+.result-target-highlight {border-color:#6d9276!important;background:#f1f7f0!important;box-shadow:0 0 0 3px #dcebdc}
+@media (max-width:680px) {.battery-readiness-item {align-items:flex-start;flex-direction:column}}
 .tv-logo {width:156px;height:36px;object-fit:contain;object-position:left center}
 .tv-clock-section {padding-top:22px;padding-bottom:23px}
 .tv-clock {font-size:clamp(64px,9vw,112px);font-weight:500;letter-spacing:-.105em}

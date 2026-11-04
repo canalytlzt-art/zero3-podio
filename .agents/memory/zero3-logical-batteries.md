@@ -10,3 +10,9 @@ Overall proof points rank current results across finalized batteries of the same
 **Why:** The user superseded the earlier proof-scoped model with event-scoped batteries containing four parallel proofs, while retaining separate RX/SC classifications. They require timer commands, TV selection, and finalization to remain independent, and explicitly require review before merging legacy rows with different teams.
 
 **How to apply:** Use event + displayed order as the battery identity and attach each event registration at most once. Keep all four proof results under that battery; calculate proof placements only from finalized snapshots and keep RX/SC rankings isolated. Do not infer finalization from timer state. Before migrating legacy rows, compare registration sets; stop and request mapping approval when they differ. Preserve source IDs and results until that mapping is explicitly resolved.
+
+When a result has no legacy heat or battery link, preserve it as pending and do not infer its battery from category or proof alone. Require an explicit mapping decision before including it in battery cells or rankings.
+
+**Why:** The user chose to leave two validated RX results without battery links and pause the staging release rather than risk attributing them to the wrong battery.
+
+**How to apply:** Migration diagnostics may report these rows, but must not create battery entries or change result links automatically. Pause publication until the mapping is explicitly resolved.

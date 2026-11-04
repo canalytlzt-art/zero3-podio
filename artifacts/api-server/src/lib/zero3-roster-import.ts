@@ -40,6 +40,33 @@ export function rosterIdentityChanges(
   };
 }
 
+export type RosterManagementFields = {
+  teamName: string | null;
+  category: string;
+  athleteIds: readonly string[];
+  confirmationStatus: string;
+  paymentStatus: string;
+};
+
+export function changedRosterManagementFields(
+  original: RosterManagementFields,
+  next: RosterManagementFields,
+): {
+  teamName: boolean;
+  category: boolean;
+  athleteIds: boolean;
+  confirmationStatus: boolean;
+  paymentStatus: boolean;
+} {
+  return {
+    teamName: original.teamName !== next.teamName,
+    category: original.category !== next.category,
+    athleteIds: JSON.stringify(original.athleteIds) !== JSON.stringify(next.athleteIds),
+    confirmationStatus: original.confirmationStatus !== next.confirmationStatus,
+    paymentStatus: original.paymentStatus !== next.paymentStatus,
+  };
+}
+
 export function rosterIdentityEditConflict(
   changes: { athleteIdsChanged: boolean; categoryChanged: boolean },
   history: RosterIdentityHistory,

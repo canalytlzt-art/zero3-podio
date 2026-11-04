@@ -11,5 +11,5 @@
 - [Workerd network errors](workerd-network-errors.md) — PostgreSQL TCP failures may lack Node codes; classify only with specific SQL context, never from timing alone.
 - [Wrangler D1 query limits](wrangler-d1-query-limits.md) — Large compound SELECT count queries can be rejected by remote D1; use scalar subqueries or separate SELECTs.
 - [ZERO3 event-specific duplas](zero3-event-specific-duplas.md) — Athletes are reusable; pre-result swaps keep the event registration ID and battery links, while result and published podium history stays protected.
-- [ZERO3 event batteries](zero3-logical-batteries.md) — Event-scoped order spans four parallel proofs; preserve legacy category heats when registration sets differ until explicitly mapped.
+- [ZERO3 event batteries](zero3-logical-batteries.md) — Keep event-scoped four-proof batteries separate by category; preserve legacy rows and unlinked results until explicitly mapped.
 - [Wrangler local Clerk config](wrangler-local-clerk-secrets.md) — Wrangler local does not inherit Replit Secrets; auth middleware can fail before route tests unless local runtime secrets are configured safely.

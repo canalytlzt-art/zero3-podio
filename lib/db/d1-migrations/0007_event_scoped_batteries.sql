@@ -1,6 +1,6 @@
 -- The operational battery belongs to an event, not to one proof/category.
--- Keep all legacy heat rows and IDs. The parent reuses the smallest legacy
--- heat ID for each event/order; remaining legacy rows remain as history.
+-- The approved staging mapping unions RX and SC rows with the same event/order.
+-- Keep all legacy heat/result rows and IDs as history.
 
 CREATE TABLE zero3_event_battery_migration_guard (
   ok INTEGER NOT NULL CHECK (ok = 1)
@@ -42,8 +42,8 @@ SELECT CASE WHEN
     WHERE r.event_id <> h.event_id
   )
   OR EXISTS (
-    -- Do not auto-merge old proof-specific batteries that contain different
-    -- registrations. A human must validate that mapping before this migration.
+    -- Different registration sets are expected across RX and SC rows. Do not
+    -- infer a union between same-category rows or unsupported categories.
     SELECT 1
     FROM zero3_heats a
     JOIN zero3_heats b
@@ -51,6 +51,12 @@ SELECT CASE WHEN
      AND COALESCE(b.battery_order, b."order") = COALESCE(a.battery_order, a."order")
      AND b.id > a.id
     WHERE
+      (
+        a.category = b.category
+        OR a.category NOT IN ('RX','SC')
+        OR b.category NOT IN ('RX','SC')
+      )
+      AND
       (
         EXISTS (
           SELECT he.registration_id
@@ -71,6 +77,32 @@ SELECT CASE WHEN
           WHERE he.heat_id = a.id
         )
       )
+  )
+  OR EXISTS (
+    -- A source row's category must agree with the event registration.
+    SELECT 1
+    FROM zero3_heats h
+    JOIN zero3_heat_entries he ON he.heat_id = h.id
+    JOIN zero3_registrations r ON r.id = he.registration_id
+    WHERE r.event_id <> h.event_id OR r.category <> h.category
+  )
+  OR EXISTS (
+    -- Results must retain their proof association. Proof-less source rows with
+    -- results need an explicit review before they can be mapped.
+    SELECT 1
+    FROM zero3_results r
+    JOIN zero3_heats h ON h.id = r.heat_id
+    WHERE r.proof_id IS NOT h.proof_id
+  )
+  OR EXISTS (
+    -- A registration/proof may not have results in multiple source rows for
+    -- the same event battery; retaining both would make the cell ambiguous.
+    SELECT 1
+    FROM zero3_results r
+    JOIN zero3_heats h ON h.id = r.heat_id
+    GROUP BY h.event_id, COALESCE(h.battery_order, h."order"),
+             r.registration_id, r.proof_id
+    HAVING COUNT(DISTINCT r.heat_id) > 1
   )
 THEN 0 ELSE 1 END;
 

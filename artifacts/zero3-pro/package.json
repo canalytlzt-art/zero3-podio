@@ -11,7 +11,8 @@
     "test:auth-redirect": "node --experimental-strip-types --test src/lib/auth-redirect.test.ts",
     "test:auth-session-cache": "node --experimental-strip-types --test src/lib/session-query-cache.test.ts",
     "test:navigation": "node --experimental-strip-types --test src/lib/auth-redirect.test.ts src/lib/tv-navigation.test.ts src/lib/live-board-navigation.test.ts src/lib/roster-import-review.test.ts",
-    "test:roster-management": "node --experimental-strip-types --test src/lib/roster-management.test.ts src/lib/athlete-search.test.ts"
+    "test:roster-management": "node --experimental-strip-types --test src/lib/roster-management.test.ts src/lib/athlete-search.test.ts",
+    "test:battery-readiness": "node --experimental-strip-types --test src/lib/event-battery-readiness.test.ts"
   },
   "devDependencies": {
     "@clerk/react": "^6.18.4",

@@ -283,10 +283,10 @@ export async function handleD1StagingAdmin(
       return true;
     }
     try {
-      const updated = await DB.prepare("UPDATE zero3_athletes SET full_name=? WHERE id=?")
-        .bind(body.data.fullName, params.data.athleteId).run();
-      if ((updated.meta.changes ?? 0) !== 1) { res.status(404).json({ error: "Atleta não encontrado." }); return true; }
+      await DB.prepare("UPDATE zero3_athletes SET full_name=? WHERE id=?")
+        .bind(body.data.fullName.trim(), params.data.athleteId).run();
       const row = await DB.prepare("SELECT * FROM zero3_athletes WHERE id=?").bind(params.data.athleteId).first<AthleteRow>();
+      if (!row) { res.status(404).json({ error: "Atleta não encontrado." }); return true; }
       res.json(UpdateZero3AthleteResponse.parse(athleteDto(row!)));
     } catch { internalError(req, res, "Não foi possível atualizar o atleta."); }
     return true;
@@ -297,25 +297,58 @@ export async function handleD1StagingAdmin(
     const params = DeleteZero3AthleteParams.safeParse({ athleteId: athleteMatch[1] });
     if (!params.success) { res.status(400).json({ error: params.error.message }); return true; }
     try {
-      const row = await DB.prepare("SELECT id FROM zero3_athletes WHERE id=?").bind(params.data.athleteId).first<{ id: string }>();
-      if (!row) { res.status(404).json({ error: "Atleta não encontrado." }); return true; }
-      const linked = await DB.prepare(`SELECT
-        EXISTS(SELECT 1 FROM zero3_registration_members WHERE athlete_id=?) AS member_link,
-        EXISTS(SELECT 1 FROM zero3_registrations r, json_each(r.athlete_ids) j WHERE j.value=?) AS registration_link,
-        EXISTS(SELECT 1 FROM zero3_import_people WHERE athlete_id=?) AS import_link`)
-        .bind(params.data.athleteId, params.data.athleteId, params.data.athleteId)
-        .first<{ member_link: number; registration_link: number; import_link: number }>();
-      if (linked && (linked.member_link || linked.registration_link || linked.import_link)) {
-        const links = [
-          linked.member_link || linked.registration_link ? "inscrições/equipes" : "",
-          linked.import_link ? "histórico de importação" : "",
-        ].filter(Boolean).join(" e ");
-        res.status(409).json({ code: "ATHLETE_HAS_LINKS", error: `Não é possível excluir: atleta possui vínculo em ${links}. Remova ou preserve os vínculos primeiro.` });
+      const athleteId = params.data.athleteId;
+      const deleted = await DB.prepare(`DELETE FROM zero3_athletes WHERE id=?
+        AND NOT EXISTS(SELECT 1 FROM zero3_registration_members WHERE athlete_id=?)
+        AND NOT EXISTS(SELECT 1 FROM zero3_registrations r, json_each(r.athlete_ids) j WHERE j.value=?)
+        AND NOT EXISTS(SELECT 1 FROM zero3_import_people WHERE athlete_id=?)`)
+        .bind(athleteId, athleteId, athleteId, athleteId).run();
+      if ((deleted.meta.changes ?? 0) === 1) {
+        res.json(DeleteZero3AthleteResponse.parse({ id: athleteId, deleted: true }));
         return true;
       }
-      const deleted = await DB.prepare("DELETE FROM zero3_athletes WHERE id=?").bind(params.data.athleteId).run();
-      if ((deleted.meta.changes ?? 0) !== 1) { res.status(409).json({ error: "O atleta foi alterado por outra operação." }); return true; }
-      res.json(DeleteZero3AthleteResponse.parse({ id: params.data.athleteId, deleted: true }));
+
+      const row = await DB.prepare("SELECT id FROM zero3_athletes WHERE id=?")
+        .bind(athleteId).first<{ id: string }>();
+      if (!row) { res.status(404).json({ error: "Atleta não encontrado." }); return true; }
+      const linked = await DB.prepare(`SELECT
+        (SELECT COUNT(*) FROM (
+          SELECT registration_id FROM zero3_registration_members WHERE athlete_id=?
+          UNION
+          SELECT r.id FROM zero3_registrations r, json_each(r.athlete_ids) j WHERE j.value=?
+        )) AS registration_count,
+        (SELECT COUNT(DISTINCT batch_id) FROM zero3_import_people WHERE athlete_id=?) AS import_count`)
+        .bind(athleteId, athleteId, athleteId)
+        .first<{ registration_count: number; import_count: number }>();
+      const blockedBy = [
+        ...(linked?.registration_count ? [{
+          kind: "REGISTRATION",
+          count: linked.registration_count,
+          href: "/admin/roster/manage",
+          label: "Inscrições e equipes",
+        }] : []),
+        ...(linked?.import_count ? [{
+          kind: "IMPORT_HISTORY",
+          count: linked.import_count,
+          href: "/admin/roster/import",
+          label: "Histórico de importação",
+        }] : []),
+      ];
+      if (blockedBy.length) {
+        const locations = blockedBy.map((item) =>
+          `${item.count} vínculo(s) em ${item.label} (${item.href})`,
+        ).join(" e ");
+        res.status(409).json({
+          code: "ATHLETE_HAS_LINKS",
+          error: `Não é possível excluir: ${locations}. Revise esses vínculos sem apagar o histórico da competição.`,
+          blockedBy,
+        });
+        return true;
+      }
+      res.status(409).json({
+        code: "ATHLETE_DELETE_CONFLICT",
+        error: "O atleta foi alterado por outra operação. Atualize a lista e tente novamente.",
+      });
     } catch { internalError(req, res, "Não foi possível excluir o atleta."); }
     return true;
   }

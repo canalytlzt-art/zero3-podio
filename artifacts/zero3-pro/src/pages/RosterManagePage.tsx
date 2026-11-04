@@ -29,6 +29,7 @@ import { ArrowDownUp, Search, Upload } from 'lucide-react';
 import {
   categoryDisplayName,
   findAthleteRegistrationConflicts,
+  removeManagedRegistrationDraft,
   registrationIdentityEditLock,
   summarizeManagedRegistrations,
   normalizeTeamNameInput,
@@ -146,12 +147,18 @@ export function RosterManagePage() {
     [id]: { ...(current[id] || newDraft(teams.find(team => team.id === id)!)), ...patch },
   }));
   const toggleTeam = (team: Zero3RosterManagementEntry) => {
-    setSelected(current => {
-      if (current.includes(team.id)) return current.filter(id => id !== team.id);
-      if (current.length >= 2) return current;
-      setDrafts(value => ({ ...value, [team.id]: value[team.id] || newDraft(team) }));
-      return [...current, team.id];
-    });
+    if (selected.includes(team.id)) {
+      setSelected(current => current.filter(id => id !== team.id));
+      setDrafts(current => removeManagedRegistrationDraft(current, team.id));
+    } else {
+      if (selected.length >= 2) return;
+      setSelected(current => current.includes(team.id) || current.length >= 2
+        ? current
+        : [...current, team.id]);
+      setDrafts(current => current[team.id]
+        ? current
+        : { ...current, [team.id]: newDraft(team) });
+    }
     setError('');
   };
   const submit = () => {
@@ -200,7 +207,8 @@ export function RosterManagePage() {
       .filter((message): message is string => Boolean(message));
     if (replacements.length && !window.confirm(replacements.join('\n\n'))) return;
     update.mutate({ eventId, data: { edits } }, {
-      onSuccess: () => {
+      onSuccess: result => {
+        qc.setQueryData(getGetZero3RosterManagementQueryKey(eventId), result.registrations);
         void qc.invalidateQueries({ queryKey: getGetZero3RosterManagementQueryKey(eventId) });
         void qc.invalidateQueries({ queryKey: getListZero3RegistrationsQueryKey(eventId) });
         void qc.invalidateQueries({ queryKey: getListZero3HeatsQueryKey(eventId) });

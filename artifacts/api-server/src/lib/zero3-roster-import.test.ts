@@ -6,6 +6,7 @@ import {
 } from "@workspace/api-zod";
 import {
   buildRosterImportPlan,
+  changedRosterManagementFields,
   rosterIdentityChanged,
   rosterIdentityChanges,
   rosterIdentityEditConflict,
@@ -145,6 +146,28 @@ describe("ZERO3 roster import planning", () => {
 });
 
 describe("registration history edit guard", () => {
+  it("detects a payment-only change without marking category, athletes, or confirmation changed", () => {
+    assert.deepEqual(changedRosterManagementFields({
+      teamName: "Equipe Demo",
+      category: "RX",
+      athleteIds: ["athlete-a", "athlete-b"],
+      confirmationStatus: "CONFIRMED",
+      paymentStatus: "PENDING",
+    }, {
+      teamName: "Equipe Demo",
+      category: "RX",
+      athleteIds: ["athlete-a", "athlete-b"],
+      confirmationStatus: "CONFIRMED",
+      paymentStatus: "PAID",
+    }), {
+      teamName: false,
+      category: false,
+      athleteIds: false,
+      confirmationStatus: false,
+      paymentStatus: true,
+    });
+  });
+
   it("treats athlete order swaps as the same roster identity", () => {
     assert.equal(rosterIdentityChanged(
       { category: "RX", athleteIds: ["a", "b"] },
