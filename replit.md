@@ -42,6 +42,7 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - Events have four proof slots. Configure official names, units, metric direction, and tie handling only from confirmed event rules.
 - A battery belongs to one event and has a unique order within it; its registrations compete across all four proofs in parallel. RX and SC may share the battery but keep separate results and rankings. Assign each event registration only once.
 - Keep the shared event timer independent from TV selection and finalization. Selecting a battery only changes the display; starting/stopping the timer is a separate action. Publish the complete battery results and update rankings only after all required results are reviewed or have a configured official exception.
+- Event deletion is ADMIN-only, requires a complete JSON backup and typed confirmation, and removes only that event's operational records atomically. Preserve global athlete records and all other events. The backup GET is `/api/zero3/events/{eventId}/deletion-backup`; deletion remains `DELETE /api/zero3/events/{eventId}`. Include every event-owned D1 table in the backup.
 - For configured proofs, validated results receive 1, 2, 3… points by placement; the lower overall sum wins. The server recalculates from stored results after corrections. Provisional results earn no official points; missing proofs are not zero; incomplete entries are not final champions. Do not invent tie-breakers.
 - Preserve timer, registrations, IDs, prior results, role checks, and audit history when changing the app. Keep SC and RX as stored; do not infer that SC means SCALE.
 - Never automatically combine legacy heat rows with different registration sets during migration. Preserve their records and require an explicit, reviewed mapping before converting them into event-scoped batteries.
@@ -51,6 +52,7 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 ## Operational cautions
 
 - Confirm the target database is Development before schema pushes or seeding. Production has not been changed by this implementation.
+- Wrangler local does not automatically receive Replit Secrets. Provide required Clerk runtime variables through Wrangler's ignored local secret configuration; never commit `.dev.vars` or secret values.
 - `seed:demo` is idempotent for its named test event and refuses to run unless `NODE_ENV=development`.
 - Use the OpenAPI contract as the source of truth and regenerate clients after changing it.
 - Do not bypass Clerk or server-side role checks to make a preview appear signed in.
