@@ -96,9 +96,13 @@ function EventBatteryBoard({board}:{board:Zero3PublicBoard}){
                 const score=entry?.proofScores.find(item=>item.proofId===proof.id);
                 const value=result?.status==='DNS'||result?.status==='DNF'?result.status
                   :result?.rawValue!=null?`${result.rawValue}${proof.unit?` ${proof.unit}`:''}`:'—';
-                const label=!result?'PENDENTE':result.status==='PROVISIONAL'?'PROVISÓRIO'
-                  :result.status==='VALIDATED'?'VALIDADO':result.status;
-                return <td key={proof.id}><strong>{score?.placement?`${score.placement}º · `:''}{value}</strong><small className={result?.status==='PROVISIONAL'?'provisional':''}>{label}</small></td>;
+                 const label=!result?'PENDENTE':result.status==='PROVISIONAL'?'PROVISÓRIO · AGUARDANDO REVISÃO'
+                   :result.status==='VALIDATED'&&battery.finalized&&battery.finalizationCurrent?'VALIDADO · PUBLICADO'
+                   :result.status==='VALIDATED'&&battery.finalized?'VALIDADO · CORREÇÃO PENDENTE'
+                   :result.status==='VALIDATED'?'REVISADO · AGUARDANDO PUBLICAÇÃO':result.status;
+                 const provisionalStatus=result?.status==='PROVISIONAL'||
+                   result?.status==='VALIDATED'&&(!battery.finalized||!battery.finalizationCurrent);
+                 return <td key={proof.id}><strong>{score?.placement?`${score.placement}º · `:''}{value}</strong><small className={provisionalStatus?'provisional':''}>{label}</small></td>;
               })}
             </tr>)}</tbody>
           </table></div>

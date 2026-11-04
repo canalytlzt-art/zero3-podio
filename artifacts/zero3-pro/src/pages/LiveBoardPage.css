@@ -286,3 +286,30 @@
   .lb-loading-heading span, .lb-loading-row i, .lb-loading-row span, .lb-battery-publication.is-fresh { animation: none; }
   .lb-tv-link, .lb-view-switch button { transition: none; }
 }
+.lb-event-battery { display: grid; gap: 18px; }
+.lb-event-battery-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px; border: 1px solid var(--lb-border, #303137); border-radius: 12px; background: var(--lb-panel, #1b1c20); }
+.lb-event-battery-heading>div:first-child>span { color: var(--lb-muted, #9a9ba2); font-size: 10px; letter-spacing: .13em; }
+.lb-event-battery-heading h3 { margin: 5px 0 0; font-size: 22px; }
+.lb-event-battery-publication { display: grid; gap: 4px; justify-items: end; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.lb-event-battery-publication small { color: var(--lb-muted, #9a9ba2); font-size: 9px; font-weight: 500; }
+.lb-event-battery-publication.is-official { color: #91c7a7; }
+.lb-event-battery-publication.is-pending { color: #e0b36a; }
+.lb-event-battery-publication.is-provisional { color: #c6a5e6; }
+.lb-event-battery-note { margin: -8px 0 0; padding: 11px 14px; border-left: 3px solid #9d80bd; border-radius: 5px; background: #201e24; color: #c8c4cc; font-size: 12px; }
+.lb-event-battery-category { overflow: hidden; border: 1px solid var(--lb-border, #303137); border-radius: 12px; background: var(--lb-panel, #1b1c20); }
+.lb-event-battery-category>header { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid var(--lb-border, #303137); }
+.lb-event-battery-category>header strong { font-size: 14px; }
+.lb-event-battery-category>header span, .lb-event-battery-category>footer { color: var(--lb-muted, #9a9ba2); font-size: 10px; }
+.lb-event-battery-table-wrap { overflow-x: auto; }
+.lb-event-battery-table { width: 100%; min-width: 920px; border-collapse: collapse; }
+.lb-event-battery-table th { padding: 10px 12px; color: var(--lb-muted, #9a9ba2); font-size: 9px; text-align: left; text-transform: uppercase; }
+.lb-event-battery-table td { padding: 12px; border-top: 1px solid var(--lb-border, #303137); vertical-align: top; font-size: 11px; }
+.lb-event-battery-table td strong, .lb-event-battery-table td small { display: block; }
+.lb-event-battery-table td small { margin-top: 4px; color: var(--lb-muted, #9a9ba2); font-size: 9px; }
+.lb-event-battery-table td small.is-provisional { color: #c6a5e6; font-weight: 700; }
+.lb-event-battery-category>footer { padding: 10px 12px; border-top: 1px solid var(--lb-border, #303137); }
+@media (max-width: 680px) {
+  .lb-event-battery-heading { align-items: flex-start; flex-direction: column; padding: 14px; }
+  .lb-event-battery-heading h3 { font-size: 18px; }
+  .lb-event-battery-publication { justify-items: start; }
+}

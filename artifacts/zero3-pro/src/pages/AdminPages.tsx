@@ -26,6 +26,7 @@ import {
 import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType, Zero3RosterManagementEntry, Zero3Heat, Zero3EventBattery, Zero3PublicBoard } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
 import { AthletePicker } from '@/components/AthletePicker';
+import { EventBatteryResultsPanel } from '@/components/EventBatteryResultsPanel';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { liveBoardHrefForBattery } from '@/lib/live-board-navigation';
 import { pollingIntervalAfterError, shouldRefetchAfterError } from '@/lib/api-error-policy';
@@ -35,6 +36,7 @@ import { primaryTimerAction, timerStateLabel } from '@/lib/zero3-timer-controls'
 import {
  batteryIssueActionLabel, batteryIssueHref, batteryIssueLabel,
  batteryReadinessCount, getBatteryReadinessIssues,
+ type BatteryReadinessIssue,
 } from '@/lib/event-battery-readiness';
 
 const pillTone = (status: string) => status === 'ACTIVE' || status === 'VALIDATED' ? '' : status === 'PLANNED' || status === 'PROVISIONAL' ? 'warn' : 'neutral';
@@ -574,6 +576,8 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const [error,setError]=useState('');
  const [confirmId,setConfirmId]=useState<string|null>(null);
  const [order,setOrder]=useState<number|undefined>(undefined);
+ const [resultsBatteryId,setResultsBatteryId]=useState<string|null>(null);
+ const [resultsFocusIssue,setResultsFocusIssue]=useState<BatteryReadinessIssue|null>(null);
  const activeId=batteryModel.activeBattery?.batteryId;
  const batteries=batteriesQuery.data??[];
  const nextOrder=Math.max(0,...batteries.map(item=>item.order))+1;
@@ -593,6 +597,19 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const selectBattery=(batteryId:string|null)=>select.mutate({eventId,data:{batteryId}},{
   onSuccess:()=>{setError('');refresh();},onError:failure=>setError(feedback(failure)),
  });
+ const openResultsPanel=(batteryId:string,issue:BatteryReadinessIssue|null=null)=>{
+  setConfirmId(null);
+  setResultsBatteryId(batteryId);
+  setResultsFocusIssue(issue);
+ };
+ const requestFinalization=(battery:Zero3EventBattery,issues:BatteryReadinessIssue[])=>{
+  const firstResultIssue=issues.find(issue=>Boolean(issue.registrationId));
+  if(firstResultIssue){
+   openResultsPanel(battery.id,firstResultIssue);
+   return;
+  }
+  setConfirmId(battery.id);
+ };
  const finalizeBattery=(battery:Zero3EventBattery)=>{
   if(confirmId!==battery.id||battery.reviewedResultCount!==battery.expectedResultCount||
     battery.expectedResultCount===0||!battery.finalizationFingerprint)return;
@@ -623,8 +640,8 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
        <div className="op-section-head"><div><div className="eyebrow">Bateria {String(battery.order).padStart(2,'0')} · todas as provas</div><h3 className="panel-title">{battery.name}</h3></div><span className={`pill ${battery.finalized&&battery.finalizationCurrent?'':'warn'}`}>{battery.finalized?(battery.finalizationCurrent?'Finalizada':'Correção pendente'):canFinalize?'Pronta para finalizar':'Em apuração'}</span></div>
        <div className="toolbar"><span className="field-help">{battery.registrations.length} equipes · {battery.categories.join(' + ')||'sem categoria'} · {readyCount} de {battery.expectedResultCount} resultados prontos</span>
        <button className={`button small ${isActive?'primary':''}`} disabled={select.isPending||isActive} onClick={()=>selectBattery(battery.id)}>{isActive?'Na TV':'Colocar na TV'}</button>
-       <Link className="button small" href={`/operacao?${new URLSearchParams({eventId,batteryId:battery.id})}`}>Resultados</Link>
-        <button className={`button small ${canFinalize?'primary':''}`} disabled={!canOpenFinalize||finalize.isPending} onClick={()=>setConfirmId(battery.id)}>{battery.finalized&&battery.finalizationCurrent?'Finalizada':battery.finalized?'Publicar correção':'Finalizar e publicar bateria'}</button>
+        <button className="button small" type="button" onClick={()=>openResultsPanel(battery.id)}>{resultsBatteryId===battery.id?'Resultados abertos':'Resultados'}</button>
+         <button className={`button small ${canFinalize?'primary':''}`} disabled={!canOpenFinalize||finalize.isPending} onClick={()=>requestFinalization(battery,readinessIssues)}>{battery.finalized&&battery.finalizationCurrent?'Finalizada':battery.finalized?'Publicar correção':'Finalizar e publicar bateria'}</button>
       </div>
       {battery.expectedResultCount===0&&<p className="field-help">Adicione inscrições à bateria antes de finalizar.</p>}
       {exceptionPending&&<p className="field-help">DNS/DNF requer regra oficial de exceção antes da publicação.</p>}
@@ -637,6 +654,13 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
           return `${proof.order}. ${proof.name||'Prova pendente'}: ${result?.rawValue??state}${result?.status==='PROVISIONAL'?' · Provisório':''}`;
         }).join(' · ')}</div>
        </div></div>)}</div>
+       {resultsBatteryId===battery.id&&<EventBatteryResultsPanel
+        eventId={eventId}
+        battery={battery}
+        focusIssue={resultsFocusIssue}
+        onClose={()=>{setResultsBatteryId(null);setResultsFocusIssue(null);}}
+        onSaved={refresh}
+       />}
       {confirmId===battery.id&&<div role="alertdialog" aria-label="Confirmar finalização da bateria" className="panel panel-pad" style={{marginTop:12}}>
         <strong>{canFinalize?'Confirmar finalização e publicação?':'Pendências para finalizar'}</strong>
         <p className="field-help">{battery.name} · {battery.proofs.length} provas · {battery.registrations.length} inscrições · {readyCount} de {battery.expectedResultCount} resultados prontos. A publicação atualiza a TV e o ranking geral; selecionar a TV e controlar o cronômetro continuam sendo ações separadas.</p>
@@ -644,7 +668,9 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
          <strong>A bateria permanece em apuração até resolver todas as pendências.</strong>
          <ul className="battery-readiness-list">{readinessIssues.map((issue,index)=><li className="battery-readiness-item" key={`${issue.registrationId}:${issue.proofId}:${index}`}>
           <span><b>{issue.laneLabel||'—'} · {issue.teamName}</b><small>{issue.category} · Prova {issue.proofOrder}: {issue.proofName} · {batteryIssueLabel(issue.kind)}</small></span>
-          <Link className="button small" href={batteryIssueHref(eventId,battery.id,issue)}>{batteryIssueActionLabel(issue.kind)}</Link>
+          {issue.kind==='CONFIGURATION'
+           ?<Link className="button small" href={batteryIssueHref(eventId,battery.id,issue)}>{batteryIssueActionLabel(issue.kind)}</Link>
+           :<button type="button" className="button small" onClick={()=>openResultsPanel(battery.id,issue)}>{batteryIssueActionLabel(issue.kind)}</button>}
          </li>)}</ul>
         </div>:unresolved(battery)?<p className="error-box" role="alert">Há empate sem regra oficial configurada; resolva o desempate antes de publicar.</p>
          :!proofsConfigured?<p className="error-box" role="alert">Configure as quatro provas do evento antes de finalizar.</p>

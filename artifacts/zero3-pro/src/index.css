@@ -266,7 +266,32 @@ tbody tr:last-child td { border-bottom:0; }
 .battery-readiness-item b {font-size:12px}
 .battery-readiness-item small {font-size:11px;color:#777c74}
 .result-target-highlight {border-color:#6d9276!important;background:#f1f7f0!important;box-shadow:0 0 0 3px #dcebdc}
+.event-battery-results {display:grid;gap:12px;margin-top:14px;padding:14px;border:1px solid #d9c7a5;border-radius:9px;background:#fbf7ed}
+.event-battery-results-header {display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.event-battery-results-header h4 {margin:4px 0;font-size:15px}
+.event-battery-results-header p {margin:0;color:#777c74;font-size:12px}
+.event-battery-result-registrations {display:grid;gap:10px}
+.event-battery-result-registration {min-width:0;padding:12px;border:1px solid #e8dfcc;border-radius:8px;background:#fffefa}
+.event-battery-result-registration>header {display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1px solid #ece6db}
+.event-battery-result-registration>header>div {display:grid;gap:3px;min-width:0}
+.event-battery-result-registration>header strong {overflow-wrap:anywhere}
+.event-battery-result-registration>header small {color:#777c74}
+.event-battery-result-proof-grid {display:grid;grid-template-columns:repeat(4,minmax(175px,1fr));gap:9px;padding-top:10px}
+.event-battery-result-cell {display:grid;align-content:start;gap:7px;min-width:0;padding:10px;border:1px solid #ebe6dc;border-radius:7px;background:#fff}
+.event-battery-result-cell h5 {margin:0;font-size:12px}
+.event-battery-result-value {font-size:17px;font-variant-numeric:tabular-nums}
+.event-battery-result-state {font-size:11px;color:#676d69}
+.event-battery-result-state.is-provisional {color:#75569a;font-weight:700}
+.event-battery-result-state.is-published {color:#2d7652;font-weight:700}
+.event-battery-result-cell form {display:grid;gap:7px}
+.event-battery-result-cell form label {font-size:11px;color:#676d69}
+.event-battery-result-cell form input {width:100%;min-width:0}
 @media (max-width:680px) {.battery-readiness-item {align-items:flex-start;flex-direction:column}}
+@media (max-width:900px) {.event-battery-result-proof-grid {grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px) {
+ .event-battery-results-header {align-items:stretch;flex-direction:column}
+ .event-battery-result-proof-grid {grid-template-columns:minmax(0,1fr)}
+}
 .tv-logo {width:156px;height:36px;object-fit:contain;object-position:left center}
 .tv-clock-section {padding-top:22px;padding-bottom:23px}
 .tv-clock {font-size:clamp(64px,9vw,112px);font-weight:500;letter-spacing:-.105em}
