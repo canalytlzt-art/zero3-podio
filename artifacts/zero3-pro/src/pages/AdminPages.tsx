@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useSearch } from 'wouter';
-import { ArrowLeft, Plus, Radio, RotateCw, Save, Trophy, Users, Play, Square, Pencil, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Plus, Radio, RotateCw, Save, Trophy, Users, Play, Square, Pencil, Trash2, X, Clock3 } from 'lucide-react';
 import {
   Zero3EventStatus, Zero3ResultStatus, Zero3Role,
   Zero3RegistrationConfirmationStatus, Zero3RegistrationPaymentStatus,
@@ -14,7 +14,7 @@ import {
   useUpdateZero3Event, useListZero3Athletes, useCreateZero3Athlete, useListZero3Members,
   useSetZero3MemberRole, useListZero3Heats, useCreateZero3Heat, useListZero3Registrations, useListZero3Proofs,
   useCreateZero3Registration, useControlZero3Timer, useCaptureZero3Result, useUpdateZero3Result,
-  useUpdateZero3Registration, useUpdateZero3RosterManagement,
+   useUpdateZero3Registration, useUpdateZero3RosterManagement, useDeleteZero3Registration,
   useSetZero3ActiveHeat,
   useSetZero3ActiveBattery, useUpdateZero3HeatProof, useFinalizeZero3Battery,
   useListZero3EventBatteries, useCreateZero3EventBattery, useSetZero3ActiveEventBattery,
@@ -33,6 +33,7 @@ import { pollingIntervalAfterError, shouldRefetchAfterError } from '@/lib/api-er
 import { normalizeTeamNameInput, teamNameInputError } from '@/lib/roster-management';
 import { describeAthleteReplacement, normalizeAthleteSearch } from '@/lib/athlete-search';
 import { primaryTimerAction, timerStateLabel } from '@/lib/zero3-timer-controls';
+import { eventBatteryTimerControl } from '@/lib/event-battery-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
 import {
  batteryIssueActionLabel, batteryIssueHref, batteryIssueLabel,
@@ -44,6 +45,10 @@ const pillTone = (status: string) => status === 'ACTIVE' || status === 'VALIDATE
 const pretty = (s: string) => ({PLANNED:'Planejado',ACTIVE:'Em andamento',FINISHED:'Finalizado',PROVISIONAL:'Provisório',VALIDATED:'Validado',DNS:'DNS',DNF:'DNF'} as Record<string,string>)[s] || s;
 const formatMs = (ms?: number | null) => ms == null ? '—' : `${String(Math.floor(ms/60000)).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(Math.floor(ms%1000/10)).padStart(2,'0')}`;
 const feedback = (error: unknown) => error instanceof Error ? error.message : 'Não foi possível salvar. Tente novamente.';
+const registrationApiFeedback = (error: unknown) => {
+ const detail=error&&typeof error==='object'?(error as {data?:{error?:string}}).data?.error:null;
+ return detail||feedback(error);
+};
 const orderCategories = (items: readonly string[]) => [
   ...(['SC', 'RX'] as const).filter(category => items.includes(category)),
   ...items.filter(category => category !== 'SC' && category !== 'RX'),
@@ -184,7 +189,7 @@ function Heats({eventId}:{eventId:string}) {
  const q=useListZero3Heats(eventId,{query:{refetchInterval:10000,queryKey:getListZero3HeatsQueryKey(eventId)}});
  const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId)}});
  const proofs=useListZero3Proofs(eventId,{query:{queryKey:getListZero3ProofsQueryKey(eventId)}});
- const board=useGetZero3PublicBoard({eventId},{query:{queryKey:getGetZero3PublicBoardQueryKey({eventId}),refetchInterval:4000}});
+ const board=useGetZero3PublicBoard({eventId},{query:{queryKey:getGetZero3PublicBoardQueryKey({eventId}),refetchInterval:2000}});
    const create=useCreateZero3Heat();const selectHeat=useSetZero3ActiveHeat();const selectBattery=useSetZero3ActiveBattery();const linkProof=useUpdateZero3HeatProof();const finalizeBattery=useFinalizeZero3Battery();const timerCommand=useControlZero3Timer();const qc=useQueryClient();const [error,setError]=useState('');const [category,setCategory]=useState('');const [proofId,setProofId]=useState('');const [legacyProofs,setLegacyProofs]=useState<Record<string,string>>({});const [finalizeConfirmKey,setFinalizeConfirmKey]=useState<string|null>(null);
  const batteryMode=board.data?.batteryOperationsEnabled===true;
  const categories=board.data?.event?.categories??[];
@@ -357,9 +362,11 @@ function Registrations({eventId}:{eventId:string}) {
  const me=useGetZero3Me({query:{queryKey:getGetZero3MeQueryKey(),retry:false}});
  const isAdmin=me.data?.role===Zero3Role.ADMIN;
  const managed=useGetZero3RosterManagement(eventId,{query:{queryKey:getGetZero3RosterManagementQueryKey(eventId),enabled:isAdmin}});
+  const batteries=useListZero3EventBatteries(eventId,{query:{queryKey:getListZero3EventBatteriesQueryKey(eventId),enabled:isAdmin}});
  const create=useCreateZero3Registration();
  const updateName=useUpdateZero3Registration();
  const updateManaged=useUpdateZero3RosterManagement();
+  const deleteRegistration=useDeleteZero3Registration();
  const qc=useQueryClient();
  const [error,setError]=useState('');
  const [search,setSearch]=useState('');
@@ -376,8 +383,43 @@ function Registrations({eventId}:{eventId:string}) {
   void qc.invalidateQueries({queryKey:getListZero3RegistrationsQueryKey(eventId)});
   void qc.invalidateQueries({queryKey:getGetZero3RosterManagementQueryKey(eventId)});
   void qc.invalidateQueries({queryKey:getListZero3HeatsQueryKey(eventId)});
+   void qc.invalidateQueries({queryKey:getListZero3EventBatteriesQueryKey(eventId)});
   void qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})});
  };
+  const deleteTeam=(registration:Zero3RosterManagementEntry)=>{
+   const batteryLinks=(batteries.data||[]).flatMap(battery=>
+    battery.registrations.some(entry=>entry.id===registration.id)
+     ? [`P${String(battery.order).padStart(2,'0')} · ${battery.name}`]
+     : [],
+   );
+   const history=[
+    registration.resultCount?`${registration.resultCount} resultado(s)`:null,
+    registration.heatEntryCount?`${registration.heatEntryCount} vínculo(s) legado(s) de bateria/raia`:null,
+    registration.podiumCount?`${registration.podiumCount} versão(ões) de pódio`:null,
+    registration.audit.length?`${registration.audit.length} registro(s) de auditoria`:null,
+    registration.sourceCodes.length?`${registration.sourceCodes.length} vínculo(s) de importação`:null,
+   ].filter(Boolean);
+   const impact=[
+    `Excluir a inscrição abaixo?`,
+    `ID: ${registration.id}`,
+    `Equipe: ${registration.teamName||'sem nome'}`,
+    `Atletas: ${registration.athleteNames.join(' / ')||'—'}`,
+    `Categoria: ${registration.category}`,
+    `Baterias/raias vinculadas: ${batteryLinks.length?batteryLinks.join(', '):'os vínculos desta inscrição serão removidos, se existirem'}`,
+    `Histórico protegido: ${history.length?history.join('; '):'nenhum registro listado'}.`,
+    'Serão removidos somente esta inscrição e seus vínculos neste evento. Os cadastros dos atletas e outras inscrições permanecem.',
+    'Se houver resultado ou histórico protegido, o servidor recusará a exclusão permanente e manterá os dados.',
+   ].join('\n');
+   if(!window.confirm(impact))return;
+   setError('');
+   deleteRegistration.mutate({eventId,registrationId:registration.id},{
+    onSuccess:()=>{
+     if(editingId===registration.id){setEditingId(null);setEditDraft(null);}
+     refreshTeamDisplays();
+    },
+    onError:error=>setError(registrationApiFeedback(error)),
+   });
+  };
  const currentRegistrations=isAdmin?(managed.data||[]):(regs.data||[]);
  const normalizedSearch=normalizeAthleteSearch(search);
  const visibleRegistrations=currentRegistrations.filter(registration=>
@@ -473,7 +515,8 @@ function Registrations({eventId}:{eventId:string}) {
       <div className="lane-card"><span className="lane-tag">{isAdmin?(registration as Zero3RosterManagementEntry).confirmationStatus==='CANCELLED'?'CANCELADA':laneLabel||'—':laneLabel||'—'}</span><div>
       <div className="lane-name">{registration.teamName||`Equipe ${'laneLabel' in registration&&registration.laneLabel||registration.id.slice(0,6).toUpperCase()} — nome pendente`}</div>
       <div className="lane-meta">{registration.category} · {registration.athleteNames.join(' / ')}{isAdmin?` · ${(registration as Zero3RosterManagementEntry).confirmationStatus}`:''}</div>
-     </div>{isAdmin?<button type="button" className="button small" onClick={()=>startEdit(registration as Zero3RosterManagementEntry)} data-testid={`button-edit-registration-${registration.id}`}>Editar</button>:<button type="button" className="button small" onClick={()=>{setNameEditingId(nameEditingId===registration.id?null:registration.id);setEditingName(registration.teamName||'');}}>{registration.teamName?'Editar nome':'Adicionar nome da equipe'}</button>}</div>
+      {isAdmin&&<div className="lane-meta mono" data-testid={`registration-id-${registration.id}`}>ID {registration.id}</div>}
+     </div>{isAdmin?<div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" className="button small" onClick={()=>startEdit(registration as Zero3RosterManagementEntry)} data-testid={`button-edit-registration-${registration.id}`}>Editar</button><button type="button" className="button small" disabled={deleteRegistration.isPending} onClick={()=>deleteTeam(registration as Zero3RosterManagementEntry)} data-testid={`button-delete-registration-${registration.id}`}><Trash2 size={13}/> Excluir inscrição</button></div>:<button type="button" className="button small" onClick={()=>{setNameEditingId(nameEditingId===registration.id?null:registration.id);setEditingName(registration.teamName||'');}}>{registration.teamName?'Editar nome':'Adicionar nome da equipe'}</button>}</div>
      {isAdmin&&editingId===registration.id&&editDraft&&<form className="revision-inline registration-edit-form" onSubmit={saveRegistrationEdit}>
       <label>Nome da equipe<input value={editDraft.teamName} maxLength={40} onChange={event=>setEditDraft(current=>current?{...current,teamName:event.target.value}:current)} placeholder="Pode ficar sem nome"/></label>
       <div className="field"><label htmlFor={`registration-category-${registration.id}`}>Categoria</label><select id={`registration-category-${registration.id}`} value={editDraft.category} onChange={event=>setEditDraft(current=>current?{...current,category:event.target.value}:current)}>{categories.map(value=><option key={value} value={value}>{categoryName(value)}</option>)}</select></div>
@@ -555,6 +598,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId),refetchInterval:10000}});
  const proofs=useListZero3Proofs(eventId,{query:{queryKey:getListZero3ProofsQueryKey(eventId),refetchInterval:10000}});
  const select=useSetZero3ActiveEventBattery();
+ const timerCommand=useControlZero3Timer();
  const create=useCreateZero3EventBattery();
  const finalize=useFinalizeZero3EventBattery();
   const updateBattery=useUpdateZero3EventBattery();
@@ -562,6 +606,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
   const me=useGetZero3Me();
  const qc=useQueryClient();
  const [error,setError]=useState('');
+ const [timerCommandBatteryId,setTimerCommandBatteryId]=useState<string|null>(null);
  const [confirmId,setConfirmId]=useState<string|null>(null);
   const [editingBatteryId,setEditingBatteryId]=useState<string|null>(null);
   const [editingName,setEditingName]=useState('');
@@ -625,6 +670,22 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const selectBattery=(batteryId:string|null)=>select.mutate({eventId,data:{batteryId}},{
   onSuccess:()=>{setError('');refresh();},onError:failure=>setError(feedback(failure)),
  });
+ const controlBatteryTimer=(battery:Zero3EventBattery)=>{
+  const timer=batteryModel.batteryTimers?.find(item=>item.batteryId===battery.id);
+  const state=timer?.state??battery.state;
+  const control=eventBatteryTimerControl(state);
+  if(!control||timerCommand.isPending)return;
+  setTimerCommandBatteryId(battery.id);
+  timerCommand.mutate({eventId,data:{
+   action:control.action,
+   expectedVersion:timer?.version??battery.timerVersion,
+   commandId:crypto.randomUUID(),
+   expectedBatteryId:battery.id,
+  }},{
+   onSuccess:()=>{setTimerCommandBatteryId(null);setError('');refresh();},
+   onError:failure=>{setTimerCommandBatteryId(null);setError(feedback(failure));refresh();},
+  });
+ };
  const openResultsPanel=(batteryId:string,issue:BatteryReadinessIssue|null=null)=>{
   setConfirmId(null);
   setResultsBatteryId(batteryId);
@@ -664,6 +725,10 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
       (!battery.finalized||!battery.finalizationCurrent);
       const canOpenFinalize=battery.expectedResultCount>0&&Boolean(battery.finalizationFingerprint)&&
        (!battery.finalized||!battery.finalizationCurrent);
+      const batteryTimer=batteryModel.batteryTimers?.find(item=>item.batteryId===battery.id);
+      const timerState=batteryTimer?.state??battery.state;
+      const timerControl=eventBatteryTimerControl(timerState);
+      const canControlTimer=me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE';
        const canEditBattery=(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&
         !['PREPARATION','RUNNING'].includes(battery.state);
        const canEditComposition=battery.state==='IDLE'&&battery.results.length===0&&!battery.finalized;
@@ -678,6 +743,19 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
          <button className={`button small ${canFinalize?'primary':''}`} disabled={!canOpenFinalize||finalize.isPending} onClick={()=>requestFinalization(battery,readinessIssues)}>{battery.finalized&&battery.finalizationCurrent?'Finalizada':battery.finalized?'Publicar correção':'Finalizar e publicar bateria'}</button>
         {(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&<button className="button small" type="button" disabled={!canEditBattery||updateBattery.isPending} onClick={()=>beginBatteryEdit(battery)} aria-label={`Editar bateria ${eventBatteryCode(battery.order)}`}>Editar bateria</button>}
         {isAdmin&&<button className="button small" type="button" disabled={['PREPARATION','RUNNING'].includes(battery.state)||deleteBattery.isPending} onClick={()=>{setDeleteBatteryId(battery.id);setDeleteBatteryConfirmation('');setError('');}} aria-label={`Excluir bateria ${eventBatteryCode(battery.order)}`}><Trash2 size={13}/> Excluir bateria</button>}
+      </div>
+      <div className="battery-timer-tools">
+       <BatteryTimerReadout battery={battery} timer={batteryTimer} serverTime={batteryModel.serverTime}/>
+       {canControlTimer&&timerControl&&<button
+        className={`button small ${timerControl.action==='prepare'?'primary':''}`}
+        type="button"
+        data-testid={`battery-timer-action-${battery.id}`}
+        disabled={timerCommand.isPending}
+        onClick={()=>controlBatteryTimer(battery)}
+       >
+        {timerControl.action==='finish'?<Square size={13}/>:timerControl.action==='reset'?<X size={13}/>:timerControl.action==='resume'?<RotateCw size={13}/>:<Play size={13}/>}
+        {timerCommandBatteryId===battery.id?'Salvando…':timerControl.label}
+       </button>}
       </div>
       {battery.expectedResultCount===0&&<p className="field-help">Adicione inscrições à bateria antes de finalizar.</p>}
       {exceptionPending&&<p className="field-help">DNS/DNF requer regra oficial de exceção antes da publicação.</p>}
@@ -754,6 +832,37 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
    <button className="button primary" disabled={create.isPending||!registrations.data?.length}><Plus size={14}/>{create.isPending?'Criando…':'Criar bateria'}</button>
    {proofs.data?.length!==4&&<p className="field-help">O evento precisa manter quatro provas cadastradas.</p>}
   </form>
+ </div>;
+}
+
+type EventBatteryTimerSnapshot = NonNullable<Zero3PublicBoard['batteryTimers']>[number];
+
+function timestampMs(value?:string|Date|null){
+ if(value instanceof Date)return value.getTime();
+ if(typeof value==='string'){
+  const parsed=Date.parse(value);
+  return Number.isFinite(parsed)?parsed:undefined;
+ }
+ return undefined;
+}
+
+function BatteryTimerReadout({battery,timer,serverTime}:{battery:Zero3EventBattery;timer?:EventBatteryTimerSnapshot;serverTime?:string|Date}){
+ const [now,setNow]=useState(()=>Date.now());
+ useEffect(()=>{const id=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(id);},[]);
+ const state=timer?.state??battery.state;
+ const serverNow=timestampMs(serverTime);
+ const delta=serverNow===undefined?0:Math.max(0,now-serverNow);
+ const elapsed=(timer?.elapsedMs??battery.elapsedMs)+(state==='RUNNING'?delta:0);
+ const prepEnd=timestampMs(timer?.preparationEndsAt);
+ const preparation=state==='PREPARATION'
+  ?prepEnd===undefined?Math.max(0,(timer?.preparationRemainingMs??battery.preparationRemainingMs)-delta):Math.max(0,prepEnd-now)
+  :0;
+ return <div className="battery-timer-readout" data-testid={`battery-timer-${battery.id}`}>
+  <Clock3 size={17} aria-hidden="true"/>
+  <div><small>{state==='PREPARATION'?'PREPARAÇÃO':state==='RUNNING'?'DURAÇÃO DA BATERIA':'CRONÔMETRO DA BATERIA'}</small>
+   <strong>{formatMs(state==='PREPARATION'?preparation:elapsed)}</strong>
+   <small>{state==='FINISHED'?'Parado · tempo congelado':timerStateLabel(state)}</small>
+  </div>
  </div>;
 }
 

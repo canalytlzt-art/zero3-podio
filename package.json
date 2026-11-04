@@ -10,6 +10,7 @@
     "check:cloudflare": "pnpm run cf-typegen && pnpm run typecheck && pnpm run build:cloudflare",
     "test:auth-transport": "pnpm --filter @workspace/api-server exec esbuild ../../scripts/tests/custom-fetch-auth.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-api-auth-transport.test.mjs && node --test /tmp/zero3-api-auth-transport.test.mjs",
     "test:d1-event-delete": "bash scripts/tests/test-d1-event-delete.sh",
+    "test:d1-registration-lifecycle": "bash scripts/tests/test-d1-registration-lifecycle.sh",
     "test:d1-event-battery-migration": "bash scripts/tests/test-d1-event-battery-migration.sh",
     "deploy:cloudflare": "pnpm exec wrangler deploy --config wrangler.toml --keep-vars",
     "cf-typegen": "pnpm exec wrangler types artifacts/api-server/src/worker-configuration.d.ts --config wrangler.toml",

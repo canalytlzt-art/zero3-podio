@@ -55,6 +55,7 @@ import {
 import { resolveHeatRegistrationAssignments } from "./zero3-heat-assignments";
 import { normalizeEventCategories, validateEventCategories } from "./zero3-categories";
 import { parseZero3TeamName } from "./zero3-team-name";
+import { findZero3RegistrationConflict } from "./zero3-registration-conflict";
 import { handleD1StagingEventLifecycle } from "./d1-staging-event-lifecycle";
 import { BatteryConflict, selectD1ActiveBattery } from "./d1-staging-batteries";
 
@@ -511,12 +512,18 @@ export async function handleD1StagingAdmin(
       if (!event) { res.status(404).json({ error: "Evento não encontrado." }); return true; }
       const athleteRows = await DB.prepare(`SELECT id FROM zero3_athletes WHERE id IN (${athleteIds.map(() => "?").join(",")})`).bind(...athleteIds).all<{ id: string }>();
       if (athleteRows.results.length !== athleteIds.length) { res.status(400).json({ error: "Selecione atletas cadastrados." }); return true; }
-      const existingRows = await DB.prepare("SELECT id,category,athlete_ids FROM zero3_registrations WHERE event_id=?").bind(eventId).all<{ id: string; category: string; athlete_ids: string }>();
-      const candidate = [...athleteIds].sort().join(":");
-      if (existingRows.results.some((row) => [...d1JsonArray(row.athlete_ids)].sort().join(":") === candidate)) {
+      const existingRows = await DB.prepare("SELECT id,category,team_name,athlete_ids FROM zero3_registrations WHERE event_id=?").bind(eventId).all<{ id: string; category: string; team_name: string | null; athlete_ids: string }>();
+      const conflict = findZero3RegistrationConflict(
+        existingRows.results.map((row) => ({
+          teamName: row.team_name,
+          athleteIds: d1JsonArray(row.athlete_ids),
+        })),
+        { teamName: parsedTeamName.value, athleteIds },
+      );
+      if (conflict === "DUPLICATE_ATHLETE_PAIR") {
         res.status(409).json({ error: "Esta equipe já está inscrita nesta categoria." }); return true;
       }
-      if (existingRows.results.some((row) => d1JsonArray(row.athlete_ids).some((id) => athleteIds.includes(id)))) {
+      if (conflict === "ATHLETE_ALREADY_REGISTERED") {
         res.status(409).json({ error: "Um atleta já está inscrito em outra equipe nesta edição." }); return true;
       }
       const registrationId = newD1Id();

@@ -94,6 +94,7 @@ import {
   type ScoreProof,
 } from "../lib/zero3-scoring";
 import { normalizeEventCategories, validateEventCategories } from "../lib/zero3-categories";
+import { findZero3RegistrationConflict } from "../lib/zero3-registration-conflict";
 import rosterRouter from "./zero3-roster";
 
 const router: IRouter = Router();
@@ -1093,19 +1094,18 @@ router.post(
       .select()
       .from(zero3RegistrationsTable)
       .where(eq(zero3RegistrationsTable.eventId, params.data.eventId));
-    const candidateKey = [...athleteIds].sort().join(":");
-    if (
-      existing.some(
-        (registration) =>
-          [...registration.athleteIds].sort().join(":") === candidateKey,
-      )
-    ) {
+    const conflict = findZero3RegistrationConflict(
+      existing.map((registration) => ({
+        teamName: registration.teamName,
+        athleteIds: registration.athleteIds,
+      })),
+      { teamName: parsedTeamName.value, athleteIds },
+    );
+    if (conflict === "DUPLICATE_ATHLETE_PAIR") {
       res.status(409).json({ error: "Esta equipe já está inscrita nesta categoria." });
       return;
     }
-    if (existing.some((registration) =>
-      registration.athleteIds.some((athleteId) => athleteIds.includes(athleteId)),
-    )) {
+    if (conflict === "ATHLETE_ALREADY_REGISTERED") {
       res.status(409).json({
         error: "Um atleta já está inscrito em outra equipe nesta edição.",
       });

@@ -1,0 +1,93 @@
+PRAGMA foreign_keys=ON;
+
+INSERT INTO zero3_events(id,name,proof_name,status,categories)
+VALUES('10000000-0000-4000-8000-000000000001','FICTÍCIO HOMÔNIMOS','Prova','ACTIVE','["RX","SC"]');
+
+INSERT INTO zero3_athletes(id,full_name) VALUES
+ ('20000000-0000-4000-8000-000000000001','Atleta Fictício 1'),
+ ('20000000-0000-4000-8000-000000000002','Atleta Fictício 2'),
+ ('20000000-0000-4000-8000-000000000003','Atleta Fictício 3'),
+ ('20000000-0000-4000-8000-000000000004','Atleta Fictício 4');
+
+INSERT INTO zero3_registrations(id,event_id,category,team_name,athlete_ids,lane_label)
+VALUES
+ ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','RX','Dupla Fictícia','["20000000-0000-4000-8000-000000000001","20000000-0000-4000-8000-000000000002"]','R01'),
+ ('40000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001','RX','Equipe Inicial 2','["20000000-0000-4000-8000-000000000003","20000000-0000-4000-8000-000000000004"]','R02');
+UPDATE zero3_registrations
+SET team_name='Dupla Fictícia'
+WHERE id='40000000-0000-4000-8000-000000000002'
+  AND event_id='10000000-0000-4000-8000-000000000001';
+
+INSERT INTO zero3_registration_members(registration_id,event_id,athlete_id,slot) VALUES
+ ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001',1),
+ ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000002',2),
+ ('40000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000003',1),
+ ('40000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000004',2);
+
+INSERT INTO zero3_batteries(id,event_id,battery_order,name)
+VALUES('c0000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,'Bateria Fictícia');
+INSERT INTO zero3_battery_entries(battery_id,registration_id,lane_label) VALUES
+ ('c0000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001','R01'),
+ ('c0000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000002','R02');
+
+CREATE TABLE zero3_test_assertions (
+  name TEXT PRIMARY KEY NOT NULL,
+  passed INTEGER NOT NULL CHECK(passed=1)
+);
+INSERT INTO zero3_test_assertions(name,passed)
+SELECT 'same team name with different athlete pairs is allowed',
+  CASE WHEN COUNT(*)=2 AND COUNT(DISTINCT athlete_ids)=2 THEN 1 ELSE 0 END
+FROM zero3_registrations
+WHERE event_id='10000000-0000-4000-8000-000000000001' AND team_name='Dupla Fictícia';
+
+-- Mirror the D1 delete guard: history prevents permanent deletion; battery-entry
+-- and registration-member rows are dependent links that cascade atomically.
+DELETE FROM zero3_registrations
+WHERE id='40000000-0000-4000-8000-000000000001'
+  AND event_id='10000000-0000-4000-8000-000000000001'
+  AND NOT EXISTS(SELECT 1 FROM zero3_results WHERE registration_id='40000000-0000-4000-8000-000000000001')
+  AND NOT EXISTS(SELECT 1 FROM zero3_heat_entries WHERE registration_id='40000000-0000-4000-8000-000000000001')
+  AND NOT EXISTS(SELECT 1 FROM zero3_registration_audit WHERE registration_id='40000000-0000-4000-8000-000000000001')
+  AND NOT EXISTS(SELECT 1 FROM zero3_import_teams WHERE registration_id='40000000-0000-4000-8000-000000000001')
+  AND NOT EXISTS(SELECT 1 FROM zero3_podium_versions p,json_each(p.registration_ids) j
+    WHERE p.event_id='10000000-0000-4000-8000-000000000001' AND j.value='40000000-0000-4000-8000-000000000001');
+
+INSERT INTO zero3_test_assertions(name,passed)
+SELECT 'deleting one homonym removes only its event and battery links',
+  CASE WHEN
+    (SELECT COUNT(*) FROM zero3_registrations WHERE id='40000000-0000-4000-8000-000000000001')=0
+    AND (SELECT COUNT(*) FROM zero3_registration_members WHERE registration_id='40000000-0000-4000-8000-000000000001')=0
+    AND (SELECT COUNT(*) FROM zero3_battery_entries WHERE registration_id='40000000-0000-4000-8000-000000000001')=0
+    AND (SELECT COUNT(*) FROM zero3_registrations WHERE id='40000000-0000-4000-8000-000000000002' AND team_name='Dupla Fictícia')=1
+    AND (SELECT COUNT(*) FROM zero3_battery_entries WHERE registration_id='40000000-0000-4000-8000-000000000002')=1
+    AND (SELECT COUNT(*) FROM zero3_athletes)=4
+  THEN 1 ELSE 0 END;
+
+INSERT INTO zero3_proofs(id,event_id,proof_order,name,metric_type,unit,direction)
+VALUES('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,'Prova Fictícia','TIME','s','LOWER');
+INSERT INTO zero3_results(id,event_id,registration_id,proof_id,category,athlete_ids_snapshot,
+  athlete_names_snapshot,raw_value,status,idempotency_key)
+VALUES('90000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',
+  '40000000-0000-4000-8000-000000000002','30000000-0000-4000-8000-000000000001','RX',
+  '["20000000-0000-4000-8000-000000000003","20000000-0000-4000-8000-000000000004"]',
+  '["Atleta Fictício 3","Atleta Fictício 4"]','60.000','PROVISIONAL','fictional-result-key');
+
+DELETE FROM zero3_registrations
+WHERE id='40000000-0000-4000-8000-000000000002'
+  AND event_id='10000000-0000-4000-8000-000000000001'
+  AND NOT EXISTS(SELECT 1 FROM zero3_results WHERE registration_id='40000000-0000-4000-8000-000000000002')
+  AND NOT EXISTS(SELECT 1 FROM zero3_heat_entries WHERE registration_id='40000000-0000-4000-8000-000000000002')
+  AND NOT EXISTS(SELECT 1 FROM zero3_registration_audit WHERE registration_id='40000000-0000-4000-8000-000000000002')
+  AND NOT EXISTS(SELECT 1 FROM zero3_import_teams WHERE registration_id='40000000-0000-4000-8000-000000000002')
+  AND NOT EXISTS(SELECT 1 FROM zero3_podium_versions p,json_each(p.registration_ids) j
+    WHERE p.event_id='10000000-0000-4000-8000-000000000001' AND j.value='40000000-0000-4000-8000-000000000002');
+
+INSERT INTO zero3_test_assertions(name,passed)
+SELECT 'registration with a result remains protected',
+  CASE WHEN
+    (SELECT COUNT(*) FROM zero3_registrations WHERE id='40000000-0000-4000-8000-000000000002')=1
+    AND (SELECT COUNT(*) FROM zero3_results WHERE registration_id='40000000-0000-4000-8000-000000000002')=1
+    AND (SELECT COUNT(*) FROM zero3_battery_entries WHERE registration_id='40000000-0000-4000-8000-000000000002')=1
+  THEN 1 ELSE 0 END;
+
+SELECT name,passed FROM zero3_test_assertions ORDER BY name;
