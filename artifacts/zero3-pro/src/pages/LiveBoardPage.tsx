@@ -66,7 +66,7 @@ function BoardStatus({ status, correction }: { status?: string; correction?: boo
     <span className={`lb-status ${final ? 'is-final' : correction ? 'is-correction' : 'is-partial'}`}
       data-testid={`status-publication-${correction ? 'correction' : final ? 'final' : 'partial'}`}>
       <i aria-hidden="true" />
-      {correction ? 'Publicação salva · aguardando correção' : statusLabel(status)}
+      {correction ? 'Aguardando revisão ou publicação' : statusLabel(status)}
     </span>
   );
 }
@@ -286,7 +286,7 @@ function OverallEntry({ entry, proofs, partialPlace }: {
       </div>
       <span className={`lb-entry-state ${final ? 'is-final' : correction ? 'is-correction' : 'is-partial'}`}
         data-testid={`status-overall-${entry.registrationId}`}>
-        {correction ? 'Aguardando correção' : statusLabel(entry.status)}
+        {correction ? 'Aguardando revisão ou publicação' : statusLabel(entry.status)}
       </span>
     </article>
   );
