@@ -373,7 +373,7 @@ paths:
     patch:
       operationId: updateZero3EventBattery
       tags: [zero3]
-      summary: Edit an unstarted event battery composition
+      summary: Edit event battery metadata and eligible composition
       parameters:
         - in: path
           name: eventId
@@ -1320,16 +1320,19 @@ components:
       type: object
       properties:
         expectedName: { type: string, minLength: 1, maxLength: 120 }
+        expectedOrder: { type: integer, minimum: 1 }
         expectedRegistrationIds:
           type: array
           uniqueItems: true
           items: { type: string }
         name: { type: string, minLength: 1, maxLength: 120 }
+        order: { type: integer, minimum: 1 }
+        swapWithBatteryId: { type: string }
         registrationIds:
           type: array
           uniqueItems: true
           items: { type: string }
-      required: [expectedName, expectedRegistrationIds, name, registrationIds]
+      required: [expectedName, expectedOrder, expectedRegistrationIds, name, order, registrationIds]
     Zero3EventBatteryDeleteInput:
       type: object
       properties:

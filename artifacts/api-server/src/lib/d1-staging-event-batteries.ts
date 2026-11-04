@@ -29,6 +29,7 @@ import {
   newD1Id,
   requireD1Member,
 } from "./d1-staging-shared";
+import { resolveBatteryOrderChange } from "./d1-staging-battery-order";
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
@@ -48,6 +49,16 @@ export function hasUniqueIds(values: readonly string[]) {
 function isBatteryConstraintConflict(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /constraint failed|constraint violation|foreign key|unique constraint|not null constraint/i.test(message);
+}
+
+function changedRowsGuard(DB: D1Database, eventId: string) {
+  // D1.batch is transactional. This statement intentionally violates the
+  // battery_order CHECK only when the preceding guarded UPDATE matched zero
+  // rows, forcing the entire batch (including an earlier temporary swap) to
+  // roll back instead of leaving a partial order.
+  return DB.prepare(`INSERT INTO zero3_batteries(id,event_id,battery_order,name)
+    SELECT ?,?,0,'__ZERO3_ORDER_GUARD__' WHERE changes()=0`)
+    .bind(newD1Id(), eventId);
 }
 
 type EventRow = {
@@ -147,6 +158,19 @@ function fingerprintState(
       revision: row.revision, capturedAt: row.captured_at,
     })).sort((a, b) => a.id.localeCompare(b.id)),
   });
+}
+
+export function publicationMatchesCurrentSnapshot(
+  publication: Pick<PublicationRow, "results_json" | "leaderboards_json">,
+  results: unknown[],
+  leaderboards: unknown[],
+) {
+  try {
+    return JSON.stringify(JSON.parse(publication.results_json)) === JSON.stringify(results) &&
+      JSON.stringify(JSON.parse(publication.leaderboards_json)) === JSON.stringify(leaderboards);
+  } catch {
+    return false;
+  }
 }
 
 async function sha256(value: string) {
@@ -294,7 +318,10 @@ export async function listD1EventBatteries(DB: D1Database, eventId: string, now 
       pendingResultCount,
       reviewedResultCount,
       expectedResultCount,
-      finalizationCurrent: finalized && publication!.result_fingerprint === fingerprint,
+      finalizationCurrent: finalized && (
+        publication!.result_fingerprint === fingerprint ||
+        publicationMatchesCurrentSnapshot(publication!, resultDtos, proofLeaderboards)
+      ),
       finalized,
       finalizationFingerprint: fingerprint,
       finalizationVersion: publication?.version ?? null,
@@ -496,82 +523,177 @@ export async function handleD1StagingEventBatteries(
       }
       const currentRegistrationIds = battery.registrations.map((item) => item.id);
       if (body.data.expectedName !== battery.name ||
+          body.data.expectedOrder !== battery.order ||
           !sameStringSet(body.data.expectedRegistrationIds, currentRegistrationIds)) {
         d1ApiError(req, res, 409, "BATTERY_CHANGED", "A composição mudou. Atualize a bateria antes de editar.");
         return true;
       }
-      if (battery.state !== "IDLE" || battery.results.length > 0 || battery.finalized) {
+      const compositionChanged = !sameStringSet(body.data.registrationIds, currentRegistrationIds);
+      if (compositionChanged && (battery.state !== "IDLE" || battery.results.length > 0 || battery.finalized)) {
         d1ApiError(req, res, 409, "BATTERY_NOT_EDITABLE",
-          "Só é possível editar uma bateria ainda não iniciada, sem resultados e sem publicação.");
+          "A composição só pode ser alterada antes do início, sem resultados nem publicação. Nome e número da bateria podem ser editados separadamente.");
         return true;
       }
+      const decision = resolveBatteryOrderChange(
+        batteries.map(({ id, order, name }) => ({ id, order, name })),
+        battery.id,
+        body.data.order,
+        body.data.swapWithBatteryId,
+      );
+      if (decision.kind === "occupied") {
+        d1ApiError(req, res, 409, "BATTERY_ORDER_OCCUPIED",
+          `P${String(decision.other.order).padStart(2, "0")} já está em uso por "${decision.other.name}". Confirme a troca de posições para continuar.`);
+        return true;
+      }
+      if (decision.kind === "conflict") {
+        d1ApiError(req, res, 409, "BATTERY_ORDER_CHANGED",
+          "A posição escolhida mudou. Atualize a lista e confirme novamente a troca.");
+        return true;
+      }
+      const otherBattery = decision.kind === "swap"
+        ? batteries.find((item) => item.id === decision.other.id)
+        : undefined;
+      if (["PREPARATION", "RUNNING"].includes(battery.state) ||
+          (otherBattery && ["PREPARATION", "RUNNING"].includes(otherBattery.state))) {
+        d1ApiError(req, res, 409, "BATTERY_TIMER_ACTIVE",
+          "Pare a preparação ou cronômetro em execução antes de alterar a ordem. O tempo pausado é preservado.");
+        return true;
+      }
+
       const registrationIds = body.data.registrationIds;
-      const eligibility = await Promise.all(registrationIds.map(async (registrationId) => {
-        const [registration, assignment, result] = await Promise.all([
-          DB.prepare(`SELECT id FROM zero3_registrations
-            WHERE id=? AND event_id=? AND confirmation_status<>'CANCELLED'`)
-            .bind(registrationId, params.data.eventId).first<{ id: string }>(),
-          DB.prepare("SELECT battery_id FROM zero3_battery_entries WHERE registration_id=?")
-            .bind(registrationId).first<{ battery_id: string }>(),
-          DB.prepare("SELECT id FROM zero3_results WHERE registration_id=? LIMIT 1")
-            .bind(registrationId).first<{ id: string }>(),
-        ]);
-        return { registrationId, registration, assignment, result };
-      }));
-      if (eligibility.some((item) => !item.registration)) {
-        d1ApiError(req, res, 400, "REGISTRATION_INVALID",
-          "Todas as inscrições devem pertencer ao evento e estar ativas.");
-        return true;
+      if (compositionChanged) {
+        const eligibility = await Promise.all(registrationIds.map(async (registrationId) => {
+          const [registration, assignment, result] = await Promise.all([
+            DB.prepare(`SELECT id FROM zero3_registrations
+              WHERE id=? AND event_id=? AND confirmation_status<>'CANCELLED'`)
+              .bind(registrationId, params.data.eventId).first<{ id: string }>(),
+            DB.prepare("SELECT battery_id FROM zero3_battery_entries WHERE registration_id=?")
+              .bind(registrationId).first<{ battery_id: string }>(),
+            DB.prepare("SELECT id FROM zero3_results WHERE registration_id=? LIMIT 1")
+              .bind(registrationId).first<{ id: string }>(),
+          ]);
+          return { registrationId, registration, assignment, result };
+        }));
+        if (eligibility.some((item) => !item.registration)) {
+          d1ApiError(req, res, 400, "REGISTRATION_INVALID",
+            "Todas as inscrições devem pertencer ao evento e estar ativas.");
+          return true;
+        }
+        if (eligibility.some((item) => item.assignment && item.assignment.battery_id !== battery.id)) {
+          d1ApiError(req, res, 409, "REGISTRATION_ALREADY_ASSIGNED",
+            "Uma inscrição já pertence a outra bateria.");
+          return true;
+        }
+        if (eligibility.some((item) => item.result)) {
+          d1ApiError(req, res, 409, "REGISTRATION_HAS_RESULTS",
+            "Uma inscrição selecionada tem resultado histórico; a composição não foi alterada.");
+          return true;
+        }
       }
-      if (eligibility.some((item) => item.assignment && item.assignment.battery_id !== battery.id)) {
-        d1ApiError(req, res, 409, "REGISTRATION_ALREADY_ASSIGNED",
-          "Uma inscrição já pertence a outra bateria.");
-        return true;
-      }
-      if (eligibility.some((item) => item.result)) {
-        d1ApiError(req, res, 409, "REGISTRATION_HAS_RESULTS",
-          "Uma inscrição selecionada tem resultado histórico; a composição não foi alterada.");
+
+      const nextName = body.data.name.trim();
+      const nextOrder = body.data.order;
+      const metadataChanged = nextName !== battery.name || nextOrder !== battery.order;
+      if (!metadataChanged && !compositionChanged) {
+        res.json(UpdateZero3EventBatteryResponse.parse(battery));
         return true;
       }
 
       const stamp = d1IsoNow();
       const marker = `__ZERO3_EDIT_${newD1Id()}__`;
       const expectedIdsJson = JSON.stringify([...new Set(body.data.expectedRegistrationIds)]);
-      const updateGuard = DB.prepare(`UPDATE zero3_batteries SET name=?
-        WHERE id=? AND event_id=? AND name=?
+      const isSwap = decision.kind === "swap";
+      const initialOrder = isSwap
+        ? (Math.max(0, ...batteries.map((item) => item.order)) + 1)
+        : nextOrder;
+      const compositionGuardSql = compositionChanged ? `
+        AND NOT EXISTS(SELECT 1 FROM zero3_battery_runs
+          WHERE battery_id=? AND event_id=? AND state<>'IDLE')
+        AND NOT EXISTS(SELECT 1 FROM zero3_results WHERE battery_id=?)
+        AND NOT EXISTS(SELECT 1 FROM zero3_battery_publications WHERE battery_id=?)
+        AND NOT EXISTS(SELECT registration_id FROM zero3_battery_entries WHERE battery_id=?
+          EXCEPT SELECT value FROM json_each(?))
+        AND NOT EXISTS(SELECT value FROM json_each(?)
+          EXCEPT SELECT registration_id FROM zero3_battery_entries WHERE battery_id=?)` : "";
+      const compositionGuardBindings = compositionChanged
+        ? [battery.id, params.data.eventId, battery.id, battery.id, battery.id,
+          expectedIdsJson, expectedIdsJson, battery.id] as const
+        : [] as const;
+      const targetFreeSql = isSwap ? "" : `
+        AND NOT EXISTS(SELECT 1 FROM zero3_batteries
+          WHERE event_id=? AND battery_order=? AND id<>?)`;
+      const targetFreeBindings = isSwap ? [] as const : [params.data.eventId, nextOrder, battery.id] as const;
+      const firstUpdate = DB.prepare(`UPDATE zero3_batteries
+        SET name=?,battery_order=?
+        WHERE id=? AND event_id=? AND name=? AND battery_order=?
           AND NOT EXISTS(SELECT 1 FROM zero3_battery_runs
-            WHERE battery_id=? AND event_id=? AND state<>'IDLE')
-          AND NOT EXISTS(SELECT 1 FROM zero3_results WHERE battery_id=?)
-          AND NOT EXISTS(SELECT 1 FROM zero3_battery_publications WHERE battery_id=?)
-          AND NOT EXISTS(SELECT registration_id FROM zero3_battery_entries WHERE battery_id=?
-            EXCEPT SELECT value FROM json_each(?))
-          AND NOT EXISTS(SELECT value FROM json_each(?)
-            EXCEPT SELECT registration_id FROM zero3_battery_entries WHERE battery_id=?)`)
-        .bind(marker, battery.id, params.data.eventId, body.data.expectedName,
-          battery.id, params.data.eventId, battery.id, battery.id,
-          battery.id, expectedIdsJson, expectedIdsJson, battery.id);
-      const statements = [
-        updateGuard,
-        DB.prepare(`DELETE FROM zero3_battery_entries WHERE battery_id=?
-          AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND name=?)`)
-          .bind(battery.id, battery.id, marker),
-        ...registrationIds.map((registrationId) => DB.prepare(`INSERT INTO zero3_battery_entries
-          (battery_id,registration_id,lane_label,assigned_at)
-          VALUES(?,(SELECT id FROM zero3_registrations
-            WHERE id=? AND event_id=? AND confirmation_status<>'CANCELLED'
-              AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND name=?)),
-            (SELECT lane_label FROM zero3_registrations WHERE id=?),?)`)
-          .bind(battery.id, registrationId, params.data.eventId, battery.id, marker, registrationId, stamp)),
-        DB.prepare("UPDATE zero3_batteries SET name=? WHERE id=? AND event_id=? AND name=?")
-          .bind(body.data.name.trim(), battery.id, params.data.eventId, marker),
-      ];
-      const saved = await DB.batch(statements);
-      if ((saved[0]?.meta.changes ?? 0) !== 1 ||
-          (saved.at(-1)?.meta.changes ?? 0) !== 1) {
-        d1ApiError(req, res, 409, "BATTERY_CHANGED",
-          "A bateria mudou ou foi iniciada durante a edição. Nenhuma alteração parcial foi aplicada.");
-        return true;
+            WHERE battery_id=? AND event_id=? AND state IN ('PREPARATION','RUNNING'))
+          ${targetFreeSql}
+          ${compositionGuardSql}`)
+        .bind(
+          isSwap || compositionChanged ? marker : nextName,
+          initialOrder,
+          battery.id, params.data.eventId, body.data.expectedName, body.data.expectedOrder,
+          battery.id, params.data.eventId,
+          ...targetFreeBindings,
+          ...compositionGuardBindings,
+        );
+
+      if (!isSwap && !compositionChanged) {
+        const updated = await firstUpdate.run();
+        if ((updated.meta.changes ?? 0) !== 1) {
+          d1ApiError(req, res, 409, "BATTERY_CHANGED",
+            "A bateria mudou durante a edição. Atualize e confira os dados antes de tentar novamente.");
+          return true;
+        }
+      } else {
+        const statements = [firstUpdate, changedRowsGuard(DB, params.data.eventId)];
+        if (isSwap && otherBattery && decision.kind === "swap") {
+          statements.push(
+            DB.prepare(`UPDATE zero3_batteries SET battery_order=?
+              WHERE id=? AND event_id=? AND battery_order=?
+                AND NOT EXISTS(SELECT 1 FROM zero3_battery_runs
+                  WHERE battery_id=? AND event_id=? AND state IN ('PREPARATION','RUNNING'))
+                AND EXISTS(SELECT 1 FROM zero3_batteries
+                  WHERE id=? AND event_id=? AND name=? AND battery_order=?)`)
+              .bind(battery.order, otherBattery.id, params.data.eventId, body.data.order,
+                otherBattery.id, params.data.eventId, battery.id, params.data.eventId, marker, initialOrder),
+            changedRowsGuard(DB, params.data.eventId),
+          );
+        }
+        if (compositionChanged) {
+          statements.push(DB.prepare(`DELETE FROM zero3_battery_entries WHERE battery_id=?
+            AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND event_id=? AND name=?)`)
+            .bind(battery.id, battery.id, params.data.eventId, marker));
+          statements.push(...registrationIds.map((registrationId) => DB.prepare(`INSERT INTO zero3_battery_entries
+            (battery_id,registration_id,lane_label,assigned_at)
+            VALUES(?,(SELECT id FROM zero3_registrations
+              WHERE id=? AND event_id=? AND confirmation_status<>'CANCELLED'
+                AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND event_id=? AND name=?)),
+              (SELECT lane_label FROM zero3_registrations WHERE id=?),?)`)
+            .bind(battery.id, registrationId, params.data.eventId,
+              battery.id, params.data.eventId, marker, registrationId, stamp)));
+        }
+        const finalUpdateIndex = statements.length;
+        const finalUpdate = isSwap && otherBattery
+          ? DB.prepare(`UPDATE zero3_batteries SET name=?,battery_order=?
+              WHERE id=? AND event_id=? AND name=? AND battery_order=?
+                AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND event_id=? AND battery_order=?)`)
+            .bind(nextName, nextOrder, battery.id, params.data.eventId, marker, initialOrder,
+              otherBattery.id, params.data.eventId, battery.order)
+          : DB.prepare(`UPDATE zero3_batteries SET name=?
+              WHERE id=? AND event_id=? AND name=? AND battery_order=?`)
+            .bind(nextName, battery.id, params.data.eventId, marker, nextOrder);
+        statements.push(finalUpdate, changedRowsGuard(DB, params.data.eventId));
+        const saved = await DB.batch(statements);
+        if ((saved[0]?.meta.changes ?? 0) !== 1 ||
+            (saved[finalUpdateIndex]?.meta.changes ?? 0) !== 1) {
+          d1ApiError(req, res, 409, "BATTERY_CHANGED",
+            "A bateria ou a posição mudou durante a edição. Nenhuma alteração parcial foi aplicada.");
+          return true;
+        }
       }
+
       const updated = (await listD1EventBatteries(DB, params.data.eventId))
         ?.find((item) => item.id === battery.id);
       if (!updated) {
@@ -619,9 +741,9 @@ export async function handleD1StagingEventBatteries(
           `Digite exatamente ${confirmation} para confirmar.`);
         return true;
       }
-      if (["PREPARATION", "RUNNING", "PAUSED"].includes(battery.state)) {
+      if (["PREPARATION", "RUNNING"].includes(battery.state)) {
         d1ApiError(req, res, 409, "BATTERY_TIMER_ACTIVE",
-          "Finalize ou pare o cronômetro antes de excluir a bateria.");
+          "Pare a preparação ou o cronômetro em execução antes de excluir a bateria. O tempo pausado será removido com ela.");
         return true;
       }
       const [counts, active] = await Promise.all([
