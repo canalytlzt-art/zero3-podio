@@ -165,6 +165,15 @@ export interface Zero3EventUpdate {
   categories?: Zero3Category[];
 }
 
+export type Zero3EventBackupVersion = typeof Zero3EventBackupVersion[keyof typeof Zero3EventBackupVersion];
+
+
+export const Zero3EventBackupVersion = {
+  NUMBER_1: 1,
+  NUMBER_2: 2,
+  NUMBER_3: 3,
+} as const;
+
 export type Zero3EventBackupCounts = {[key: string]: number};
 
 export type Zero3EventBackupDataEvent = { [key: string]: unknown };
@@ -199,6 +208,10 @@ export type Zero3EventBackupDataTimersItem = { [key: string]: unknown };
 
 export type Zero3EventBackupDataPodiumVersionsItem = { [key: string]: unknown };
 
+export type Zero3EventBackupDataHeatRunsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataHeatPublicationsItem = { [key: string]: unknown };
+
 export type Zero3EventBackupData = {
   event: Zero3EventBackupDataEvent;
   athletes: Zero3EventBackupDataAthletesItem[];
@@ -216,11 +229,13 @@ export type Zero3EventBackupData = {
   resultRevisions: Zero3EventBackupDataResultRevisionsItem[];
   timers: Zero3EventBackupDataTimersItem[];
   podiumVersions: Zero3EventBackupDataPodiumVersionsItem[];
+  heatRuns?: Zero3EventBackupDataHeatRunsItem[];
+  heatPublications?: Zero3EventBackupDataHeatPublicationsItem[];
 };
 
 export interface Zero3EventBackup {
   format: 'zero3-event-backup';
-  version: 1;
+  version: Zero3EventBackupVersion;
   eventId: string;
   eventName: string;
   exportedAt: string;
@@ -602,8 +617,22 @@ export interface Zero3Heat {
   id: string;
   eventId: string;
   category: Zero3Category;
+  /** @nullable */
+  proofId?: string | null;
+  /** @nullable */
+  proofName?: string | null;
+  /** @nullable */
+  proofOrder?: number | null;
   name: string;
   order: number;
+  finalized?: boolean;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  finalizationVersion?: number | null;
+  /** @nullable */
+  finalizedAt?: string | null;
   registrations: Zero3Registration[];
 }
 
@@ -614,6 +643,12 @@ export interface Zero3ActiveHeat {
   heatId: string | null;
   /** @nullable */
   heatName: string | null;
+  /** @nullable */
+  proofId?: string | null;
+  /** @nullable */
+  proofOrder?: number | null;
+  /** @nullable */
+  batteryOrder?: number | null;
   updatedAt: string;
 }
 
@@ -622,8 +657,61 @@ export interface Zero3ActiveHeatInput {
   heatId: string | null;
 }
 
+export interface Zero3ActiveBatteryInput {
+  /** @nullable */
+  heatId: string | null;
+}
+
+export interface Zero3ActiveBatteryResponse {
+  eventId: string;
+  /** @nullable */
+  proofId: string | null;
+  /** @nullable */
+  proofOrder: number | null;
+  /** @nullable */
+  proofName: string | null;
+  /** @nullable */
+  order: number | null;
+  /** @nullable */
+  name: string | null;
+  categories: string[];
+  updatedAt: string;
+}
+
+export interface Zero3FinalizeBatteryInput {
+  /**
+     * @minLength 64
+     * @maxLength 64
+     * @pattern ^[a-f0-9]{64}$
+     */
+  expectedFingerprint: string;
+}
+
+export interface Zero3FinalizeBatteryResponse {
+  eventId: string;
+  proofId: string;
+  /** @minimum 1 */
+  batteryOrder: number;
+  /** @minimum 1 */
+  version: number;
+  /** @minimum 1 */
+  resultCount: number;
+  publishedAt: string;
+  /**
+     * @minLength 64
+     * @maxLength 64
+     */
+  fingerprint: string;
+  alreadyPublished: boolean;
+}
+
+export interface Zero3HeatProofInput {
+  proofId: string;
+}
+
 export interface Zero3HeatInput {
   category: Zero3Category;
+  proofId?: string;
   /** @minLength 1 */
   name: string;
   /** @minimum 1 */
@@ -643,6 +731,10 @@ export interface Zero3Timer {
   startedAt?: string | null;
   version: number;
   updatedAt: string;
+  /** @nullable */
+  proofId?: string | null;
+  /** @nullable */
+  batteryOrder?: number | null;
 }
 
 export type Zero3TimerCommandAction = typeof Zero3TimerCommandAction[keyof typeof Zero3TimerCommandAction];
@@ -777,12 +869,24 @@ export interface Zero3PublicPodium {
   places: Zero3PublicPodiumPlacesItem[];
 }
 
+export interface Zero3BatteryEntry {
+  heatId: string;
+  id: string;
+  category: Zero3Category;
+  /** @nullable */
+  teamName: string | null;
+  /** @nullable */
+  laneLabel: string | null;
+  athleteNames: string[];
+}
+
 export type Zero3CategoryLeaderboardStatus = typeof Zero3CategoryLeaderboardStatus[keyof typeof Zero3CategoryLeaderboardStatus];
 
 
 export const Zero3CategoryLeaderboardStatus = {
   PARTIAL: 'PARTIAL',
   FINAL: 'FINAL',
+  EXCEPTION_RULE_PENDING: 'EXCEPTION_RULE_PENDING',
   TIE_RULE_PENDING: 'TIE_RULE_PENDING',
   CONFIGURATION_PENDING: 'CONFIGURATION_PENDING',
 } as const;
@@ -793,6 +897,7 @@ export type Zero3LeaderboardProofScoreStatus = typeof Zero3LeaderboardProofScore
 export const Zero3LeaderboardProofScoreStatus = {
   MISSING: 'MISSING',
   PROVISIONAL: 'PROVISIONAL',
+  PUBLICATION_PENDING: 'PUBLICATION_PENDING',
   VALIDATED: 'VALIDATED',
   DNS: 'DNS',
   DNF: 'DNF',
@@ -829,6 +934,8 @@ export type Zero3LeaderboardEntryStatus = typeof Zero3LeaderboardEntryStatus[key
 export const Zero3LeaderboardEntryStatus = {
   PARTIAL: 'PARTIAL',
   FINAL: 'FINAL',
+  PUBLICATION_PENDING: 'PUBLICATION_PENDING',
+  EXCEPTION_RULE_PENDING: 'EXCEPTION_RULE_PENDING',
   TIE_RULE_PENDING: 'TIE_RULE_PENDING',
   CONFIGURATION_PENDING: 'CONFIGURATION_PENDING',
 } as const;
@@ -867,8 +974,61 @@ export interface Zero3CategoryLeaderboard {
   entries: Zero3LeaderboardEntry[];
 }
 
+export interface Zero3PublicBattery {
+  eventId: string;
+  proofId: string;
+  proofOrder: number;
+  proofName: string;
+  order: number;
+  name: string;
+  heatIds: string[];
+  categories: string[];
+  registrations: Zero3BatteryEntry[];
+  results: Zero3PublicResult[];
+  leaderboards: Zero3CategoryLeaderboard[];
+  state: Zero3TimerState;
+  /** @minimum 0 */
+  pendingResultCount: number;
+  /** @minimum 0 */
+  reviewedResultCount: number;
+  /** @minimum 0 */
+  expectedResultCount: number;
+  finalized: boolean;
+  finalizationCurrent: boolean;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  finalizationVersion: number | null;
+  /** @nullable */
+  finalizedAt: string | null;
+  /** @nullable */
+  finalizationFingerprint: string | null;
+}
+
+export interface Zero3CompletedBattery {
+  proofId: string;
+  proofOrder: number;
+  proofName: string;
+  order: number;
+  name: string;
+  categories: string[];
+  results: Zero3PublicResult[];
+  leaderboards: Zero3CategoryLeaderboard[];
+  /** @minimum 0 */
+  pendingResultCount: number;
+  finalized: boolean;
+  finalizationCurrent: boolean;
+  /** @minimum 1 */
+  finalizationVersion: number;
+  finalizedAt: string;
+}
+
 export interface Zero3PublicBoard {
   serverTime: string;
+  batteryOperationsEnabled?: boolean;
+  activeBattery?: Zero3PublicBattery | null;
+  completedBatteries?: Zero3CompletedBattery[];
   event?: Zero3Event;
   timer?: Zero3Timer;
   results: Zero3PublicResult[];

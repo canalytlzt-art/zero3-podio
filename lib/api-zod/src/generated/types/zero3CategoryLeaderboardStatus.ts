@@ -12,6 +12,7 @@ export type Zero3CategoryLeaderboardStatus = typeof Zero3CategoryLeaderboardStat
 export const Zero3CategoryLeaderboardStatus = {
   PARTIAL: 'PARTIAL',
   FINAL: 'FINAL',
+  EXCEPTION_RULE_PENDING: 'EXCEPTION_RULE_PENDING',
   TIE_RULE_PENDING: 'TIE_RULE_PENDING',
   CONFIGURATION_PENDING: 'CONFIGURATION_PENDING',
 } as const;

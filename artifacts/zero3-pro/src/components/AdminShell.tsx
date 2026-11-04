@@ -1,8 +1,9 @@
-import { Activity, ClipboardList, Users, UserRound, LayoutDashboard, LogOut, Radio, ListChecks, FileSpreadsheet } from 'lucide-react';
+import { Activity, ClipboardList, Users, UserRound, LayoutDashboard, LogOut, Radio, ListChecks, FileSpreadsheet, Trophy } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { useClerk, useUser } from '@clerk/react';
 import type { ReactNode } from 'react';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
+import { liveBoardHrefForEvent } from '@/lib/live-board-navigation';
 import { queryErrorMessage } from '@/lib/api-error-policy';
 
 const nav = [
@@ -27,6 +28,7 @@ export function AdminShell({ children, tvEventId }: { children: ReactNode; tvEve
       {nav.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`nav-link ${location === href || (href !== '/admin' && location.startsWith(href)) ? 'active' : ''}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{label}</span></Link>)}
       <div className="nav-label">Transmissão</div>
        <Link href={tvHrefForEvent(tvEventId)} target="_blank" rel="noopener noreferrer" className="nav-link"><Radio size={16}/><span>TV pública</span></Link>
+       <Link href={liveBoardHrefForEvent(tvEventId)} target="_blank" rel="noopener noreferrer" className="nav-link" data-testid="link-nav-placar-ao-vivo"><Trophy size={16}/><span>Placar ao Vivo</span></Link>
       <div className="side-foot">SISTEMA DE COMPETIÇÃO<br/>SANTA CATARINA · BR</div>
     </aside>
     <div className="workspace">

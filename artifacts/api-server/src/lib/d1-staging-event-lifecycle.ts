@@ -33,13 +33,15 @@ const RESTORE_DEFINITIONS = [
   { collection: "importBatches", table: "zero3_import_batches", columns: ["id", "event_id", "dataset_key", "source_file", "source_sheet", "source_notes", "content_hash", "source_team_count", "source_people_count", "applied_by", "applied_at"] },
   { collection: "importPeople", table: "zero3_import_people", columns: ["id", "batch_id", "source_key", "source_name", "source_cell", "athlete_id", "created_at"] },
   { collection: "importTeams", table: "zero3_import_teams", columns: ["id", "batch_id", "source_code", "source_category", "source_row", "source_cells", "source_athlete_names", "target_category", "registration_id", "created_at"] },
-  { collection: "heats", table: "zero3_heats", columns: ["id", "event_id", "category", "name", "order"] },
+  { collection: "heats", table: "zero3_heats", columns: ["id", "event_id", "category", "name", "order", "proof_id", "battery_order"] },
   { collection: "heatEntries", table: "zero3_heat_entries", columns: ["heat_id", "registration_id", "lane_label", "assigned_at"] },
   { collection: "activeHeats", table: "zero3_active_heats", columns: ["event_id", "category", "heat_id", "updated_at"] },
   { collection: "results", table: "zero3_results", columns: ["id", "event_id", "registration_id", "proof_id", "heat_id", "category", "lane_label", "athlete_ids_snapshot", "athlete_names_snapshot", "team_name_snapshot", "elapsed_ms", "raw_value", "sync_error_ms", "status", "idempotency_key", "captured_at", "revision"] },
   { collection: "resultRevisions", table: "zero3_result_revisions", columns: ["id", "result_id", "previous_status", "previous_elapsed_ms", "previous_raw_value", "reason", "actor_id", "created_at"] },
   { collection: "timers", table: "zero3_timers", columns: ["event_id", "state", "elapsed_ms", "started_at", "preparation_ends_at", "version", "last_command_id", "updated_at"] },
   { collection: "podiumVersions", table: "zero3_podium_versions", columns: ["event_id", "category", "registration_ids", "published", "published_by", "published_at", "publish_reason", "version", "updated_at"] },
+  { collection: "heatRuns", table: "zero3_heat_runs", columns: ["event_id", "proof_id", "battery_order", "state", "elapsed_ms", "started_at", "preparation_ends_at", "version", "last_command_id", "updated_at"] },
+  { collection: "heatPublications", table: "zero3_heat_publications", columns: ["id", "event_id", "proof_id", "battery_order", "version", "result_fingerprint", "result_count", "results_json", "leaderboards_json", "published_by", "published_at"] },
 ] as const;
 
 const COUNT_GUARDS: Array<{ key: string; query: string }> = [
@@ -57,6 +59,8 @@ const COUNT_GUARDS: Array<{ key: string; query: string }> = [
   { key: "resultRevisions", query: "SELECT COUNT(*) FROM zero3_result_revisions v JOIN zero3_results r ON r.id=v.result_id WHERE r.event_id=?" },
   { key: "timers", query: "SELECT COUNT(*) FROM zero3_timers WHERE event_id=?" },
   { key: "podiumVersions", query: "SELECT COUNT(*) FROM zero3_podium_versions WHERE event_id=?" },
+  { key: "heatRuns", query: "SELECT COUNT(*) FROM zero3_heat_runs WHERE event_id=?" },
+  { key: "heatPublications", query: "SELECT COUNT(*) FROM zero3_heat_publications WHERE event_id=?" },
 ];
 
 async function fetchD1EventBackupData(
@@ -69,7 +73,7 @@ async function fetchD1EventBackupData(
 
   const [
     proofs, registrations, registrationMembers, registrationAudit, importBatches,
-    heats, activeHeats, results, timers, podiumVersions,
+    heats, activeHeats, results, timers, podiumVersions, heatRuns, heatPublications,
   ] = await Promise.all([
     DB.prepare("SELECT * FROM zero3_proofs WHERE event_id=?").bind(eventId).all(),
     DB.prepare("SELECT * FROM zero3_registrations WHERE event_id=?").bind(eventId).all(),
@@ -81,6 +85,8 @@ async function fetchD1EventBackupData(
     DB.prepare("SELECT * FROM zero3_results WHERE event_id=?").bind(eventId).all(),
     DB.prepare("SELECT * FROM zero3_timers WHERE event_id=?").bind(eventId).all(),
     DB.prepare("SELECT * FROM zero3_podium_versions WHERE event_id=?").bind(eventId).all(),
+    DB.prepare("SELECT * FROM zero3_heat_runs WHERE event_id=?").bind(eventId).all(),
+    DB.prepare("SELECT * FROM zero3_heat_publications WHERE event_id=? ORDER BY proof_id,battery_order,version").bind(eventId).all(),
   ]) as Rows[];
 
   const [
@@ -120,6 +126,8 @@ async function fetchD1EventBackupData(
     resultRevisions: resultRevisions.results,
     timers: timers.results,
     podiumVersions: podiumVersions.results,
+    heatRuns: heatRuns.results,
+    heatPublications: heatPublications.results,
   };
   return { event, data };
 }

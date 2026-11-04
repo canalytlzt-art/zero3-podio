@@ -18,6 +18,16 @@ import {
 import { hasSignedInUserSession } from "./auth-session";
 import { workerLogger } from "./worker-logger";
 import { calculateAllResultPlacements } from "./zero3-scoring";
+import { buildD1LeaderboardResults } from "./d1-staging-ranking";
+import {
+  buildBatteryLeaderboards,
+  evaluateBatteryReadiness,
+  fingerprintBatteryPublicationState,
+  groupD1HeatsByProofAndOrder,
+  readD1ActiveBattery,
+  type BatteryRegistration,
+  type BatteryResult,
+} from "./d1-staging-batteries";
 import { handleD1StagingAdmin } from "./d1-staging-admin";
 import { handleD1StagingControls } from "./d1-staging-controls";
 import { handleD1StagingRoster } from "./d1-staging-roster";
@@ -45,6 +55,17 @@ type ResultRow = {
   team_name_snapshot: string | null; elapsed_ms: number | null;
   raw_value: string | null; sync_error_ms: number | null; status: string;
   idempotency_key: string; captured_at: string; revision: number;
+};
+type HeatPublicationRow = {
+  event_id:string;
+  proof_id:string;
+  battery_order:number;
+  version:number;
+  result_fingerprint:string;
+  result_count:number;
+  results_json:string;
+  leaderboards_json:string;
+  published_at:string;
 };
 class ClerkLookupFailure extends Error {}
 
@@ -141,23 +162,48 @@ async function publicBoard(DB: D1Database, eventId?: string) {
   if (!event) return GetZero3PublicBoardResponse.parse({
     serverTime: new Date(), results: [], proofs: [], registrations: [],
     leaderboards: [], podiums: [], activeHeats: [],
+    batteryOperationsEnabled: true, activeBattery: null, completedBatteries: [],
   });
 
-  const [proofResult, regResult, resultResult, athleteResult, timer, podiumResult, activeResult] = await Promise.all([
+  const [proofResult, regResult, resultResult, athleteResult, podiumResult, activeResult, heatResult, heatEntryResult, heatRunResult, publicationResult] = await Promise.all([
     DB.prepare("SELECT * FROM zero3_proofs WHERE event_id = ? ORDER BY proof_order").bind(event.id).all<ProofRow>(),
     DB.prepare("SELECT * FROM zero3_registrations WHERE event_id = ? ORDER BY created_at").bind(event.id).all<RegistrationRow>(),
     DB.prepare("SELECT * FROM zero3_results WHERE event_id = ? ORDER BY captured_at DESC").bind(event.id).all<ResultRow>(),
     DB.prepare("SELECT id, full_name FROM zero3_athletes").all<{id: string; full_name: string}>(),
-    DB.prepare("SELECT * FROM zero3_timers WHERE event_id = ? LIMIT 1").bind(event.id).first<{
-      state: string; elapsed_ms: number; started_at: string | null; preparation_ends_at: string | null;
-      version: number; updated_at: string;
-    }>(),
     DB.prepare("SELECT * FROM zero3_podium_versions WHERE event_id = ? AND published = 1 ORDER BY version DESC").bind(event.id).all<{
       category: string; registration_ids: string;
     }>(),
-    DB.prepare("SELECT ah.category, ah.heat_id, ah.updated_at, h.name AS heat_name FROM zero3_active_heats ah LEFT JOIN zero3_heats h ON h.id = ah.heat_id WHERE ah.event_id = ?").bind(event.id).all<{
+    DB.prepare(`SELECT ah.category,ah.heat_id,ah.updated_at,h.name AS heat_name,
+      h.proof_id,h.battery_order,h."order" AS heat_order,p.proof_order,p.name AS proof_name
+      FROM zero3_active_heats ah LEFT JOIN zero3_heats h ON h.id=ah.heat_id
+      LEFT JOIN zero3_proofs p ON p.id=h.proof_id WHERE ah.event_id=?`)
+      .bind(event.id).all<{
       category: string; heat_id: string | null; updated_at: string; heat_name: string | null;
+      proof_id:string|null;battery_order:number|null;heat_order:number|null;
+      proof_order:number|null;proof_name:string|null;
     }>(),
+    DB.prepare(`SELECT h.id,h.event_id,h.category,h.name,h."order",h.proof_id,h.battery_order,
+      p.proof_order,p.name AS proof_name
+      FROM zero3_heats h LEFT JOIN zero3_proofs p ON p.id=h.proof_id
+      WHERE h.event_id=? ORDER BY p.proof_order,COALESCE(h.battery_order,h."order"),h.category`)
+      .bind(event.id).all<{
+        id:string;event_id:string;category:string;name:string;order:number;proof_id:string|null;
+        battery_order:number|null;proof_order:number|null;proof_name:string|null;
+      }>(),
+    DB.prepare(`SELECT he.heat_id,he.registration_id,he.lane_label
+      FROM zero3_heat_entries he JOIN zero3_heats h ON h.id=he.heat_id
+      JOIN zero3_registrations r ON r.id=he.registration_id
+      WHERE h.event_id=? AND r.confirmation_status<>'CANCELLED' ORDER BY he.assigned_at`)
+      .bind(event.id).all<{heat_id:string;registration_id:string;lane_label:string|null}>(),
+    DB.prepare("SELECT * FROM zero3_heat_runs WHERE event_id=?")
+      .bind(event.id).all<{
+        event_id:string;proof_id:string;battery_order:number;state:string;elapsed_ms:number;
+        started_at:string|null;preparation_ends_at:string|null;version:number;
+        last_command_id:string|null;updated_at:string;
+      }>(),
+    DB.prepare(`SELECT * FROM zero3_heat_publications
+      WHERE event_id=? ORDER BY proof_id,battery_order,version DESC`)
+      .bind(event.id).all<HeatPublicationRow>(),
   ]);
   const proofs = proofResult.results;
   const registrations = regResult.results.filter((row) => row.confirmation_status !== "CANCELLED");
@@ -168,6 +214,77 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     id: reg.id, category: reg.category, teamName: reg.team_name,
     laneLabel: reg.lane_label, athleteNames: jsonArray(reg.athlete_ids).map((athleteId) => athleteNames.get(athleteId) ?? "Atleta removido"),
   }));
+  const registrationsById = new Map(registrationsDto.map((reg) => [reg.id, reg]));
+  const registrationRowsById = new Map(registrations.map((reg) => [reg.id, reg]));
+  const now = new Date();
+  const heatRows = heatResult.results;
+  const entriesByHeat = new Map<string, Array<BatteryRegistration>>();
+  for (const entry of heatEntryResult.results) {
+    const reg = registrationsById.get(entry.registration_id);
+    const sourceReg = registrationRowsById.get(entry.registration_id);
+    if (!reg) continue;
+    const list = entriesByHeat.get(entry.heat_id) ?? [];
+    list.push({
+      ...reg,
+      laneLabel: entry.lane_label ?? reg.laneLabel,
+      heatId: entry.heat_id,
+      athleteIds: sourceReg ? jsonArray(sourceReg.athlete_ids) : [],
+      heatName: heatRows.find(heat=>heat.id===entry.heat_id)?.name,
+    });
+    entriesByHeat.set(entry.heat_id, list);
+  }
+  const batteryGroups = groupD1HeatsByProofAndOrder(heatRows);
+  const runByKey = new Map(heatRunResult.results.map((run) => [`${run.proof_id}:${run.battery_order}`, run]));
+  const publicationByKey = new Map<string,HeatPublicationRow>();
+  for (const row of publicationResult.results) {
+    const key=`${row.proof_id}:${row.battery_order}`;
+    if(!publicationByKey.has(key))publicationByKey.set(key,row);
+  }
+  const batteryFingerprintByKey = new Map<string,string>();
+  for (const [key,group] of batteryGroups) {
+    const first=group[0];
+    if(!first?.proof_id)continue;
+    const heatIds=new Set(group.map(heat=>heat.id));
+    const groupRegistrations=group.flatMap(heat=>entriesByHeat.get(heat.id)??[]);
+    const groupProof=proofs.find(proof=>proof.id===first.proof_id);
+    const fingerprintProof=groupProof?{
+      id:groupProof.id,order:groupProof.proof_order,name:groupProof.name,
+      metricType:groupProof.metric_type,unit:groupProof.unit,direction:groupProof.direction,
+      configured:groupProof.metric_type!=="UNCONFIGURED"&&Boolean(groupProof.name.trim())&&
+        (groupProof.direction==="LOWER"||groupProof.direction==="HIGHER"),
+    }:undefined;
+    const groupResults=results.filter(result=>result.proof_id===first.proof_id&&result.registration_id&&
+      (result.heat_id?heatIds.has(result.heat_id):groupRegistrations.some(reg=>reg.id===result.registration_id)))
+      .map((result):BatteryResult=>({
+        id:result.id,registrationId:result.registration_id,proofId:result.proof_id,
+        rawValue:result.raw_value,status:result.status,heatId:result.heat_id,
+        elapsedMs:result.elapsed_ms,revision:result.revision,capturedAt:result.captured_at,
+      }));
+    batteryFingerprintByKey.set(key,await fingerprintBatteryPublicationState(groupRegistrations,groupResults.map(result=>({
+      id:result.id,
+      registrationId:result.registrationId,
+      heatId:result.heatId??"",
+      proofId:result.proofId,
+      status:result.status,
+      rawValue:result.rawValue,
+      elapsedMs:result.elapsedMs,
+      revision:result.revision,
+      capturedAt:result.capturedAt,
+    })),fingerprintProof));
+  }
+  const leaderboardResults=buildD1LeaderboardResults({
+    registrationIds:activeRegistrationIds,
+    liveResults:results.map(row=>({
+      id:row.id,registrationId:row.registration_id,proofId:row.proof_id,
+      rawValue:row.raw_value,status:row.status,
+    })),
+    publications:[...publicationByKey.values()].map(publication=>({
+      proofId:publication.proof_id,
+      resultFingerprint:publication.result_fingerprint,
+      currentFingerprint:batteryFingerprintByKey.get(`${publication.proof_id}:${publication.battery_order}`)??null,
+      resultsJson:publication.results_json,
+    })),
+  });
   const scoring = calculateAllResultPlacements({
     categories: jsonArray(event.categories),
     eventStatus: event.status,
@@ -176,13 +293,9 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       metricType: proof.metric_type, unit: proof.unit, direction: proof.direction,
     })),
     registrations: registrationsDto,
-    results: results.map((row) => ({
-      id: row.id, registrationId: row.registration_id, proofId: row.proof_id,
-      rawValue: row.raw_value, status: row.status,
-    })),
+    results: leaderboardResults,
   });
   const placement = scoring.placements;
-  const registrationsById = new Map(registrationsDto.map((reg) => [reg.id, reg]));
   const heatIds = [...new Set(results.flatMap((row) => row.heat_id ? [row.heat_id] : []))];
   const heats = heatIds.length
     ? (await DB.prepare(`SELECT id, name FROM zero3_heats WHERE id IN (${heatIds.map(() => "?").join(",")})`).bind(...heatIds).all<{id: string; name: string}>()).results
@@ -201,7 +314,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       tieRulePending: p?.tiePending ?? false, syncErrorMs: row.sync_error_ms,
       status: row.status, capturedAt: date(row.captured_at), revision: row.revision,
       names: snapshotNames.length ? snapshotNames : reg?.athleteNames ?? [],
-       teamName: resolveZero3DisplayTeamName(reg?.teamName, row.team_name_snapshot, Boolean(reg)),
+      teamName: resolveZero3DisplayTeamName(reg?.teamName, row.team_name_snapshot, Boolean(reg)),
       heatName: row.heat_id ? heatNames.get(row.heat_id) ?? null : null,
     };
   });
@@ -218,23 +331,158 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       }];
     }),
   }));
-  const now = new Date();
-  const timerDto = timer ? {
-    eventId: event.id, state: timer.state,
-    elapsedMs: Math.floor(timer.elapsed_ms + (timer.state === "RUNNING" && timer.started_at ? Math.max(0, now.getTime() - Date.parse(timer.started_at)) : 0)),
-    preparationRemainingMs: timer.state === "PREPARATION" && timer.preparation_ends_at ? Math.max(0, Math.ceil(Date.parse(timer.preparation_ends_at) - now.getTime())) : 0,
-    preparationSeconds: event.preparation_seconds,
-    startedAt: date(timer.started_at), version: timer.version, updatedAt: date(timer.updated_at),
-  } : undefined;
+  const selectedRows = activeResult.results.filter((row) => row.heat_id);
+  const firstSelected = selectedRows[0];
+  const selectedOrder = firstSelected ? (firstSelected.battery_order ?? firstSelected.heat_order) : null;
+  const consistentSelection = Boolean(firstSelected?.proof_id && selectedOrder !== null &&
+    selectedRows.every((row) => row.proof_id === firstSelected.proof_id &&
+      (row.battery_order ?? row.heat_order) === selectedOrder));
+  const activeKey = consistentSelection ? `${firstSelected!.proof_id}:${selectedOrder}` : null;
+  const activeRows = activeKey ? batteryGroups.get(activeKey) ?? [] : [];
+  const batteryView = (group: typeof heatRows, state: string) => {
+    if (!group.length || !group[0]?.proof_id) return null;
+    const first = group[0];
+    const proof = proofs.find((item) => item.id === first.proof_id);
+    if (!proof) return null;
+    const order = first.battery_order ?? first.order;
+    const groupRegistrations = group.flatMap((heat) => entriesByHeat.get(heat.id) ?? []);
+    const groupHeatIds = new Set(group.map((heat) => heat.id));
+    const groupResults = results
+      .filter((result) => result.proof_id === proof.id && result.heat_id && groupHeatIds.has(result.heat_id))
+      .map((result): BatteryResult => ({
+        id: result.id,
+        registrationId: result.registration_id,
+        proofId: result.proof_id,
+        rawValue: result.raw_value,
+        status: result.status,
+        heatId: result.heat_id,
+        elapsedMs: result.elapsed_ms,
+        revision: result.revision,
+        capturedAt: result.captured_at,
+      }));
+    const scoreProof = {
+      id: proof.id, order: proof.proof_order, name: proof.name,
+      metricType: proof.metric_type, unit: proof.unit, direction: proof.direction,
+      configured: proof.metric_type !== "UNCONFIGURED" && Boolean(proof.name.trim()) &&
+        (proof.direction === "LOWER" || proof.direction === "HIGHER"),
+    };
+    const scoring = buildBatteryLeaderboards({
+      proof: scoreProof,
+      registrations: groupRegistrations,
+      results: groupResults,
+      eventStatus: event.status,
+    });
+    const readiness=evaluateBatteryReadiness({
+      proof:scoreProof,
+      registrations:groupRegistrations,
+      results:groupResults.map(result=>({
+        id:result.id,registrationId:result.registrationId,heatId:result.heatId??"",
+        proofId:result.proofId,status:result.status,rawValue:result.rawValue,
+        elapsedMs:result.elapsedMs,revision:result.revision,capturedAt:result.capturedAt,
+      })),
+    });
+    const groupKey=`${proof.id}:${order}`;
+    const publication=publicationByKey.get(groupKey);
+    const currentFingerprint=batteryFingerprintByKey.get(groupKey)??null;
+    const finalizationCurrent=Boolean(publication&&currentFingerprint===publication.result_fingerprint);
+    let displayResults=resultDtos.filter((result) => result.proofId === proof.id && result.heatId && groupHeatIds.has(result.heatId));
+    let displayLeaderboards=scoring.leaderboards;
+    if(publication){
+      try {
+        const storedResults=JSON.parse(publication.results_json) as typeof displayResults;
+        displayResults=storedResults.map(result=>({...result,capturedAt:date(result.capturedAt?.toString())}));
+        displayLeaderboards=JSON.parse(publication.leaderboards_json) as typeof scoring.leaderboards;
+      } catch (cause) {
+        workerLogger.error({requestId:"unknown"},"Battery publication snapshot could not be decoded");
+        throw new Error("Publicação de bateria armazenada está inválida.",{cause});
+      }
+    }
+    const displayCategories=publication
+      ?[...new Set(displayResults.map(result=>result.category))]
+        .sort((a,b)=>{
+          const order=jsonArray(event.categories);
+          return (order.indexOf(a)<0?Number.MAX_SAFE_INTEGER:order.indexOf(a))-
+            (order.indexOf(b)<0?Number.MAX_SAFE_INTEGER:order.indexOf(b))||a.localeCompare(b);
+        })
+      :scoring.categories;
+    return {
+      eventId: event.id,
+      proofId: proof.id,
+      proofOrder: proof.proof_order,
+      proofName: proof.name,
+      order,
+      name: `Bateria ${String(order).padStart(2,"0")}`,
+      heatIds: group.map((heat) => heat.id),
+      categories: displayCategories,
+      registrations: groupRegistrations.map((registration) => ({
+        heatId: registration.heatId,
+        id: registration.id,
+        category: registration.category,
+        teamName: registration.teamName,
+        laneLabel: registration.laneLabel,
+        athleteNames: registration.athleteNames,
+      })),
+       results: displayResults,
+       leaderboards: displayLeaderboards,
+      state,
+       pendingResultCount: Math.max(scoring.pendingResultCount,readiness.issues.length),
+       reviewedResultCount:readiness.reviewedCount,
+       expectedResultCount:readiness.expectedCount,
+       finalized:Boolean(publication),
+       finalizationCurrent,
+       finalizationVersion:publication?.version??null,
+       finalizedAt:date(publication?.published_at),
+       finalizationFingerprint:currentFingerprint,
+    };
+  };
+  const activeRun = activeKey ? runByKey.get(activeKey) : undefined;
+  const activeBattery = activeRows.length
+    ? batteryView(activeRows, activeRun?.state ?? "IDLE")
+    : null;
+  const completedBatteries = [...batteryGroups.entries()]
+    .filter(([key,group])=>Boolean(group[0]?.proof_id&&publicationByKey.has(key)))
+    .map(([,group])=>{
+      const snapshot=batteryView(group,"FINISHED");
+      if(!snapshot)return null;
+      return {
+        proofId:snapshot.proofId,proofOrder:snapshot.proofOrder,proofName:snapshot.proofName,
+        order:snapshot.order,name:snapshot.name,categories:snapshot.categories,
+        results:snapshot.results,leaderboards:snapshot.leaderboards,pendingResultCount:snapshot.pendingResultCount,
+        finalized:snapshot.finalized,finalizationCurrent:snapshot.finalizationCurrent,
+        finalizationVersion:snapshot.finalizationVersion!,finalizedAt:snapshot.finalizedAt!,
+      };
+    }).filter((item):item is NonNullable<typeof item>=>Boolean(item))
+    .sort((a,b)=>a.proofOrder-b.proofOrder||a.order-b.order);
+  const timerDto = activeBattery ? (() => {
+    const timer = activeRun ?? {
+      event_id:event.id,proof_id:activeBattery.proofId,battery_order:activeBattery.order,
+      state:"IDLE",elapsed_ms:0,started_at:null,preparation_ends_at:null,
+      version:0,last_command_id:null,updated_at:now.toISOString(),
+    };
+    return {
+      eventId:event.id,state:timer.state,
+      elapsedMs:Math.floor(timer.elapsed_ms+(timer.state==="RUNNING"&&timer.started_at?Math.max(0,now.getTime()-Date.parse(timer.started_at)):0)),
+      preparationRemainingMs:timer.state==="PREPARATION"&&timer.preparation_ends_at?Math.max(0,Math.ceil(Date.parse(timer.preparation_ends_at)-now.getTime())):0,
+      preparationSeconds:event.preparation_seconds,
+      startedAt:date(timer.started_at),version:timer.version,updatedAt:date(timer.updated_at),
+      proofId:activeBattery.proofId,batteryOrder:activeBattery.order,
+    };
+  })() : undefined;
   const activeHeats = jsonArray(event.categories).map((category) => {
     const row = activeResult.results.find((item) => item.category === category);
-    return { eventId: event.id, category, heatId: row?.heat_id ?? null, heatName: row?.heat_name ?? null, updatedAt: date(row?.updated_at) ?? new Date(0) };
+    return {
+      eventId:event.id,category,heatId:row?.heat_id??null,heatName:row?.heat_name??null,
+      proofId:row?.proof_id??null,proofOrder:row?.proof_order??null,
+      batteryOrder:row?.battery_order??row?.heat_order??null,
+      updatedAt:date(row?.updated_at)??new Date(0),
+    };
   });
   return GetZero3PublicBoardResponse.parse({
     serverTime: now, event: eventDto(event), timer: timerDto,
     results: resultDtos, proofs: proofs.map(proofDto),
     registrations: registrationsDto,
     leaderboards: scoring.leaderboards, podiums, activeHeats,
+    batteryOperationsEnabled:true,activeBattery,completedBatteries,
   });
 }
 
@@ -390,6 +638,15 @@ export function d1StagingApi(
           const proof = await DB.prepare("SELECT * FROM zero3_proofs WHERE id=? AND event_id=?")
             .bind(body.data.proofId, body.data.eventId).first<ProofRow>();
           if (!proof) { res.status(400).json({ error: "Prova inválida para este evento." }); return; }
+          if (!body.data.heatId) { res.status(400).json({error:"Selecione a bateria ativa antes de lançar resultados."}); return; }
+          const activeBattery = await readD1ActiveBattery(DB,body.data.eventId);
+          if (!activeBattery || activeBattery.proofId !== proof.id || !activeBattery.heatIds.includes(body.data.heatId)) {
+            res.status(409).json({error:"A bateria selecionada não corresponde à prova ativa na TV."}); return;
+          }
+          const assigned = await DB.prepare(`SELECT 1 AS assigned FROM zero3_heat_entries
+            WHERE heat_id=? AND registration_id=?`)
+            .bind(body.data.heatId,reg.id).first<{assigned:number}>();
+          if (!assigned) { res.status(400).json({error:"A equipe não está atribuída à bateria selecionada."}); return; }
           if (proof.metric_type === "UNCONFIGURED" || !proof.name.trim() || !["LOWER","HIGHER"].includes(proof.direction ?? "")) {
             res.status(409).json({ error: "Configure nome, métrica e direção antes de lançar resultados." }); return;
           }

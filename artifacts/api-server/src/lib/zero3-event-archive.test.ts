@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createZero3EventBackup,
+  stableZero3Json,
   validateZero3EventBackup,
   type Zero3EventBackupData,
 } from "./zero3-event-archive";
@@ -22,6 +23,8 @@ const emptyCollections = {
   resultRevisions: [],
   timers: [],
   podiumVersions: [],
+  heatRuns: [],
+  heatPublications: [],
 };
 
 test("event backup digest is stable across object keys and row ordering", async () => {
@@ -47,6 +50,12 @@ test("event backup normalizes PostgreSQL and D1 JSON/date values for restore", a
   const data = {
     event: { id: "event-roundtrip", name: "Evento fictício", created_at: "2026-01-01T00:00:00.000Z" },
     ...emptyCollections,
+    heatPublications: [{
+      id: "publication-1",
+      event_id: "event-roundtrip",
+      results_json: '[{"id":"result-1"}]',
+      leaderboards_json: '[{"category":"RX"}]',
+    }],
     registrations: [{
       id: "registration-1",
       event_id: "event-roundtrip",
@@ -63,6 +72,8 @@ test("event backup normalizes PostgreSQL and D1 JSON/date values for restore", a
   if (checked.ok) {
     assert.deepEqual(checked.backup.data.registrations[0].athlete_ids, ["athlete-1", "athlete-2"]);
     assert.equal(checked.backup.data.podiumVersions[0].published, 1);
+    assert.deepEqual(checked.backup.data.heatPublications[0].results_json, [{ id: "result-1" }]);
+    assert.deepEqual(checked.backup.data.heatPublications[0].leaderboards_json, [{ category: "RX" }]);
   }
 });
 
@@ -81,4 +92,32 @@ test("event backup validation rejects changed records and count mismatches", asy
   const wrongCounts = structuredClone(backup);
   wrongCounts.counts.athletes = 2;
   assert.equal((await validateZero3EventBackup(wrongCounts)).ok, false);
+});
+
+test("version-one and version-two backups remain restorable after adding battery publications",async()=>{
+  const data={event:{id:"old-event",name:"Legacy"},...emptyCollections} as unknown as Zero3EventBackupData;
+  const current=await createZero3EventBackup(data.event,data);
+  for(const version of [1,2]){
+    const legacy=structuredClone(current) as unknown as Record<string,any>;
+    legacy.version=version;
+    delete legacy.data.heatPublications;
+    delete legacy.counts.heatPublications;
+    if(version===1){
+      delete legacy.data.heatRuns;
+      delete legacy.counts.heatRuns;
+    }
+    const payload={
+      format:legacy.format,version:legacy.version,eventId:legacy.eventId,eventName:legacy.eventName,
+      counts:legacy.counts,data:legacy.data,
+    };
+    const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(stableZero3Json(payload)));
+    legacy.digest=Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,"0")).join("");
+    const checked=await validateZero3EventBackup(legacy);
+    assert.equal(checked.ok,true);
+    if(checked.ok){
+      assert.equal(checked.backup.version,3);
+      assert.deepEqual(checked.backup.data.heatRuns,[]);
+      assert.deepEqual(checked.backup.data.heatPublications,[]);
+    }
+  }
 });

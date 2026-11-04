@@ -14,5 +14,11 @@ export interface Zero3ActiveHeat {
   heatId: string | null;
   /** @nullable */
   heatName: string | null;
+  /** @nullable */
+  proofId?: string | null;
+  /** @nullable */
+  proofOrder?: number | null;
+  /** @nullable */
+  batteryOrder?: number | null;
   updatedAt: Date;
 }

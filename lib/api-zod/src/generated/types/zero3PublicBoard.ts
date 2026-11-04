@@ -7,8 +7,10 @@
  */
 import type { Zero3ActiveHeat } from './zero3ActiveHeat';
 import type { Zero3CategoryLeaderboard } from './zero3CategoryLeaderboard';
+import type { Zero3CompletedBattery } from './zero3CompletedBattery';
 import type { Zero3Event } from './zero3Event';
 import type { Zero3Proof } from './zero3Proof';
+import type { Zero3PublicBattery } from './zero3PublicBattery';
 import type { Zero3PublicPodium } from './zero3PublicPodium';
 import type { Zero3PublicRegistration } from './zero3PublicRegistration';
 import type { Zero3PublicResult } from './zero3PublicResult';
@@ -16,6 +18,9 @@ import type { Zero3Timer } from './zero3Timer';
 
 export interface Zero3PublicBoard {
   serverTime: Date;
+  batteryOperationsEnabled?: boolean;
+  activeBattery?: Zero3PublicBattery | null;
+  completedBatteries?: Zero3CompletedBattery[];
   event?: Zero3Event;
   timer?: Zero3Timer;
   results: Zero3PublicResult[];

@@ -32,7 +32,7 @@ export type ProofScore = {
   name: string;
   unit: string | null;
   value: number | null;
-  status: "MISSING" | "PROVISIONAL" | "VALIDATED" | "DNS" | "DNF" | "CONFIGURATION_PENDING" | "TIE_RULE_PENDING";
+  status: "MISSING" | "PROVISIONAL" | "PUBLICATION_PENDING" | "VALIDATED" | "DNS" | "DNF" | "CONFIGURATION_PENDING" | "TIE_RULE_PENDING";
   placement: number | null;
   points: number | null;
 };
@@ -48,13 +48,13 @@ export type LeaderboardEntry = {
   proofCount: number;
   totalPoints: number | null;
   overallPlace: number | null;
-  status: "PARTIAL" | "FINAL" | "TIE_RULE_PENDING" | "CONFIGURATION_PENDING";
+  status: "PARTIAL" | "FINAL" | "PUBLICATION_PENDING" | "EXCEPTION_RULE_PENDING" | "TIE_RULE_PENDING" | "CONFIGURATION_PENDING";
 };
 
 export type CategoryLeaderboard = {
   category: ScoreCategory;
   proofCount: number;
-  status: "PARTIAL" | "FINAL" | "TIE_RULE_PENDING" | "CONFIGURATION_PENDING";
+  status: "PARTIAL" | "FINAL" | "EXCEPTION_RULE_PENDING" | "TIE_RULE_PENDING" | "CONFIGURATION_PENDING";
   entries: LeaderboardEntry[];
 };
 
@@ -70,7 +70,7 @@ const configured = (proof: ScoreProof) =>
   (proof.direction === "LOWER" || proof.direction === "HIGHER");
 
 const valueOf = (value: ScoreResult["rawValue"]) => {
-  if (value === null || value === undefined || value === "") return null;
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 };
@@ -151,6 +151,8 @@ export function calculateCategoryLeaderboard(input: {
     let pointSum = 0;
     let entryTiePending = false;
     let entryConfigurationPending = false;
+    let entryPublicationPending = false;
+    let entryExceptionRulePending = false;
 
     const proofScores = proofs.map((proof): ProofScore => {
       const result = proofResults.get(`${registration.id}:${proof.id}`);
@@ -158,8 +160,10 @@ export function calculateCategoryLeaderboard(input: {
       const isConfigured = configured(proof);
       const placement = result ? placementByResultId.get(result.id) : undefined;
       if (!isConfigured) entryConfigurationPending = true;
-      if (result) completedProofs += 1;
+      if (placement?.points !== null && placement?.points !== undefined) completedProofs += 1;
       if (placement?.tiePending) entryTiePending = true;
+      if (result?.status === "PUBLICATION_PENDING") entryPublicationPending = true;
+      if (result?.status === "DNS" || result?.status === "DNF") entryExceptionRulePending = true;
       if (placement?.points !== null && placement?.points !== undefined) {
         scoredProofs += 1;
         pointSum += placement.points;
@@ -168,11 +172,13 @@ export function calculateCategoryLeaderboard(input: {
       let status: ProofScore["status"] = "MISSING";
       if (!isConfigured) status = "CONFIGURATION_PENDING";
       else if (placement?.tiePending) status = "TIE_RULE_PENDING";
+      else if (result?.status === "PUBLICATION_PENDING") status = "PUBLICATION_PENDING";
       else if (result?.status === "PROVISIONAL") status = "PROVISIONAL";
-      else if (result?.status === "VALIDATED" && placement?.points !== null) {
+      else if (result?.status === "VALIDATED" && placement?.points !== null && placement?.points !== undefined) {
         status = "VALIDATED";
       } else if (result?.status === "DNS") status = "DNS";
       else if (result?.status === "DNF") status = "DNF";
+      else if (result?.status === "VALIDATED") status = "MISSING";
       else if (result) status = "PROVISIONAL";
 
       return {
@@ -208,9 +214,13 @@ export function calculateCategoryLeaderboard(input: {
         ? "CONFIGURATION_PENDING"
         : entryTiePending
           ? "TIE_RULE_PENDING"
-          : allProofsScored && input.eventStatus === "FINISHED"
-            ? "FINAL"
-            : "PARTIAL",
+          : entryExceptionRulePending
+            ? "EXCEPTION_RULE_PENDING"
+            : entryPublicationPending
+              ? "PUBLICATION_PENDING"
+              : allProofsScored && input.eventStatus === "FINISHED"
+                ? "FINAL"
+                : "PARTIAL",
     };
   });
 
@@ -230,6 +240,9 @@ export function calculateCategoryLeaderboard(input: {
       totals.add(entry.totalPoints);
     }
   }
+  if (overallTiePending) {
+    for (const entry of entries) entry.status = "TIE_RULE_PENDING";
+  }
 
   if (allComplete && !overallTiePending) {
     entries
@@ -242,13 +255,16 @@ export function calculateCategoryLeaderboard(input: {
 
   const hasConfigurationPending = !proofConfigured;
   const hasProofTie = proofHasTie.size > 0 || overallTiePending;
+  const hasExceptionRulePending = entries.some((entry) => entry.status === "EXCEPTION_RULE_PENDING");
   const status: CategoryLeaderboard["status"] = hasConfigurationPending
     ? "CONFIGURATION_PENDING"
     : hasProofTie
       ? "TIE_RULE_PENDING"
-      : allComplete
-        ? "FINAL"
-        : "PARTIAL";
+      : hasExceptionRulePending
+        ? "EXCEPTION_RULE_PENDING"
+        : allComplete
+          ? "FINAL"
+          : "PARTIAL";
 
   entries.sort((a, b) => {
     if (a.status === "FINAL" && b.status !== "FINAL") return -1;

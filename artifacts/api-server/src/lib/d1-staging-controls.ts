@@ -20,9 +20,11 @@ import {
   newD1Id,
   requireD1Member,
 } from "./d1-staging-shared";
+import { readD1ActiveBattery } from "./d1-staging-batteries";
+import { handleD1BatteryFinalization } from "./d1-staging-finalization";
 
 type TimerRow = {
-  event_id: string; state: string; elapsed_ms: number; started_at: string | null;
+  event_id: string; proof_id:string; battery_order:number; state: string; elapsed_ms: number; started_at: string | null;
   preparation_ends_at: string | null; version: number; last_command_id: string | null;
   updated_at: string;
 };
@@ -52,6 +54,8 @@ function timerDto(row: TimerRow, preparationSeconds: number, now = new Date()) {
     startedAt: d1Date(row.started_at),
     version: row.version,
     updatedAt: d1Date(row.updated_at),
+    proofId:row.proof_id,
+    batteryOrder:row.battery_order,
   };
 }
 
@@ -87,6 +91,7 @@ export async function handleD1StagingControls(
   res: Response,
   DB: D1Database,
 ): Promise<boolean> {
+  if (await handleD1BatteryFinalization(req, res, DB)) return true;
   const route = req.path.slice("/api/zero3".length);
 
   const timerMatch = route.match(/^\/events\/([^/]+)\/timer$/);
@@ -99,9 +104,13 @@ export async function handleD1StagingControls(
     const now = new Date();
     const nowIso = now.toISOString();
     try {
-      await DB.prepare("INSERT OR IGNORE INTO zero3_timers(event_id) VALUES(?)").bind(event.id).run();
-      let timer = await DB.prepare("SELECT * FROM zero3_timers WHERE event_id=?")
-        .bind(event.id).first<TimerRow>();
+      const activeBattery=await readD1ActiveBattery(DB,event.id);
+      if(!activeBattery){d1ApiError(req,res,409,"BATTERY_NOT_SELECTED","Selecione uma bateria vinculada a uma prova antes de controlar o cronômetro.");return true;}
+      await DB.prepare(`INSERT OR IGNORE INTO zero3_heat_runs(event_id,proof_id,battery_order)
+        VALUES(?,?,?)`).bind(event.id,activeBattery.proofId,activeBattery.order).run();
+      let timer = await DB.prepare(`SELECT * FROM zero3_heat_runs
+        WHERE event_id=? AND proof_id=? AND battery_order=?`)
+        .bind(event.id,activeBattery.proofId,activeBattery.order).first<TimerRow>();
       if (!timer) { d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível consultar o cronômetro."); return true; }
       if (timer.last_command_id === body.data.commandId) {
         res.json(ControlZero3TimerResponse.parse(timerDto(timer, event.preparation_seconds, now)));
@@ -153,12 +162,16 @@ export async function handleD1StagingControls(
           next = { state: "IDLE", elapsed_ms: 0, started_at: null, preparation_ends_at: null };
           break;
       }
-      const saved = await DB.prepare(`UPDATE zero3_timers SET state=?,elapsed_ms=?,started_at=?,
+      const saved = await DB.prepare(`UPDATE zero3_heat_runs SET state=?,elapsed_ms=?,started_at=?,
         preparation_ends_at=?,version=version+1,last_command_id=?,updated_at=?
-        WHERE event_id=? AND version=? AND (last_command_id IS NULL OR last_command_id<>?)`)
+        WHERE event_id=? AND proof_id=? AND battery_order=? AND version=?
+        AND (last_command_id IS NULL OR last_command_id<>?)`)
         .bind(next.state, next.elapsed_ms, next.started_at, next.preparation_ends_at,
-          body.data.commandId, nowIso, event.id, body.data.expectedVersion, body.data.commandId).run();
-      timer = await DB.prepare("SELECT * FROM zero3_timers WHERE event_id=?").bind(event.id).first<TimerRow>();
+          body.data.commandId, nowIso, event.id, activeBattery.proofId, activeBattery.order,
+          body.data.expectedVersion, body.data.commandId).run();
+      timer = await DB.prepare(`SELECT * FROM zero3_heat_runs
+        WHERE event_id=? AND proof_id=? AND battery_order=?`)
+        .bind(event.id,activeBattery.proofId,activeBattery.order).first<TimerRow>();
       if ((saved.meta.changes ?? 0) !== 1) {
         if (timer?.last_command_id === body.data.commandId) {
           res.json(ControlZero3TimerResponse.parse(timerDto(timer, event.preparation_seconds, now)));

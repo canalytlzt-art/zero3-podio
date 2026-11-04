@@ -12,6 +12,8 @@ export type Zero3LeaderboardEntryStatus = typeof Zero3LeaderboardEntryStatus[key
 export const Zero3LeaderboardEntryStatus = {
   PARTIAL: 'PARTIAL',
   FINAL: 'FINAL',
+  PUBLICATION_PENDING: 'PUBLICATION_PENDING',
+  EXCEPTION_RULE_PENDING: 'EXCEPTION_RULE_PENDING',
   TIE_RULE_PENDING: 'TIE_RULE_PENDING',
   CONFIGURATION_PENDING: 'CONFIGURATION_PENDING',
 } as const;

@@ -12,7 +12,21 @@ export interface Zero3Heat {
   id: string;
   eventId: string;
   category: Zero3Category;
+  /** @nullable */
+  proofId?: string | null;
+  /** @nullable */
+  proofName?: string | null;
+  /** @nullable */
+  proofOrder?: number | null;
   name: string;
   order: number;
+  finalized?: boolean;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  finalizationVersion?: number | null;
+  /** @nullable */
+  finalizedAt?: Date | null;
   registrations: Zero3Registration[];
 }

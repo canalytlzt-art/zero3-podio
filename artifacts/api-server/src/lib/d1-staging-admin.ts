@@ -23,6 +23,12 @@ import {
   SetZero3ActiveHeatBody,
   SetZero3ActiveHeatParams,
   SetZero3ActiveHeatResponse,
+  SetZero3ActiveBatteryBody,
+  SetZero3ActiveBatteryParams,
+  SetZero3ActiveBatteryResponse,
+  UpdateZero3HeatProofBody,
+  UpdateZero3HeatProofParams,
+  UpdateZero3HeatProofResponse,
   SetZero3MemberRoleBody,
   SetZero3MemberRoleResponse,
   UpdateZero3EventBody,
@@ -49,6 +55,7 @@ import {
 import { normalizeEventCategories, validateEventCategories } from "./zero3-categories";
 import { parseZero3TeamName } from "./zero3-team-name";
 import { handleD1StagingEventLifecycle } from "./d1-staging-event-lifecycle";
+import { BatteryConflict, selectD1ActiveBattery } from "./d1-staging-batteries";
 
 type EventRow = {
   id: string; name: string; proof_name: string; status: string;
@@ -65,7 +72,11 @@ type RegistrationRow = {
   athlete_ids: string; lane_label: string | null; confirmation_status: string;
   payment_status: string; created_at: string;
 };
-type HeatRow = { id: string; event_id: string; category: string; name: string; order: number };
+type HeatRow = {
+  id: string; event_id: string; category: string; name: string; order: number;
+  proof_id?: string | null; proof_order?: number | null; proof_name?: string | null;
+  battery_order?: number | null;
+};
 
 const ADMIN = ["ADMIN"] as const;
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
@@ -319,22 +330,61 @@ export async function handleD1StagingAdmin(
     }
     try {
       let heatName: string | null = null;
+      let proofId: string | null = null;
+      let proofOrder: number | null = null;
+      let batteryOrder: number | null = null;
       if (body.data.heatId) {
-        const heat = await DB.prepare("SELECT name FROM zero3_heats WHERE id=? AND event_id=? AND category=?")
-          .bind(body.data.heatId, params.data.eventId, params.data.category).first<{ name: string }>();
+        const heat = await DB.prepare(`SELECT h.name,h.proof_id,h.battery_order,h."order" AS heat_order,p.proof_order
+          FROM zero3_heats h LEFT JOIN zero3_proofs p ON p.id=h.proof_id
+          WHERE h.id=? AND h.event_id=? AND h.category=?`)
+          .bind(body.data.heatId, params.data.eventId, params.data.category)
+          .first<{name:string;proof_id:string|null;battery_order:number|null;heat_order:number;proof_order:number|null}>();
         if (!heat) { res.status(400).json({ error: "A bateria precisa pertencer ao evento e à categoria selecionados." }); return true; }
+        if (!heat.proof_id || !heat.proof_order) {
+          res.status(400).json({ error: "Vincule a bateria a uma prova antes de colocá-la na TV." }); return true;
+        }
+        const selected = await selectD1ActiveBattery(DB, params.data.eventId, body.data.heatId);
         heatName = heat.name;
+        proofId = heat.proof_id;
+        proofOrder = heat.proof_order;
+        batteryOrder = heat.battery_order ?? heat.heat_order;
+        res.json(SetZero3ActiveHeatResponse.parse({
+          eventId: params.data.eventId, category: params.data.category,
+          heatId: body.data.heatId, heatName, proofId, proofOrder, batteryOrder,
+          updatedAt: selected.updatedAt,
+        }));
+        return true;
       }
       const stamp = d1IsoNow();
-      await DB.prepare(`INSERT INTO zero3_active_heats(event_id,category,heat_id,updated_at)
-        VALUES(?,?,?,?) ON CONFLICT(event_id,category) DO UPDATE SET
-        heat_id=excluded.heat_id,updated_at=excluded.updated_at`)
-        .bind(params.data.eventId, params.data.category, body.data.heatId, stamp).run();
+      const selected = await selectD1ActiveBattery(DB, params.data.eventId, null);
       res.json(SetZero3ActiveHeatResponse.parse({
         eventId: params.data.eventId, category: params.data.category,
-        heatId: body.data.heatId, heatName, updatedAt: new Date(stamp),
+        heatId: null, heatName, proofId, proofOrder, batteryOrder,
+        updatedAt: selected.updatedAt,
       }));
-    } catch { internalError(req, res, "Não foi possível selecionar a bateria ativa."); }
+    } catch (cause) {
+      if (cause instanceof BatteryConflict) d1ApiError(req, res, cause.status, cause.code, cause.message);
+      else internalError(req, res, "Não foi possível selecionar a bateria ativa.");
+    }
+    return true;
+  }
+
+  const activeBatteryMatch = route.match(/^\/events\/([^/]+)\/active-battery$/);
+  if (activeBatteryMatch && req.method === "PUT") {
+    if (!await requireD1Member(req, res, DB, EVENT_ROLES)) return true;
+    const params = SetZero3ActiveBatteryParams.safeParse({eventId:activeBatteryMatch[1]});
+    const body = SetZero3ActiveBatteryBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({error:!params.success?params.error.message:body.error?.message??"Selecione uma bateria válida."});
+      return true;
+    }
+    try {
+      const selected = await selectD1ActiveBattery(DB,params.data.eventId,body.data.heatId);
+      res.json(SetZero3ActiveBatteryResponse.parse(selected));
+    } catch (cause) {
+      if (cause instanceof BatteryConflict) d1ApiError(req,res,cause.status,cause.code,cause.message);
+      else internalError(req,res,"Não foi possível selecionar a bateria ativa.");
+    }
     return true;
   }
 
@@ -522,18 +572,35 @@ export async function handleD1StagingAdmin(
     const params = ListZero3HeatsParams.safeParse({ eventId: match[1] });
     if (!params.success) { res.status(400).json({ error: params.error.message }); return true; }
     try {
-      const heats = await DB.prepare("SELECT * FROM zero3_heats WHERE event_id=? ORDER BY \"order\"")
+      const heats = await DB.prepare(`SELECT h.*,p.proof_order,p.name AS proof_name
+        FROM zero3_heats h LEFT JOIN zero3_proofs p ON p.id=h.proof_id
+        WHERE h.event_id=? ORDER BY p.proof_order,COALESCE(h.battery_order,h."order"),h.category`)
         .bind(params.data.eventId).all<HeatRow>();
+      const publications = await DB.prepare(`SELECT proof_id,battery_order,version,published_at
+        FROM zero3_heat_publications WHERE event_id=?
+        ORDER BY proof_id,battery_order,version DESC`)
+        .bind(params.data.eventId)
+        .all<{proof_id:string;battery_order:number;version:number;published_at:string}>();
+      const latestPublication = new Map<string,{version:number;publishedAt:string}>();
+      for(const publication of publications.results){
+        const key=`${publication.proof_id}:${publication.battery_order}`;
+        if(!latestPublication.has(key))latestPublication.set(key,{version:publication.version,publishedAt:publication.published_at});
+      }
       const payload = [];
       for (const heat of heats.results) {
+        const published=heat.proof_id?latestPublication.get(`${heat.proof_id}:${heat.battery_order??heat.order}`):undefined;
         const entries = await DB.prepare(`SELECT r.*, he.lane_label AS heat_lane_label
           FROM zero3_heat_entries he JOIN zero3_registrations r ON r.id=he.registration_id
-          WHERE he.heat_id=? ORDER BY he.assigned_at`)
+          WHERE he.heat_id=? AND r.confirmation_status<>'CANCELLED' ORDER BY he.assigned_at`)
           .bind(heat.id).all<RegistrationRow & { heat_lane_label: string | null }>();
         payload.push({
-          ...heat,
+          id:heat.id, proofId:heat.proof_id??null, proofName:heat.proof_name??null,
+          proofOrder:heat.proof_order??null, category:heat.category, name:heat.name,
           eventId: heat.event_id,
-          order: heat.order,
+          order: heat.battery_order??heat.order,
+          finalized:Boolean(published),
+          finalizationVersion:published?.version??null,
+          finalizedAt:published?new Date(published.publishedAt):null,
           registrations: await Promise.all(entries.results.map(async (entry) => ({
             ...(await registrationDto(DB, entry)), laneLabel: entry.heat_lane_label,
           }))),
@@ -552,6 +619,10 @@ export async function handleD1StagingAdmin(
     const registrationIds = body.data.registrationIds ?? [];
     if (new Set(registrationIds).size !== registrationIds.length) { res.status(400).json({ error: "Há inscrições duplicadas na bateria." }); return true; }
     try {
+      if (!body.data.proofId) { res.status(400).json({error:"Selecione a prova desta bateria."}); return true; }
+      const proof = await DB.prepare("SELECT id FROM zero3_proofs WHERE id=? AND event_id=?")
+        .bind(body.data.proofId,heatMatch[1]).first<{id:string}>();
+      if (!proof) { res.status(400).json({error:"A prova precisa pertencer ao evento selecionado."}); return true; }
       const rows = registrationIds.length
         ? await DB.prepare(`SELECT * FROM zero3_registrations WHERE event_id=? AND category=?
           AND id IN (${registrationIds.map(() => "?").join(",")})`)
@@ -560,22 +631,65 @@ export async function handleD1StagingAdmin(
       if (rows.results.length !== registrationIds.length) {
         res.status(400).json({ error: "Cada inscrição precisa pertencer ao evento e categoria da bateria." }); return true;
       }
+      const orderRow = await DB.prepare(`SELECT COALESCE(MAX("order"),0)+1 AS next_order
+        FROM zero3_heats WHERE event_id=? AND category=?`)
+        .bind(heatMatch[1],body.data.category).first<{next_order:number}>();
       const heatId = newD1Id();
       const { registrationIds: _ignored, ...heat } = body.data;
       await DB.batch([
-        DB.prepare(`INSERT INTO zero3_heats(id,event_id,category,name,"order") VALUES(?,?,?,?,?)`)
-          .bind(heatId, heatMatch[1], heat.category, heat.name.trim(), heat.order),
+        DB.prepare(`INSERT INTO zero3_heats(id,event_id,category,name,"order",proof_id,battery_order) VALUES(?,?,?,?,?,?,?)`)
+          .bind(heatId, heatMatch[1], heat.category, heat.name.trim(), orderRow?.next_order??1, heat.proofId, heat.order),
         ...rows.results.map((registration) => DB.prepare(`INSERT INTO zero3_heat_entries
           (heat_id,registration_id,lane_label) VALUES(?,?,?)`)
           .bind(heatId, registration.id, registration.lane_label)),
       ]);
       const created = await DB.prepare("SELECT * FROM zero3_heats WHERE id=?").bind(heatId).first<HeatRow>();
+      const proofRow = await DB.prepare("SELECT proof_order,name FROM zero3_proofs WHERE id=?")
+        .bind(created!.proof_id).first<{proof_order:number;name:string}>();
       const response = {
-        ...created, eventId: created!.event_id, order: created!.order,
+        id:created!.id,eventId: created!.event_id,category:created!.category,
+        proofId:created!.proof_id,proofName:proofRow?.name??null,proofOrder:proofRow?.proof_order??null,
+        name:created!.name,order:created!.battery_order??created!.order,
         registrations: await Promise.all(rows.results.map((row) => registrationDto(DB, row))),
       };
       res.status(201).json(CreateZero3HeatResponse.parse(response));
     } catch { d1ApiError(req, res, 409, "HEAT_CONFLICT", "A ordem da bateria já está ocupada ou a operação conflitou."); }
+    return true;
+  }
+
+  const heatProofMatch = route.match(/^\/events\/([^/]+)\/heats\/([^/]+)\/proof$/);
+  if (heatProofMatch && req.method === "PUT") {
+    if (!await requireD1Member(req,res,DB,EVENT_ROLES)) return true;
+    const params=UpdateZero3HeatProofParams.safeParse({eventId:heatProofMatch[1],heatId:heatProofMatch[2]});
+    const body=UpdateZero3HeatProofBody.safeParse(req.body);
+    if(!params.success||!body.success){res.status(400).json({error:!params.success?params.error.message:body.error?.message??"Prova inválida."});return true;}
+    try {
+      const heat=await DB.prepare(`SELECT id,event_id,category,name,"order",proof_id
+        FROM zero3_heats WHERE id=? AND event_id=?`)
+        .bind(params.data.heatId,params.data.eventId)
+        .first<{id:string;event_id:string;category:string;name:string;order:number;proof_id:string|null}>();
+      if(!heat){res.status(404).json({error:"Bateria não encontrada neste evento."});return true;}
+      if(heat.proof_id){res.status(409).json({error:"Esta bateria já está vinculada a uma prova e não pode ser reatribuída."});return true;}
+      const proof=await DB.prepare("SELECT id,proof_order,name FROM zero3_proofs WHERE id=? AND event_id=?")
+        .bind(body.data.proofId,params.data.eventId)
+        .first<{id:string;proof_order:number;name:string}>();
+      if(!proof){res.status(400).json({error:"A prova precisa pertencer ao mesmo evento."});return true;}
+      const results=await DB.prepare("SELECT COUNT(*) AS count FROM zero3_results WHERE heat_id=?")
+        .bind(heat.id).first<{count:number}>();
+      if((results?.count??0)>0){res.status(409).json({error:"A bateria já possui resultados sem vínculo de prova. Ela foi preservada; crie uma nova bateria para evitar reinterpretar o histórico."});return true;}
+      const saved=await DB.prepare(`UPDATE zero3_heats SET proof_id=?,battery_order=?
+        WHERE id=? AND event_id=? AND proof_id IS NULL`)
+        .bind(proof.id,heat.order,heat.id,params.data.eventId).run();
+      if((saved.meta.changes??0)!==1){res.status(409).json({error:"A bateria foi alterada por outra operação."});return true;}
+      const entries=await DB.prepare(`SELECT r.*,he.lane_label AS heat_lane_label FROM zero3_heat_entries he
+        JOIN zero3_registrations r ON r.id=he.registration_id WHERE he.heat_id=?`)
+        .bind(heat.id).all<RegistrationRow&{heat_lane_label:string|null}>();
+      res.json(UpdateZero3HeatProofResponse.parse({
+        id:heat.id,eventId:heat.event_id,category:heat.category,proofId:proof.id,
+        proofName:proof.name,proofOrder:proof.proof_order,name:heat.name,order:heat.order,
+        registrations:await Promise.all(entries.results.map(async entry=>({...await registrationDto(DB,entry),laneLabel:entry.heat_lane_label}))),
+      }));
+    } catch { internalError(req,res,"Não foi possível vincular a bateria à prova."); }
     return true;
   }
 

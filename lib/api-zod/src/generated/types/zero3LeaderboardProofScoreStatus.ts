@@ -12,6 +12,7 @@ export type Zero3LeaderboardProofScoreStatus = typeof Zero3LeaderboardProofScore
 export const Zero3LeaderboardProofScoreStatus = {
   MISSING: 'MISSING',
   PROVISIONAL: 'PROVISIONAL',
+  PUBLICATION_PENDING: 'PUBLICATION_PENDING',
   VALIDATED: 'VALIDATED',
   DNS: 'DNS',
   DNF: 'DNF',

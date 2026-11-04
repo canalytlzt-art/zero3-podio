@@ -19,4 +19,8 @@ export interface Zero3Timer {
   startedAt?: Date | null;
   version: number;
   updatedAt: Date;
+  /** @nullable */
+  proofId?: string | null;
+  /** @nullable */
+  batteryOrder?: number | null;
 }

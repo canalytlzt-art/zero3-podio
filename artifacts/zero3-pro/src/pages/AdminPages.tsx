@@ -6,23 +6,25 @@ import {
   Zero3EventStatus, Zero3ResultStatus, Zero3Role, Zero3TimerCommandAction,
   Zero3RegistrationConfirmationStatus, Zero3RegistrationPaymentStatus,
   getGetZero3DashboardQueryKey, getGetZero3MeQueryKey, getListZero3EventsQueryKey, getListZero3AthletesQueryKey,
-  getListZero3MembersQueryKey, getListZero3HeatsQueryKey, getListZero3RegistrationsQueryKey,
+  getListZero3MembersQueryKey, getListZero3HeatsQueryKey, getListZero3RegistrationsQueryKey, getListZero3ProofsQueryKey,
   getGetZero3PublicBoardQueryKey, getGetZero3PodiumStateQueryKey, getGetZero3RosterManagementQueryKey,
   useGetZero3RosterManagement, useGetZero3PodiumState,
   useHealthCheck, useGetZero3Me, useGetZero3Dashboard, useListZero3Events, useCreateZero3Event,
   useUpdateZero3Event, useListZero3Athletes, useCreateZero3Athlete, useListZero3Members,
-  useSetZero3MemberRole, useListZero3Heats, useCreateZero3Heat, useListZero3Registrations,
+  useSetZero3MemberRole, useListZero3Heats, useCreateZero3Heat, useListZero3Registrations, useListZero3Proofs,
   useCreateZero3Registration, useControlZero3Timer, useCaptureZero3Result, useUpdateZero3Result,
   useUpdateZero3Registration, useUpdateZero3RosterManagement,
   useSetZero3ActiveHeat,
+  useSetZero3ActiveBattery, useUpdateZero3HeatProof, useFinalizeZero3Battery,
   useSaveZero3PodiumDraft, usePublishZero3Podium,
   useGetZero3PublicBoard,
    getZero3EventDeletionBackup, useDeleteZero3Event, useRestoreZero3EventBackup,
 } from '@workspace/api-client-react';
-import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType, Zero3RosterManagementEntry } from '@workspace/api-client-react';
+import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType, Zero3RosterManagementEntry, Zero3Heat } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
 import { AthletePicker } from '@/components/AthletePicker';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
+import { liveBoardHrefForBattery } from '@/lib/live-board-navigation';
 import { pollingIntervalAfterError, shouldRefetchAfterError } from '@/lib/api-error-policy';
 import { normalizeTeamNameInput, teamNameInputError } from '@/lib/roster-management';
 import { describeAthleteReplacement, normalizeAthleteSearch } from '@/lib/athlete-search';
@@ -176,21 +178,137 @@ function Field({label,name,type='text',required=false,placeholder,defaultValue,m
 function Heats({eventId}:{eventId:string}) {
  const q=useListZero3Heats(eventId,{query:{refetchInterval:10000,queryKey:getListZero3HeatsQueryKey(eventId)}});
  const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId)}});
+ const proofs=useListZero3Proofs(eventId,{query:{queryKey:getListZero3ProofsQueryKey(eventId)}});
  const board=useGetZero3PublicBoard({eventId},{query:{queryKey:getGetZero3PublicBoardQueryKey({eventId}),refetchInterval:4000}});
- const create=useCreateZero3Heat();const selectHeat=useSetZero3ActiveHeat();const qc=useQueryClient();const [error,setError]=useState('');
- const activeHeatSelections=board.data?.activeHeats??[];
-  const activate=(heatId:string|null,category:string)=>selectHeat.mutate({eventId,category,data:{heatId}},{onSuccess:()=>qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})}),onError:err=>setError(feedback(err))});
-  return <div className="detail-layout"><section className="panel panel-pad"><h2 className="panel-title">Baterias e exibição da TV</h2>{activeHeatSelections.length>0&&<div className="active-heat-summary">{activeHeatSelections.map(active=><span key={active.category}><b>{active.category}</b> · {active.heatName||'nenhuma bateria na TV'}</span>)}</div>}{q.isLoading?<LoadingRows/>:q.isError?<QueryError retry={()=>q.refetch()}/>: (q.data||[]).length===0?<EmptyState title="Nenhuma bateria montada" detail="Crie as baterias para ordenar a entrada das equipes."/>:<div className="lane-list">{q.data?.slice().sort((a,b)=>a.order-b.order).map(h=>{const active=activeHeatSelections.find(item=>item.category===h.category);const isActive=active?.heatId===h.id;return <div className="lane-card" key={h.id}><span className="lane-tag">#{String(h.order).padStart(2,'0')}</span><div><div className="lane-name">{h.name}</div><div className="lane-meta">{h.category} · {h.registrations.length} inscrições · {isActive?'Exibida na TV':'Histórico preservado'}</div></div><button className={`button small ${isActive?'primary':''}`} disabled={selectHeat.isPending||isActive} onClick={()=>activate(h.id,h.category)}>{isActive?'Na TV':'Exibir na TV'}</button></div>})}</div>}{error&&<p style={{color:'#a34238',fontSize:11,marginTop:12}}>{error}</p>}</section>
-    <form className="panel panel-pad" onSubmit={e=>{e.preventDefault();setError('');const f=new FormData(e.currentTarget);const category=String(f.get('category'));create.mutate({eventId,data:{category,name:String(f.get('name')).trim(),order:Number(f.get('order')),registrationIds:f.getAll('registrationIds').map(String)}},{onSuccess:created=>{qc.invalidateQueries({queryKey:getListZero3HeatsQueryKey(eventId)});const current=board.data?.activeHeats?.find(item=>item.category===created.category);if(!current?.heatId)activate(created.id,created.category);},onError:err=>setError(feedback(err))});}}><h2 className="panel-title">Adicionar bateria</h2><CategorySelect/><Field label="Nome da bateria" name="name" required placeholder="Bateria 01"/><Field label="Ordem" name="order" type="number" min="1" required defaultValue={String((q.data?.length||0)+1)}/><div className="field"><label htmlFor="heat-registrationIds">Inscrições nesta bateria</label><select id="heat-registrationIds" name="registrationIds" multiple style={{minHeight:112}}>{registrations.data?.map(r=><option key={r.id} value={r.id}>{r.category} · {r.laneLabel||'sem raia'} · {r.teamName||r.athleteNames.join(' / ')}</option>)}</select><span className="field-help">As raias cadastradas nas inscrições serão mantidas nesta bateria.</span></div><button className="button primary" disabled={create.isPending}><Plus size={14}/> Criar bateria</button>{error&&<p style={{color:'#a34238',fontSize:11,marginTop:10}}>{error}</p>}</form></div>;
+  const create=useCreateZero3Heat();const selectHeat=useSetZero3ActiveHeat();const selectBattery=useSetZero3ActiveBattery();const linkProof=useUpdateZero3HeatProof();const finalizeBattery=useFinalizeZero3Battery();const qc=useQueryClient();const [error,setError]=useState('');const [category,setCategory]=useState('');const [proofId,setProofId]=useState('');const [legacyProofs,setLegacyProofs]=useState<Record<string,string>>({});const [finalizeConfirmKey,setFinalizeConfirmKey]=useState<string|null>(null);
+ const batteryMode=board.data?.batteryOperationsEnabled===true;
+ const categories=board.data?.event?.categories??[];
+ useEffect(()=>{if(categories.length&&!categories.includes(category))setCategory(categories[0]||'');},[categories,category]);
+ useEffect(()=>{if(proofs.data?.length&&!proofs.data.some(proof=>proof.id===proofId))setProofId(proofs.data.find(proof=>proof.configured)?.id||proofs.data[0]!.id);},[proofs.data,proofId]);
+ const groups=useMemo(()=>{
+  const map=new Map<string,{proofId:string|null;proofName:string|null;proofOrder:number|null;order:number;name:string;heats:Zero3Heat[]}>();
+  for(const heat of q.data||[]){
+   const key=heat.proofId?`${heat.proofId}:${heat.order}`:`legacy:${heat.id}`;
+   const current=map.get(key)||{proofId:heat.proofId??null,proofName:heat.proofName??null,proofOrder:heat.proofOrder??null,order:heat.order,name:heat.name,heats:[]};
+   current.heats.push(heat);map.set(key,current);
+  }
+  return [...map.values()].sort((a,b)=>(a.proofOrder??99)-(b.proofOrder??99)||a.order-b.order||a.name.localeCompare(b.name));
+ },[q.data]);
+ const active=board.data?.activeBattery;
+ const refresh=()=>{void qc.invalidateQueries({queryKey:getListZero3HeatsQueryKey(eventId)});void qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})});};
+ const activateGroup=(heatId:string)=>selectBattery.mutate({eventId,data:{heatId}},{onSuccess:refresh,onError:err=>setError(feedback(err))});
+ const activateLegacy=(heatId:string|null,heatCategory:string)=>selectHeat.mutate({eventId,category:heatCategory,data:{heatId}},{onSuccess:refresh,onError:err=>setError(feedback(err))});
+ const nextBatteryOrder=useMemo(()=>{
+  const rows=(q.data||[]).filter(heat=>heat.proofId===proofId&&heat.category===category);
+  return Math.max(0,...rows.map(heat=>heat.order))+1;
+ },[q.data,proofId,category]);
+ const legacyHasResults=(heatId:string)=>Boolean(board.data?.results.some(result=>result.heatId===heatId));
+ return <div className="detail-layout">
+  <section className="panel panel-pad">
+   <div className="op-section-head"><div><div className="eyebrow">Operação · prova + número</div><h2 className="panel-title">Baterias e TV</h2></div>{active&&<span className="pill">Na TV · P{active.proofOrder} / B{String(active.order).padStart(2,'0')}</span>}</div>
+   {batteryMode&&active&&<div className="active-heat-summary"><span><b>{active.proofName}</b> · Bateria {String(active.order).padStart(2,'0')} · {active.categories.map(categoryName).join(' + ')}</span><span>{active.registrations.length} inscrições</span></div>}
+   {q.isLoading?<LoadingRows/>:q.isError?<QueryError retry={()=>q.refetch()}/>:groups.length===0?<EmptyState title="Nenhuma bateria montada" detail="Crie baterias por prova, número e categoria. A seleção da TV será manual."/>:
+    <div className="lane-list">{batteryMode?groups.map((group,index)=>{
+     const groupActive=Boolean(group.proofId&&active?.proofId===group.proofId&&active.order===group.order);
+     const legacy=group.proofId===null;
+      const assigned=group.heats.flatMap(heat=>heat.registrations.map(reg=>({heat,reg})));
+      const groupKey=group.proofId?`${group.proofId}:${group.order}`:group.heats[0]!.id;
+      const batteryState=groupActive?active:null;
+      const resultRows=assigned.map(({heat,reg})=>{
+       const result=group.proofId?board.data?.results.find(item=>item.registrationId===reg.id&&item.proofId===group.proofId):undefined;
+       const isRightHeat=result?.heatId===heat.id;
+       const value=result?.rawValue;
+       const numericValue=value===null||value===undefined?Number.NaN:Number(value);
+       const validReviewed=Boolean(result&&isRightHeat&&(
+        result.status==='DNS'||result.status==='DNF'||
+        result.status==='VALIDATED'&&Number.isFinite(numericValue)&&numericValue>=0
+       ));
+       const issue=!result?'Faltando':!isRightHeat?'Lançado em outra bateria':
+        result.status==='PROVISIONAL'?'Provisório · aguardando revisão':
+        result.status==='VALIDATED'&&!validReviewed?'Validado sem valor válido':
+        result.status==='DNS'||result.status==='DNF'?`Exceção oficial · ${result.status}`:
+        result.status==='VALIDATED'?'Revisado · Validado':`Pendente · ${pretty(result.status)}`;
+       const proof=proofs.data?.find(item=>item.id===group.proofId);
+       const displayedValue=result?.status==='DNS'||result?.status==='DNF'?result.status:
+        result?.rawValue!=null?`${result.rawValue}${proof?.unit?` ${proof.unit}`:''}`:
+        result?.elapsedMs!=null?formatMs(result.elapsedMs):'—';
+       return {heat,reg,result,validReviewed,issue,displayedValue};
+      });
+      const reviewedCount=resultRows.filter(row=>row.validReviewed).length;
+      const finalizationReady=assigned.length>0&&reviewedCount===assigned.length;
+      const alreadyFinalized=group.heats[0]?.finalized===true;
+      const finalizationCurrent=groupActive?Boolean(batteryState?.finalized&&batteryState.finalizationCurrent):false;
+      const unresolvedTie=Boolean(batteryState?.leaderboards.some(leaderboard=>
+       leaderboard.entries.some(entry=>entry.status==='TIE_RULE_PENDING'||entry.proofScores.some(score=>score.status==='TIE_RULE_PENDING'))
+      ));
+       const unresolvedExceptionRule=Boolean(batteryState?.leaderboards.some(leaderboard=>
+        leaderboard.entries.some(entry=>entry.proofScores.some(score=>score.status==='DNS'||score.status==='DNF'))
+       ));
+      const configuredProof=proofs.data?.some(item=>item.id===group.proofId&&item.configured)===true;
+      const canFinalize=Boolean(groupActive&&group.proofId&&configuredProof&&finalizationReady&&!unresolvedTie&&batteryState?.finalizationFingerprint&&
+       (!batteryState.finalized||!batteryState.finalizationCurrent));
+      const finalizeNow=()=>{
+       if(!group.proofId||!batteryState?.finalizationFingerprint)return;
+       finalizeBattery.mutate({eventId,proofId:group.proofId,batteryOrder:group.order,data:{expectedFingerprint:batteryState.finalizationFingerprint}},{
+        onSuccess:()=>{setFinalizeConfirmKey(null);setError('');refresh();},
+        onError:err=>setError(feedback(err)),
+       });
+      };
+     return <article className="panel panel-pad" key={group.proofId?`${group.proofId}:${group.order}`:group.heats[0]!.id} style={{marginTop:index?10:0}}>
+       <div className="op-section-head"><div><div className="eyebrow">{legacy?'Bateria antiga · sem prova':'P'+group.proofOrder+' · '+group.proofName}</div><h3 className="panel-title" style={{margin:0}}>{group.name||`Bateria ${String(group.order).padStart(2,'0')}`}</h3></div><div className="toolbar"><span className={`pill ${groupActive&&finalizationCurrent||alreadyFinalized?'':'warn'}`}>{groupActive?(finalizationCurrent?'Finalizada':batteryState?.finalized?'Correção pendente de publicação':`${reviewedCount} de ${assigned.length} resultados revisados`):alreadyFinalized?'Finalizada':'Não finalizada'}</span><button className={`button small ${groupActive?'primary':''}`} disabled={selectBattery.isPending||legacy||groupActive} onClick={()=>activateGroup(group.heats[0]!.id)}>{groupActive?'Na TV':'Colocar na TV'}</button></div></div>
+       <div className="toolbar" style={{margin:'8px 0'}}>{group.heats.map(heat=><span className="pill neutral" key={heat.id}>{categoryName(heat.category)} · {heat.registrations.length}</span>)}<span className="field-help">{assigned.length} inscritos · {reviewedCount} revisados</span></div>
+      {legacy&&<div className="toolbar"><select aria-label={`Vincular prova à bateria ${group.name}`} value={legacyProofs[group.heats[0]!.id]||''} onChange={event=>setLegacyProofs(current=>({...current,[group.heats[0]!.id]:event.target.value}))}><option value="">Escolha a prova para vincular</option>{proofs.data?.map(proof=><option key={proof.id} value={proof.id}>{String(proof.order).padStart(2,'0')} · {proof.name||'Prova sem nome'}</option>)}</select><button className="button small" disabled={!legacyProofs[group.heats[0]!.id]||linkProof.isPending||group.heats.some(heat=>legacyHasResults(heat.id))} onClick={()=>linkProof.mutate({eventId,heatId:group.heats[0]!.id,data:{proofId:legacyProofs[group.heats[0]!.id]!}},{onSuccess:()=>{setLegacyProofs(current=>({...current,[group.heats[0]!.id]:''}));refresh();},onError:err=>setError(feedback(err))})}>Vincular prova</button>{group.heats.some(heat=>legacyHasResults(heat.id))&&<span className="field-help">Não é possível reclassificar baterias com resultados antigos.</span>}</div>}
+       <div className="lane-list">{group.heats.map(heat=><div key={heat.id} className="battery-category-group"><div className="eyebrow">{categoryName(heat.category)}</div>{heat.registrations.length?heat.registrations.map(reg=>{
+        const row=resultRows.find(item=>item.heat.id===heat.id&&item.reg.id===reg.id)!;
+        const operationHref=`/operacao?eventId=${encodeURIComponent(eventId)}&proofId=${encodeURIComponent(group.proofId||'')}&registrationId=${encodeURIComponent(reg.id)}`;
+        return <div className="lane-card" key={reg.id}><span className="lane-tag">{reg.laneLabel||'—'}</span><div style={{minWidth:0,flex:1}}><div className="lane-name">{reg.teamName||reg.athleteNames.join(' / ')}</div><div className="lane-meta">{reg.athleteNames.join(' · ')}</div><div className="lane-meta"><strong>{row.displayedValue}</strong> · {row.issue}</div></div><Link className="button small" href={operationHref} target="_blank" rel="noopener noreferrer">{row.result?'Revisar':'Lançar'}</Link></div>;
+       }):<div className="op-inline-empty">Nenhuma inscrição nesta categoria.</div>}</div>)}</div>
+       {batteryMode&&!legacy&&<div className="panel panel-pad" style={{marginTop:12,borderColor:groupActive&&finalizationCurrent?'#71957c':undefined}}>
+        <div className="op-section-head"><div><div className="eyebrow">Revisão da bateria</div><strong>{reviewedCount} de {assigned.length} resultados revisados</strong></div><span className={`pill ${finalizationCurrent?'':'warn'}`}>{finalizationCurrent?'Finalizada':alreadyFinalized?'Nova publicação necessária':'Pendente'}</span></div>
+        {!finalizationReady&&<p className="field-help">Revise os resultados pendentes acima. São aceitos resultados validados com valor válido ou as exceções oficiais DNS/DNF.</p>}
+        {!configuredProof&&<p className="field-help">Configure a métrica da prova antes de finalizar.</p>}
+        {unresolvedTie&&<p className="field-help">O critério oficial de desempate ainda precisa ser resolvido.</p>}
+        {unresolvedExceptionRule&&<p className="field-help">Há DNS/DNF sem regra de pontuação configurada. A lista da bateria pode ser publicada, mas o pódio e a classificação geral ficarão pendentes.</p>}
+        <button className={`button ${canFinalize?'primary':''}`} disabled={!canFinalize||finalizeBattery.isPending} onClick={()=>setFinalizeConfirmKey(groupKey)}>
+         {finalizeBattery.isPending?'Publicando…':finalizationCurrent?'Finalizada':alreadyFinalized?'Confirmar nova publicação':finalizationReady?groupActive?'Finalizar bateria':'Coloque na TV para finalizar':'Resultados pendentes'}
+        </button>
+        {finalizeConfirmKey===groupKey&&<div role="alertdialog" aria-label="Confirmar finalização da bateria" className="panel panel-pad" style={{marginTop:10}}>
+         <strong>Confirmar publicação da bateria?</strong>
+          <p className="field-help">{group.proofName} · {group.name||`Bateria ${String(group.order).padStart(2,'0')}`} · {reviewedCount} de {assigned.length} resultados revisados. A lista completa será publicada na TV{unresolvedExceptionRule?'; o pódio e a classificação geral ficarão pendentes devido à regra de DNS/DNF não configurada':', com pódio calculado pelas regras da prova'}.</p>
+         <div className="toolbar"><button type="button" className="button primary" disabled={!canFinalize||finalizeBattery.isPending} onClick={finalizeNow}>Confirmar e publicar</button><button type="button" className="button" onClick={()=>setFinalizeConfirmKey(null)}>Cancelar</button></div>
+        </div>}
+       </div>}
+       {group.proofId&&(finalizationCurrent||alreadyFinalized)&&<div className="toolbar" style={{marginTop:10}}>
+        <span className={`pill ${finalizationCurrent?'':'warn'}`}>{finalizationCurrent?'Publicação atual disponível':'Publicação anterior disponível'}</span>
+        <Link className="button small" href={liveBoardHrefForBattery(eventId,group.proofId,group.order)} target="_blank" rel="noopener noreferrer" data-testid={`link-published-battery-${group.proofId}-${group.order}`}>Ver resultado da bateria</Link>
+       </div>}
+     </article>;
+    }):q.data?.map(heat=>{const selected=board.data?.activeHeats.find(item=>item.category===heat.category);const isActive=selected?.heatId===heat.id;return <div className="lane-card" key={heat.id}><span className="lane-tag">#{String(heat.order).padStart(2,'0')}</span><div><div className="lane-name">{heat.name}</div><div className="lane-meta">{categoryName(heat.category)} · {heat.registrations.length} inscrições · {isActive?'Exibida na TV':'Histórico preservado'}</div></div><button className={`button small ${isActive?'primary':''}`} disabled={selectHeat.isPending||isActive} onClick={()=>activateLegacy(heat.id,heat.category)}>{isActive?'Na TV':'Exibir na TV'}</button></div>})}</div>}
+   {error&&<p role="alert" style={{color:'#a34238',fontSize:11,marginTop:12}}>{error}</p>}
+  </section>
+  <form className="panel panel-pad" onSubmit={event=>{
+   event.preventDefault();setError('');const f=new FormData(event.currentTarget);const selectedCategory=String(f.get('category'));
+   const data={category:selectedCategory,name:String(f.get('name')).trim(),order:Number(f.get('order')),registrationIds:f.getAll('registrationIds').map(String),...(batteryMode?{proofId:String(f.get('proofId'))}:{})};
+   create.mutate({eventId,data},{onSuccess:()=>{refresh();setError('');},onError:err=>setError(feedback(err))});
+  }}>
+   <h2 className="panel-title">Adicionar bateria por categoria</h2>
+   {batteryMode&&<div className="field"><label htmlFor="heat-proof">Prova</label><select id="heat-proof" name="proofId" value={proofId} onChange={event=>setProofId(event.target.value)} required>{proofs.data?.map(proof=><option key={proof.id} value={proof.id}>{String(proof.order).padStart(2,'0')} · {proof.name||'Definição pendente'}</option>)}</select></div>}
+   <div className="field"><label htmlFor="heat-category">Categoria</label><select id="heat-category" name="category" value={category||categories[0]||''} onChange={event=>setCategory(event.target.value)} required>{categories.map(value=><option key={value} value={value}>{categoryName(value)}</option>)}</select></div>
+   <Field label="Nome da bateria" name="name" required placeholder="Bateria 01"/>
+   <Field label={batteryMode?'Número da bateria':'Ordem'} name="order" type="number" min="1" required defaultValue={String(batteryMode?nextBatteryOrder:(q.data?.length||0)+1)}/>
+   <div className="field"><label htmlFor="heat-registrationIds">Inscrições nesta categoria</label><select id="heat-registrationIds" name="registrationIds" multiple style={{minHeight:112}}>{registrations.data?.filter(reg=>reg.category===category).map(reg=><option key={reg.id} value={reg.id}>{reg.laneLabel||'sem raia'} · {reg.teamName||reg.athleteNames.join(' / ')}</option>)}</select><span className="field-help">Para montar uma bateria mista, crie uma linha para cada categoria com o mesmo número e prova.</span></div>
+   <button className="button primary" disabled={create.isPending||!category||batteryMode&&!proofId}><Plus size={14}/> Criar bateria</button>{error&&<p role="alert" style={{color:'#a34238',fontSize:11,marginTop:10}}>{error}</p>}
+  </form>
+ </div>;
 }
 
 function CategorySelect(){
  const {eventId}=useParams<{eventId:string}>();
  const events=useListZero3Events();
-  const categories=events.data?.find(event=>event.id===eventId)?.categories??[];
-  const [category,setCategory]=useState('');
-  useEffect(()=>{if(categories.length&&!categories.includes(category))setCategory(categories[0]);},[categories,category]);
-  return <div className="field"><label htmlFor="category">Categoria</label><select id="category" name="category" value={category||categories[0]||''} onChange={e=>setCategory(e.target.value)}>{categories.map(value=><option key={value} value={value}>{categoryName(value)}</option>)}</select></div>;
+ const categories=events.data?.find(event=>event.id===eventId)?.categories??[];
+ const [category,setCategory]=useState('');
+ useEffect(()=>{if(categories.length&&!categories.includes(category))setCategory(categories[0]||'');},[categories,category]);
+ return <div className="field"><label htmlFor="category">Categoria</label><select id="category" name="category" value={category||categories[0]||''} onChange={event=>setCategory(event.target.value)}>{categories.map(value=><option key={value} value={value}>{categoryName(value)}</option>)}</select></div>;
 }
 
 function Registrations({eventId}:{eventId:string}) {
@@ -373,11 +491,13 @@ function Registrations({eventId}:{eventId:string}) {
 
 function TimerControl({eventId,event}:{eventId:string;event?:Zero3Event}) {
  const board=useGetZero3PublicBoard({eventId},{query:{refetchInterval:1500,queryKey:getGetZero3PublicBoardQueryKey({eventId})}});const command=useControlZero3Timer();const qc=useQueryClient();const timer=board.data?.timer;
+  const activeBattery=board.data?.activeBattery;
+  const batteryMode=board.data?.batteryOperationsEnabled===true;
  const doAction=(action:typeof Zero3TimerCommandAction[keyof typeof Zero3TimerCommandAction])=>command.mutate({eventId,data:{action,expectedVersion:timer?.version??0,commandId:crypto.randomUUID()}},{onSuccess:()=>qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})})});
   const actions=timer?.state==='RUNNING'?[['pause','Pausar',Pause],['finish','Encerrar',Square]]:timer?.state==='PAUSED'?[['resume','Retomar',Play],['reset','Zerar',RotateCcw]]:timer?.state==='PREPARATION'?[['reset','Cancelar preparação',RotateCcw]]:[['prepare','Preparar',TimerIcon],['start','Iniciar',Play]];
   const timerValue=timer?.state==='PREPARATION'?timer.preparationRemainingMs:timer?.elapsedMs;
-  return <div className="detail-layout"><section className="panel panel-pad"><div className="timer-display"><div className="timer-state">{timer?.state||'IDLE'} · V{timer?.version??'—'}</div><div className="timer-time">{formatMs(timerValue)}</div><div className="lede">{timer?.state==='PREPARATION'?`Preparação · ${Math.ceil((timer.preparationRemainingMs||0)/1000)}s restantes`:timer?`Preparação configurada: ${timer.preparationSeconds}s`:'Aguardando sincronização do cronômetro'}</div></div><div className="timer-actions">{actions.map(([action,label,Icon])=>{const I=Icon as typeof Play;return <button key={String(action)} className={`button ${action==='start'||action==='resume'?'primary':''}`} disabled={!timer||command.isPending} onClick={()=>doAction(action as typeof Zero3TimerCommandAction[keyof typeof Zero3TimerCommandAction])}><I size={14}/>{String(label)}</button>})}</div>{command.isError&&<div className="error-box" style={{marginTop:15}}>Falha no comando · {feedback(command.error)}<button className="button small" onClick={()=>board.refetch()}><RotateCw size={13}/> Atualizar</button></div>}</section>
- <section className="panel panel-pad"><h2 className="panel-title">Estado compartilhado</h2><div className="lane-list"><div className="lane-card"><span className="lane-tag">EVT</span><div><div className="lane-name">{event?.name||'Evento'}</div><div className="lane-meta">{event?.proofName||'Prova'}</div></div></div><div className="lane-card"><span className="lane-tag">SYNC</span><div><div className="lane-name">{board.isError?'Sem conexão':board.isFetching?'Sincronizando':'Ao vivo'}</div><div className="lane-meta">Atualização automática · 1,5 s</div></div></div></div><p className="notice" style={{marginTop:16}}>Os comandos do cronômetro são versionados no servidor. Em conflito, atualize o estado e tente novamente.</p></section></div>;
+   return <div className="detail-layout"><section className="panel panel-pad"><div className="timer-display"><div className="timer-state">{timer?.state||'IDLE'} · V{timer?.version??'—'}</div><div className="timer-time">{formatMs(timerValue)}</div><div className="lede">{batteryMode?activeBattery?`${activeBattery.proofName} · Bateria ${String(activeBattery.order).padStart(2,'0')}`:'Selecione uma bateria em Baterias antes de iniciar o cronômetro.':timer?.state==='PREPARATION'?`Preparação · ${Math.ceil((timer.preparationRemainingMs||0)/1000)}s restantes`:timer?`Preparação configurada: ${timer.preparationSeconds}s`:'Aguardando sincronização do cronômetro'}</div></div><div className="timer-actions">{actions.map(([action,label,Icon])=>{const I=Icon as typeof Play;return <button key={String(action)} className={`button ${action==='start'||action==='resume'?'primary':''}`} disabled={!timer||command.isPending} onClick={()=>doAction(action as typeof Zero3TimerCommandAction[keyof typeof Zero3TimerCommandAction])}><I size={14}/>{String(label)}</button>})}</div>{command.isError&&<div className="error-box" style={{marginTop:15}}>Falha no comando · {feedback(command.error)}<button className="button small" onClick={()=>board.refetch()}><RotateCw size={13}/> Atualizar</button></div>}</section>
+  <section className="panel panel-pad"><h2 className="panel-title">Estado compartilhado</h2><div className="lane-list"><div className="lane-card"><span className="lane-tag">EVT</span><div><div className="lane-name">{event?.name||'Evento'}</div><div className="lane-meta">{event?.proofName||'Prova'}</div></div></div>{batteryMode&&<div className="lane-card"><span className="lane-tag">BAT</span><div><div className="lane-name">{activeBattery?`${activeBattery.proofName} · ${String(activeBattery.order).padStart(2,'0')}`:'Nenhuma selecionada'}</div><div className="lane-meta">{activeBattery?.categories.map(categoryName).join(' + ')||'Escolha em Operação → Baterias'}</div></div></div>}<div className="lane-card"><span className="lane-tag">SYNC</span><div><div className="lane-name">{board.isError?'Sem conexão':board.isFetching?'Sincronizando':'Ao vivo'}</div><div className="lane-meta">Atualização automática · 1,5 s</div></div></div></div><p className="notice" style={{marginTop:16}}>O cronômetro é isolado por prova e número da bateria. Os comandos são versionados; em conflito, atualize e tente novamente.</p></section></div>;
 }
 
 function Results({eventId}:{eventId:string}) {

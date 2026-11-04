@@ -452,6 +452,81 @@ input[aria-invalid="true"] {border-color:#a34238}
  .import-finalize {grid-template-columns:1fr}.excluded-note {grid-template-columns:1fr;gap:5px}
 }
 
+/* One-TV battery view stays compact; complete battery and event rankings live on /placar-ao-vivo. */
+.tv-board {height:auto;min-height:calc(100dvh - 44px)}
+.tv-battery-board,.tv-overall-section {border:1px solid #343936;border-radius:8px;background:#1c1f1d;padding:clamp(12px,1.6vw,22px);margin-top:14px}
+.tv-battery-heading {display:flex;align-items:center;justify-content:space-between;gap:20px;border-bottom:1px solid #353936;padding-bottom:12px;margin-bottom:12px}
+.tv-battery-heading h1 {font-size:clamp(22px,3vw,40px);line-height:1.06;margin:4px 0;font-weight:850;letter-spacing:-.04em}
+.tv-battery-heading p {color:#a4a8a1;font-size:12px;margin:5px 0 0}
+.tv-battery-actions {display:flex;align-items:center;gap:12px}
+.tv-live-board-link {display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #565b56;border-radius:5px;background:#252926;color:#e8e6df;text-decoration:none;font:700 9px var(--font-data);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.tv-live-board-link:hover {border-color:#8aab91;color:#d7ead9}
+.tv-live-board-link:focus-visible {outline:3px solid #9ab5a0;outline-offset:2px}
+.tv-live-board-callout {display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:14px;padding:14px 16px;border:1px solid #343936;border-radius:6px;background:#1c1f1d;color:#c5c8c1;font-size:12px}
+.tv-live-board-callout a {color:#d7ead9;text-decoration:none;font-weight:750}
+.tv-live-board-callout a:hover {text-decoration:underline}
+.tv-battery-kicker {font:10px var(--font-data);letter-spacing:.14em;color:#bdbfba;text-transform:uppercase}
+.tv-battery-state {border:1px solid #4a4e4a;border-radius:5px;padding:9px 12px;color:#d7d8d2;font:700 10px var(--font-data);letter-spacing:.1em;white-space:nowrap}
+.tv-battery-state.running {border-color:#8eae95;color:#c8e0cc}
+.tv-battery-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,500px),1fr));gap:12px}
+.tv-battery-category {min-width:0;border:1px solid #383d39;border-radius:6px;background:#222522;padding:12px}
+.tv-battery-category header {display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #3a3e3b;padding-bottom:8px}
+.tv-battery-category .tv-category {font-size:25px}
+.tv-battery-category-count {font:9px var(--font-data);letter-spacing:.1em;color:#a2a69f}
+.tv-battery-table-head,.tv-battery-team {display:grid;grid-template-columns:44px minmax(0,1fr) minmax(76px,.55fr) minmax(84px,.6fr);gap:8px;align-items:center}
+.tv-battery-table-head {padding:9px 4px 7px;color:#92968f;font:8px var(--font-data);letter-spacing:.1em}
+.tv-battery-team-list {min-height:30px}
+.tv-battery-team {min-height:58px;padding:8px 4px;border-bottom:1px solid #353936}
+.tv-battery-team.fresh {animation:tv-result-arrival 1.5s ease-out}
+.tv-battery-result {font:700 clamp(12px,1.25vw,17px) var(--font-data);font-variant-numeric:tabular-nums;text-align:center}
+.tv-battery-status {font:700 8px var(--font-data);letter-spacing:.05em;color:#b7d3bb;text-align:right}
+.tv-battery-status.provisional {color:#d0bddf}
+.tv-panel-sc .tv-battery-category-count {color:#c5b5d5}
+.tv-panel-rx .tv-battery-category-count {color:#b7d3bb}
+.tv-battery-category .tv-lane {width:40px;font-size:11px;padding:7px 0}
+.tv-heat-podium {margin-top:10px;padding:9px;border:1px solid #383d39;border-radius:5px;background:#252926}
+.tv-heat-podium .tv-podium-list {padding-top:8px}
+.tv-heat-podium .tv-podium-empty {min-height:38px;padding:10px 4px;text-align:left;font-size:10px}
+.tv-battery-empty {padding:24px 8px;text-align:center;color:#a1a59e;font-size:13px}
+.tv-completed-batteries {margin-top:14px;border-top:1px solid #383d39;padding-top:12px}
+.tv-completed-battery {margin-top:8px;border:1px solid #383d39;border-radius:5px;background:#202321;padding:10px}
+.tv-completed-battery header {display:flex;justify-content:space-between;gap:12px;color:#ebe9e1;font-size:12px}
+.tv-completed-battery header span {font:9px var(--font-data);letter-spacing:.08em;color:#a3c7a9}
+.tv-completed-battery-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-top:8px}
+.tv-completed-results {display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-top:14px}
+.tv-completed-results-category {min-width:0}
+.tv-completed-result {display:grid;grid-template-columns:52px minmax(0,1fr) minmax(70px,auto) minmax(86px,auto);align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--tv-line,#333)}
+.tv-completed-result>span:nth-child(2) {min-width:0}
+.tv-completed-result strong,.tv-completed-result small {display:block;overflow-wrap:anywhere}
+.tv-completed-result small {color:var(--tv-muted,#9ca0a5);font-size:11px;margin-top:3px}
+@media(max-width:720px) {
+  .tv-completed-results {grid-template-columns:1fr}
+  .tv-completed-result {grid-template-columns:44px minmax(0,1fr) 62px}
+  .tv-completed-result>span:last-child {grid-column:2 / 4}
+}
+.tv-completed-category {display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:10px}
+.tv-completed-category>b {min-width:26px;color:#c9b8dc}
+.tv-completed-category>b.rx {color:#b7d3bb}
+.tv-completed-place {color:#e5e4de}
+.tv-completed-pending {color:#c9b8dc}
+.tv-overall-section {padding:12px;border-color:#2e332f;background:#171a18}
+.tv-overall-section>.tv-battery-kicker {margin:2px 2px 0}
+.tv-overall-section .tv-panels {padding-top:10px}
+.battery-category-group {margin:6px 0 12px;padding:9px;border:1px solid var(--line);border-radius:7px;background:#121614}
+.battery-category-group>.eyebrow {margin-bottom:5px}
+
+@media(max-width:800px) {
+  .tv-battery-grid {grid-template-columns:1fr}
+  .tv-battery-heading {align-items:flex-start;flex-direction:column}
+  .tv-battery-actions {width:100%;justify-content:space-between}
+  .tv-live-board-link {padding:9px;font-size:8px}
+  .tv-live-board-callout {align-items:flex-start;flex-direction:column}
+  .tv-battery-table-head,.tv-battery-team {grid-template-columns:40px minmax(0,1fr) minmax(70px,.55fr) minmax(72px,.6fr);gap:5px}
+  .tv-battery-team .tv-score-team strong {font-size:12px}
+  .tv-battery-team .tv-score-team small {font-size:9px}
+  .tv-completed-battery header {align-items:flex-start;flex-direction:column}
+}
+
 /* TV legibility: use the full 16:9 canvas and keep the published podium anchored. */
 .tv-root {display:flex;padding:22px clamp(20px,3vw,54px)}
 .tv-board {width:min(100%,1800px);height:calc(100dvh - 44px);min-height:560px;display:flex;flex-direction:column}
@@ -519,7 +594,10 @@ input[aria-invalid="true"] {border-color:#a34238}
   .tv-board {width:100%;height:auto;min-height:0}
   .tv-header {padding:7px 0 14px}
   .tv-logo {width:120px;height:34px}
-  .tv-clock-section {padding:24px 0 84px}
+  .tv-clock-section {display:flex;flex-direction:column;align-items:center;gap:14px;padding:24px 0}
+  .tv-clock-block {order:1}
+  .tv-timer-box {position:static;order:2;align-self:flex-start;transform:none;margin:0}
+  .tv-event-status {position:static;order:3;align-self:flex-end}
   .tv-panels {flex:none;gap:12px}
   .tv-panel {min-height:360px;padding:12px}
   .tv-score-head,.tv-score-row {min-width:720px}

@@ -125,7 +125,7 @@ test("provisional results are visible as progress but do not earn placement poin
   const alpha = board.entries.find((entry) => entry.registrationId === "rx-Alfa");
   assert.equal(alpha?.proofScores[0]?.status, "PROVISIONAL");
   assert.equal(alpha?.proofScores[0]?.points, null);
-  assert.equal(alpha?.completedProofs, 4);
+  assert.equal(alpha?.completedProofs, 3);
   assert.equal(alpha?.overallPlace, null);
 });
 
@@ -174,4 +174,64 @@ test("recomputes from corrected values rather than accumulating old points", () 
   assert.equal(first.entries.find((entry) => entry.registrationId === "rx-Bravo")?.proofScores[0]?.points, 2);
   assert.equal(second.entries.find((entry) => entry.registrationId === "rx-Bravo")?.proofScores[0]?.points, 1);
   assert.equal(second.entries.find((entry) => entry.registrationId === "rx-Bravo")?.totalPoints, 7);
+});
+
+test("a tie in the four-proof sum signals the missing official tie rule", () => {
+  const ranksByProof = [
+    [1, 2, 3, 4, 5],
+    [2, 1, 3, 4, 5],
+    [3, 4, 1, 2, 5],
+    [4, 3, 1, 2, 5],
+  ];
+  const scRegistrations = registrations.filter((registration) => registration.category === "SC");
+  const results = scRegistrations.flatMap((registration, teamIndex) =>
+    proofs.map((proof, proofIndex) => {
+      const rank = ranksByProof[proofIndex]?.[teamIndex];
+      assert.ok(rank !== undefined);
+      return {
+        id: `${registration.id}-${proof.id}`,
+        registrationId: registration.id,
+        proofId: proof.id,
+        rawValue: proof.direction === "LOWER" ? rank : 6 - rank,
+        status: "VALIDATED",
+      };
+    }),
+  );
+  const board = calculateCategoryLeaderboard({
+    category: "SC",
+    eventStatus: "FINISHED",
+    proofs,
+    registrations,
+    results,
+  });
+  const alfa=board.entries.find((entry)=>entry.teamName==="Alfa");
+  const bravo=board.entries.find((entry)=>entry.teamName==="Bravo");
+  assert.equal(board.status, "TIE_RULE_PENDING");
+  assert.equal(alfa?.totalPoints,10);
+  assert.equal(bravo?.totalPoints,10);
+  assert.equal(alfa?.status,"TIE_RULE_PENDING");
+  assert.equal(alfa?.overallPlace, null);
+});
+
+test("DNS/DNF without an event exception rule cannot make the classification final", () => {
+  const results = resultRows().filter((result) => result.registrationId !== "rx-Delta");
+  results.push({
+    id: "rx-Delta-p1",
+    registrationId: "rx-Delta",
+    proofId: "p1",
+    rawValue: null,
+    status: "DNF",
+  });
+  const board = calculateCategoryLeaderboard({
+    category: "RX",
+    eventStatus: "FINISHED",
+    proofs,
+    registrations,
+    results,
+  });
+  const delta = board.entries.find((entry) => entry.registrationId === "rx-Delta");
+  assert.equal(board.status, "EXCEPTION_RULE_PENDING");
+  assert.equal(delta?.status, "EXCEPTION_RULE_PENDING");
+  assert.equal(delta?.completedProofs, 0);
+  assert.equal(delta?.totalPoints, null);
 });

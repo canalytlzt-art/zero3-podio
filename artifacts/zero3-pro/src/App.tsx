@@ -16,6 +16,7 @@ import { DashboardPage, EventDetailPage, EventsPage, MembersPage, RosterPage } f
 import { RosterManagePage } from '@/pages/RosterManagePage';
 import { RosterImportPage } from '@/pages/RosterImportPage';
 import { PublicTV } from '@/pages/PublicTV';
+import { LiveBoardPage } from '@/pages/LiveBoardPage';
 import { OperationPage } from '@/pages/OperationPage';
 import {
   canonicalClerkSearch,
@@ -206,6 +207,7 @@ function AppRoutes(){
       <Route path="/" component={AdminEntryRedirect}/>
       <Route path="/inicio" component={AdminEntryRedirect}/>
       <Route path="/tv" component={PublicTV}/>
+      <Route path="/placar-ao-vivo" component={LiveBoardPage}/>
       <Route path="/operacao"><Protected><OperationPage/></Protected></Route>
       <Route path="/sign-in/*?" component={SignInPage}/>
       <Route path="/sign-up/*?" component={SignUpPage}/>

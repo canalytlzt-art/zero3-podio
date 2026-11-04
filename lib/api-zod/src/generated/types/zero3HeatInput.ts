@@ -9,6 +9,7 @@ import type { Zero3Category } from './zero3Category';
 
 export interface Zero3HeatInput {
   category: Zero3Category;
+  proofId?: string;
   /** @minLength 1 */
   name: string;
   /** @minimum 1 */

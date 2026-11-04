@@ -1,7 +1,7 @@
 export const ZERO3_EVENT_BACKUP_FORMAT = "zero3-event-backup";
-export const ZERO3_EVENT_BACKUP_VERSION = 1;
+export const ZERO3_EVENT_BACKUP_VERSION = 3;
 
-export const ZERO3_EVENT_BACKUP_COLLECTIONS = [
+const ZERO3_EVENT_BACKUP_COLLECTIONS_V1 = [
   "athletes",
   "proofs",
   "registrations",
@@ -17,6 +17,14 @@ export const ZERO3_EVENT_BACKUP_COLLECTIONS = [
   "resultRevisions",
   "timers",
   "podiumVersions",
+] as const;
+const ZERO3_EVENT_BACKUP_COLLECTIONS_V2 = [
+  ...ZERO3_EVENT_BACKUP_COLLECTIONS_V1,
+  "heatRuns",
+] as const;
+export const ZERO3_EVENT_BACKUP_COLLECTIONS = [
+  ...ZERO3_EVENT_BACKUP_COLLECTIONS_V2,
+  "heatPublications",
 ] as const;
 
 export type EventBackupRow = Record<string, unknown>;
@@ -46,6 +54,8 @@ const JSON_COLUMN_NAMES = new Set([
   "athlete_ids_snapshot",
   "athlete_names_snapshot",
   "registration_ids",
+  "results_json",
+  "leaderboards_json",
 ]);
 
 function stableValue(value: unknown): unknown {
@@ -79,26 +89,27 @@ function toDatabaseRow(row: EventBackupRow): EventBackupRow {
   }));
 }
 
-export function normalizeZero3BackupData(data: Zero3EventBackupData): Zero3EventBackupData {
-  const normalized = {
-    event: toDatabaseRow(data.event),
-    ...Object.fromEntries(
-      ZERO3_EVENT_BACKUP_COLLECTIONS.map((collection) => [
-        collection,
-        data[collection].map(toDatabaseRow),
-      ]),
-    ),
-  } as Zero3EventBackupData;
+function normalizeCollections(data: Record<string, unknown>, collections: readonly string[]) {
+  const normalized: Record<string, unknown> = {
+    event: toDatabaseRow(data.event as EventBackupRow),
+  };
+  for (const collection of collections) {
+    normalized[collection] = ((data[collection] as EventBackupRow[] | undefined) ?? []).map(toDatabaseRow);
+  }
 
-  for (const collection of ZERO3_EVENT_BACKUP_COLLECTIONS) {
-    normalized[collection].sort((left, right) =>
+  for (const collection of collections) {
+    (normalized[collection] as EventBackupRow[]).sort((left, right) =>
       stableZero3Json(left).localeCompare(stableZero3Json(right)),
     );
   }
   return normalized;
 }
 
-function digestPayload(backup: Omit<Zero3EventBackup, "digest" | "exportedAt">): string {
+export function normalizeZero3BackupData(data: Zero3EventBackupData): Zero3EventBackupData {
+  return normalizeCollections(data as unknown as Record<string, unknown>, ZERO3_EVENT_BACKUP_COLLECTIONS) as Zero3EventBackupData;
+}
+
+function digestPayload(backup: {format:string;version:number;eventId:string;eventName:string;counts:Record<string,number>;data:unknown}): string {
   return stableZero3Json(backup);
 }
 
@@ -151,10 +162,12 @@ export async function validateZero3EventBackup(
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { ok: false, reason: "O arquivo não contém um objeto de backup." };
   }
-  const candidate = value as Partial<Zero3EventBackup>;
+  const candidate = value as Partial<Zero3EventBackup> & {version?:number;data?:Record<string,unknown>};
+  const version = (value as {version?:unknown}).version;
+  const versionNumber = version === 1 || version === 2 || version === ZERO3_EVENT_BACKUP_VERSION ? version : null;
   if (
     candidate.format !== ZERO3_EVENT_BACKUP_FORMAT ||
-    candidate.version !== ZERO3_EVENT_BACKUP_VERSION ||
+    versionNumber === null ||
     typeof candidate.eventId !== "string" ||
     typeof candidate.eventName !== "string" ||
     typeof candidate.exportedAt !== "string" ||
@@ -166,37 +179,70 @@ export async function validateZero3EventBackup(
   ) {
     return { ok: false, reason: "Formato de backup ZERO3 não reconhecido." };
   }
-  const data = candidate.data as Zero3EventBackupData;
+  const sourceCollections = versionNumber === 1
+    ? ZERO3_EVENT_BACKUP_COLLECTIONS_V1
+    : versionNumber === 2
+      ? ZERO3_EVENT_BACKUP_COLLECTIONS_V2
+      : ZERO3_EVENT_BACKUP_COLLECTIONS;
+  const data = candidate.data;
   if (!data.event || typeof data.event !== "object" ||
-      String(data.event.id) !== candidate.eventId ||
-      String(data.event.name) !== candidate.eventName ||
-      ZERO3_EVENT_BACKUP_COLLECTIONS.some((collection) => !Array.isArray(data[collection]))) {
+      String((data.event as Record<string,unknown>).id) !== candidate.eventId ||
+      String((data.event as Record<string,unknown>).name) !== candidate.eventName ||
+      sourceCollections.some((collection) => !Array.isArray(data[collection]))) {
     return { ok: false, reason: "O backup está incompleto ou foi alterado." };
   }
-  const normalizedData = normalizeZero3BackupData(data);
-  const counts = {
+  const normalizedSource = normalizeCollections(data,sourceCollections);
+  const sourceCounts = {
     event: 1,
     ...Object.fromEntries(
-      ZERO3_EVENT_BACKUP_COLLECTIONS.map((collection) => [
+      sourceCollections.map((collection) => [
         collection,
-        normalizedData[collection].length,
+        (normalizedSource[collection] as EventBackupRow[]).length,
       ]),
     ),
   };
-  if (stableZero3Json(candidate.counts) !== stableZero3Json(counts)) {
+  if (stableZero3Json(candidate.counts) !== stableZero3Json(sourceCounts)) {
     return { ok: false, reason: "As contagens do backup não correspondem aos registros." };
   }
-  const digest = await sha256Hex(digestPayload({
+  const sourceDigest = await sha256Hex(digestPayload({
     format: candidate.format,
-    version: candidate.version,
+    version: versionNumber,
     eventId: candidate.eventId,
     eventName: candidate.eventName,
-    counts,
-    data: normalizedData,
+    counts: sourceCounts,
+    data: normalizedSource,
   }));
-  if (digest !== candidate.digest) {
+  if (sourceDigest !== candidate.digest) {
     return { ok: false, reason: "A verificação de integridade do backup falhou." };
   }
+  const normalizedData = normalizeCollections({
+    ...normalizedSource,
+    heats: (normalizedSource.heats as EventBackupRow[]).map((heat) => ({
+      ...heat,
+      proof_id: heat.proof_id ?? null,
+      battery_order: heat.battery_order ?? heat.order ?? null,
+    })),
+    heatRuns: versionNumber >= 2
+      ? normalizedSource.heatRuns
+      : [],
+    heatPublications: versionNumber >= 3
+      ? normalizedSource.heatPublications
+      : [],
+  },ZERO3_EVENT_BACKUP_COLLECTIONS) as unknown as Zero3EventBackupData;
+  const counts = {
+    event:1,
+    ...Object.fromEntries(ZERO3_EVENT_BACKUP_COLLECTIONS.map((collection)=>[
+      collection,normalizedData[collection].length,
+    ])),
+  };
+  const digest = await sha256Hex(digestPayload({
+    format:ZERO3_EVENT_BACKUP_FORMAT,
+    version:ZERO3_EVENT_BACKUP_VERSION,
+    eventId:candidate.eventId,
+    eventName:candidate.eventName,
+    counts,
+    data:normalizedData,
+  }));
   return {
     ok: true,
     backup: {

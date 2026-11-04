@@ -7,10 +7,11 @@
  */
 import type { Zero3EventBackupCounts } from './zero3EventBackupCounts';
 import type { Zero3EventBackupData } from './zero3EventBackupData';
+import type { Zero3EventBackupVersion } from './zero3EventBackupVersion';
 
 export interface Zero3EventBackup {
   format: 'zero3-event-backup';
-  version: 1;
+  version: Zero3EventBackupVersion;
   eventId: string;
   eventName: string;
   exportedAt: Date;

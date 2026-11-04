@@ -113,6 +113,8 @@ async function readEventBackup(
     resultRevisions: resultRevisions as unknown as EventBackupRow[],
     timers: timers as unknown as EventBackupRow[],
     podiumVersions: podiumVersions as unknown as EventBackupRow[],
+    heatRuns: [],
+    heatPublications: [],
   };
   return createZero3EventBackup(event as unknown as EventBackupRow, data);
 }
@@ -121,6 +123,7 @@ const JSON_COLUMNS = new Set([
   "categories", "athlete_ids", "before_state", "after_state", "source_notes",
   "source_cells", "source_athlete_names", "athlete_ids_snapshot",
   "athlete_names_snapshot", "registration_ids",
+  "results_json", "leaderboards_json",
 ]);
 const DATE_COLUMNS = new Set([
   "created_at", "updated_at", "assigned_at", "applied_at", "captured_at",
