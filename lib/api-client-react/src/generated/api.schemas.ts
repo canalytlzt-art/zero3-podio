@@ -273,10 +273,11 @@ export interface Zero3EventDeleteInput {
      */
   confirmation: string;
   /**
+     * Optional compatibility field for older clients; deletion no longer requires a client backup.
      * @minLength 64
      * @maxLength 64
      */
-  backupDigest: string;
+  backupDigest?: string;
 }
 
 export interface Zero3EventRestoreInput {
@@ -286,6 +287,46 @@ export interface Zero3EventRestoreInput {
 export interface Zero3EventDeleteResult {
   eventId: string;
   deleted: boolean;
+}
+
+export interface Zero3EventBatteryUpdateInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  expectedName: string;
+  expectedRegistrationIds: string[];
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  registrationIds: string[];
+}
+
+export interface Zero3EventBatteryDeleteInput {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  confirmation: string;
+  /**
+     * @minLength 64
+     * @maxLength 64
+     * @pattern ^[a-f0-9]{64}$
+     */
+  expectedFingerprint: string;
+}
+
+export interface Zero3EventBatteryDeleteResult {
+  eventId: string;
+  batteryId: string;
+  deleted: boolean;
+  /** @minimum 0 */
+  removedResults: number;
+  /** @minimum 0 */
+  removedPublications: number;
+  wasActive: boolean;
 }
 
 export interface Zero3EventRestoreResult {

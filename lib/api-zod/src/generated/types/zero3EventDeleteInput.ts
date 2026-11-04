@@ -13,8 +13,9 @@ export interface Zero3EventDeleteInput {
      */
   confirmation: string;
   /**
+     * Optional compatibility field for older clients; deletion no longer requires a client backup.
      * @minLength 64
      * @maxLength 64
      */
-  backupDigest: string;
+  backupDigest?: string;
 }

@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {
+  DeleteZero3EventBatteryBody,
+  DeleteZero3EventBody,
+  UpdateZero3EventBatteryBody,
+} from "@workspace/api-zod";
+import { hasUniqueIds } from "./d1-staging-event-batteries";
 import { validateD1EventTableSet } from "./d1-staging-event-lifecycle";
 
 const coreTables = [
@@ -56,4 +62,41 @@ test("a missing core migration fails explicitly", () => {
     () => validateD1EventTableSet(new Set(coreTables.filter((table) => table !== "zero3_heat_runs"))),
     { message: "D1_EVENT_SCHEMA_INCOMPLETE" },
   );
+});
+
+test("event deletion confirmation no longer requires a client-downloaded JSON backup", () => {
+  assert.equal(DeleteZero3EventBody.safeParse({ confirmation: "EXCLUIR Evento teste" }).success, true);
+  assert.equal(DeleteZero3EventBody.safeParse({
+    confirmation: "EXCLUIR Evento teste",
+    backupDigest: "a".repeat(64),
+  }).success, true);
+});
+
+test("battery composition edits validate the current name and reject duplicate assignment IDs", () => {
+  assert.equal(UpdateZero3EventBatteryBody.safeParse({
+    expectedName: "Bateria 1",
+    expectedRegistrationIds: ["registration-a"],
+    name: "Bateria 1",
+    registrationIds: ["registration-b"],
+  }).success, true);
+  const duplicateInput = UpdateZero3EventBatteryBody.safeParse({
+    expectedName: "Bateria 1",
+    expectedRegistrationIds: ["registration-a", "registration-a"],
+    name: "Bateria 1",
+    registrationIds: [],
+  });
+  assert.equal(duplicateInput.success, true);
+  assert.equal(hasUniqueIds(duplicateInput.data.expectedRegistrationIds), false);
+  assert.equal(hasUniqueIds(["registration-a", "registration-b"]), true);
+});
+
+test("battery deletion requires a fresh fingerprint and explicit confirmation", () => {
+  assert.equal(DeleteZero3EventBatteryBody.safeParse({
+    confirmation: "EXCLUIR BATERIA 1: Bateria teste",
+    expectedFingerprint: "f".repeat(64),
+  }).success, true);
+  assert.equal(DeleteZero3EventBatteryBody.safeParse({
+    confirmation: "EXCLUIR BATERIA 1: Bateria teste",
+    expectedFingerprint: "stale",
+  }).success, false);
 });

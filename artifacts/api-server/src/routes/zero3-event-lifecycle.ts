@@ -1,6 +1,8 @@
 import {
   DeleteZero3EventBody,
   DeleteZero3EventResponse,
+  GetZero3EventParams,
+  GetZero3EventResponse,
   GetZero3EventDeletionBackupParams,
   GetZero3EventDeletionBackupResponse,
   RestoreZero3EventBackupBody,
@@ -39,6 +41,7 @@ import { requireZero3Roles } from "../lib/zero3-auth";
 
 const router: IRouter = Router();
 const ADMIN = ["ADMIN"] as const;
+const EVENT_READ_ROLES = ["ADMIN", "JUIZ_CHEFE", "JUIZ"] as const;
 
 type EventArchiveReader = Pick<typeof db, "select">;
 
@@ -159,6 +162,25 @@ function restoreConflicts(backup: Zero3EventBackup, existingAthletes: Array<{id:
 }
 
 router.get(
+  "/zero3/events/:eventId",
+  requireZero3Roles([...EVENT_READ_ROLES]),
+  async (req, res): Promise<void> => {
+    const params = GetZero3EventParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ code: "EVENT_ID_INVALID", error: "ID de evento inválido." });
+      return;
+    }
+    const [event] = await db.select().from(zero3EventsTable)
+      .where(eq(zero3EventsTable.id, params.data.eventId)).limit(1);
+    if (!event) {
+      res.status(404).json({ code: "EVENT_NOT_FOUND", error: "Evento não encontrado." });
+      return;
+    }
+    res.json(GetZero3EventResponse.parse(event));
+  },
+);
+
+router.get(
   "/zero3/events/:eventId/deletion-backup",
   requireZero3Roles([...ADMIN]),
   async (req, res): Promise<void> => {
@@ -183,7 +205,7 @@ router.delete(
     const params = GetZero3EventDeletionBackupParams.safeParse(req.params);
     const body = DeleteZero3EventBody.safeParse(req.body);
     if (!params.success || !body.success) {
-      res.status(400).json({ error: "ID, confirmação ou digest inválido." });
+      res.status(400).json({ error: "ID ou confirmação inválida." });
       return;
     }
     const backup = await readEventBackup(params.data.eventId);
@@ -195,8 +217,8 @@ router.delete(
       res.status(409).json({ code: "EVENT_DELETE_CONFIRMATION_MISMATCH", error: "A confirmação não corresponde ao evento." });
       return;
     }
-    if (body.data.backupDigest !== backup.digest) {
-      res.status(409).json({ code: "EVENT_BACKUP_STALE", error: "Os dados mudaram. Baixe um novo backup antes de excluir." });
+    if (body.data.backupDigest && body.data.backupDigest !== backup.digest) {
+      res.status(409).json({ code: "EVENT_BACKUP_STALE", error: "Os dados mudaram. Atualize o evento antes de excluir." });
       return;
     }
     try {
@@ -225,7 +247,7 @@ router.delete(
       });
     } catch (error) {
       if (error instanceof EventBackupChangedError) {
-        res.status(409).json({ code: "EVENT_BACKUP_STALE", error: "Os dados mudaram. Baixe um novo backup antes de excluir." });
+        res.status(409).json({ code: "EVENT_BACKUP_STALE", error: "Os dados mudaram durante a exclusão. Atualize e revise o evento." });
         return;
       }
       throw error;

@@ -8,11 +8,17 @@ import {
   FinalizeZero3EventBatteryBody,
   FinalizeZero3EventBatteryParams,
   FinalizeZero3EventBatteryResponse,
+  DeleteZero3EventBatteryBody,
+  DeleteZero3EventBatteryParams,
+  DeleteZero3EventBatteryResponse,
   ListZero3EventBatteriesParams,
   ListZero3EventBatteriesResponse,
   SetZero3ActiveEventBatteryBody,
   SetZero3ActiveEventBatteryParams,
   SetZero3ActiveEventBatteryResponse,
+  UpdateZero3EventBatteryBody,
+  UpdateZero3EventBatteryParams,
+  UpdateZero3EventBatteryResponse,
 } from "@workspace/api-zod";
 import { calculateCategoryLeaderboard } from "./zero3-scoring";
 import {
@@ -28,6 +34,21 @@ import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
 const ACCESS_ROLES = ["ADMIN", "JUIZ_CHEFE", "JUIZ"] as const;
 const EVENT_LIMIT_MS = 2 * 60 * 60 * 1000;
+
+function sameStringSet(left: readonly string[], right: readonly string[]) {
+  const a = [...new Set(left)].sort();
+  const b = [...new Set(right)].sort();
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+export function hasUniqueIds(values: readonly string[]) {
+  return new Set(values).size === values.length;
+}
+
+function isBatteryConstraintConflict(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /constraint failed|constraint violation|foreign key|unique constraint|not null constraint/i.test(message);
+}
 
 type EventRow = {
   id: string; status: string; categories: string; preparation_seconds: number;
@@ -445,6 +466,222 @@ export async function handleD1StagingEventBatteries(
       }));
     } catch {
       d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível atualizar o cronômetro da bateria.");
+    }
+    return true;
+  }
+
+  const batteryMutationMatch = route.match(/^\/events\/([^/]+)\/batteries\/([^/]+)$/);
+  if (batteryMutationMatch && req.method === "PATCH") {
+    if (!await requireD1Member(req, res, DB, EVENT_ROLES)) return true;
+    const params = UpdateZero3EventBatteryParams.safeParse({
+      eventId: batteryMutationMatch[1], batteryId: batteryMutationMatch[2],
+    });
+    const body = UpdateZero3EventBatteryBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({
+        error: !params.success ? params.error.message : !body.success ? body.error.message : "Dados inválidos.",
+      });
+      return true;
+    }
+    if (!hasUniqueIds(body.data.expectedRegistrationIds) || !hasUniqueIds(body.data.registrationIds)) {
+      d1ApiError(req, res, 400, "REGISTRATION_DUPLICATE", "Cada inscrição só pode aparecer uma vez na composição.");
+      return true;
+    }
+    try {
+      const batteries = await listD1EventBatteries(DB, params.data.eventId);
+      const battery = batteries?.find((item) => item.id === params.data.batteryId);
+      if (!battery) {
+        d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada neste evento.");
+        return true;
+      }
+      const currentRegistrationIds = battery.registrations.map((item) => item.id);
+      if (body.data.expectedName !== battery.name ||
+          !sameStringSet(body.data.expectedRegistrationIds, currentRegistrationIds)) {
+        d1ApiError(req, res, 409, "BATTERY_CHANGED", "A composição mudou. Atualize a bateria antes de editar.");
+        return true;
+      }
+      if (battery.state !== "IDLE" || battery.results.length > 0 || battery.finalized) {
+        d1ApiError(req, res, 409, "BATTERY_NOT_EDITABLE",
+          "Só é possível editar uma bateria ainda não iniciada, sem resultados e sem publicação.");
+        return true;
+      }
+      const registrationIds = body.data.registrationIds;
+      const eligibility = await Promise.all(registrationIds.map(async (registrationId) => {
+        const [registration, assignment, result] = await Promise.all([
+          DB.prepare(`SELECT id FROM zero3_registrations
+            WHERE id=? AND event_id=? AND confirmation_status<>'CANCELLED'`)
+            .bind(registrationId, params.data.eventId).first<{ id: string }>(),
+          DB.prepare("SELECT battery_id FROM zero3_battery_entries WHERE registration_id=?")
+            .bind(registrationId).first<{ battery_id: string }>(),
+          DB.prepare("SELECT id FROM zero3_results WHERE registration_id=? LIMIT 1")
+            .bind(registrationId).first<{ id: string }>(),
+        ]);
+        return { registrationId, registration, assignment, result };
+      }));
+      if (eligibility.some((item) => !item.registration)) {
+        d1ApiError(req, res, 400, "REGISTRATION_INVALID",
+          "Todas as inscrições devem pertencer ao evento e estar ativas.");
+        return true;
+      }
+      if (eligibility.some((item) => item.assignment && item.assignment.battery_id !== battery.id)) {
+        d1ApiError(req, res, 409, "REGISTRATION_ALREADY_ASSIGNED",
+          "Uma inscrição já pertence a outra bateria.");
+        return true;
+      }
+      if (eligibility.some((item) => item.result)) {
+        d1ApiError(req, res, 409, "REGISTRATION_HAS_RESULTS",
+          "Uma inscrição selecionada tem resultado histórico; a composição não foi alterada.");
+        return true;
+      }
+
+      const stamp = d1IsoNow();
+      const marker = `__ZERO3_EDIT_${newD1Id()}__`;
+      const expectedIdsJson = JSON.stringify([...new Set(body.data.expectedRegistrationIds)]);
+      const updateGuard = DB.prepare(`UPDATE zero3_batteries SET name=?
+        WHERE id=? AND event_id=? AND name=?
+          AND NOT EXISTS(SELECT 1 FROM zero3_battery_runs
+            WHERE battery_id=? AND event_id=? AND state<>'IDLE')
+          AND NOT EXISTS(SELECT 1 FROM zero3_results WHERE battery_id=?)
+          AND NOT EXISTS(SELECT 1 FROM zero3_battery_publications WHERE battery_id=?)
+          AND NOT EXISTS(SELECT registration_id FROM zero3_battery_entries WHERE battery_id=?
+            EXCEPT SELECT value FROM json_each(?))
+          AND NOT EXISTS(SELECT value FROM json_each(?)
+            EXCEPT SELECT registration_id FROM zero3_battery_entries WHERE battery_id=?)`)
+        .bind(marker, battery.id, params.data.eventId, body.data.expectedName,
+          battery.id, params.data.eventId, battery.id, battery.id,
+          battery.id, expectedIdsJson, expectedIdsJson, battery.id);
+      const statements = [
+        updateGuard,
+        DB.prepare(`DELETE FROM zero3_battery_entries WHERE battery_id=?
+          AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND name=?)`)
+          .bind(battery.id, battery.id, marker),
+        ...registrationIds.map((registrationId) => DB.prepare(`INSERT INTO zero3_battery_entries
+          (battery_id,registration_id,lane_label,assigned_at)
+          VALUES(?,(SELECT id FROM zero3_registrations
+            WHERE id=? AND event_id=? AND confirmation_status<>'CANCELLED'
+              AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND name=?)),
+            (SELECT lane_label FROM zero3_registrations WHERE id=?),?)`)
+          .bind(battery.id, registrationId, params.data.eventId, battery.id, marker, registrationId, stamp)),
+        DB.prepare("UPDATE zero3_batteries SET name=? WHERE id=? AND event_id=? AND name=?")
+          .bind(body.data.name.trim(), battery.id, params.data.eventId, marker),
+      ];
+      const saved = await DB.batch(statements);
+      if ((saved[0]?.meta.changes ?? 0) !== 1 ||
+          (saved.at(-1)?.meta.changes ?? 0) !== 1) {
+        d1ApiError(req, res, 409, "BATTERY_CHANGED",
+          "A bateria mudou ou foi iniciada durante a edição. Nenhuma alteração parcial foi aplicada.");
+        return true;
+      }
+      const updated = (await listD1EventBatteries(DB, params.data.eventId))
+        ?.find((item) => item.id === battery.id);
+      if (!updated) {
+        d1ApiError(req, res, 500, "API_INTERNAL_ERROR", "Bateria atualizada, mas não foi possível recuperá-la.");
+        return true;
+      }
+      res.json(UpdateZero3EventBatteryResponse.parse(updated));
+    } catch (error) {
+      if (isBatteryConstraintConflict(error)) {
+        d1ApiError(req, res, 409, "BATTERY_EDIT_CONFLICT",
+          "A composição não pôde ser salva porque uma inscrição foi alterada ou atribuída em outra operação. Nenhuma alteração parcial foi aplicada.");
+      } else {
+        d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível editar a bateria.");
+      }
+    }
+    return true;
+  }
+
+  if (batteryMutationMatch && req.method === "DELETE") {
+    if (!await requireD1Member(req, res, DB, ["ADMIN"])) return true;
+    const params = DeleteZero3EventBatteryParams.safeParse({
+      eventId: batteryMutationMatch[1], batteryId: batteryMutationMatch[2],
+    });
+    const body = DeleteZero3EventBatteryBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({
+        error: !params.success ? params.error.message : !body.success ? body.error.message : "Dados inválidos.",
+      });
+      return true;
+    }
+    try {
+      const batteries = await listD1EventBatteries(DB, params.data.eventId);
+      const battery = batteries?.find((item) => item.id === params.data.batteryId);
+      if (!battery) {
+        d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada neste evento.");
+        return true;
+      }
+      if (body.data.expectedFingerprint !== battery.finalizationFingerprint) {
+        d1ApiError(req, res, 409, "BATTERY_CHANGED", "A bateria mudou. Atualize e confira o impacto antes de excluir.");
+        return true;
+      }
+      const confirmation = `EXCLUIR BATERIA ${battery.order}: ${battery.name}`;
+      if (body.data.confirmation !== confirmation) {
+        d1ApiError(req, res, 409, "BATTERY_DELETE_CONFIRMATION_MISMATCH",
+          `Digite exatamente ${confirmation} para confirmar.`);
+        return true;
+      }
+      if (["PREPARATION", "RUNNING", "PAUSED"].includes(battery.state)) {
+        d1ApiError(req, res, 409, "BATTERY_TIMER_ACTIVE",
+          "Finalize ou pare o cronômetro antes de excluir a bateria.");
+        return true;
+      }
+      const [counts, active] = await Promise.all([
+        DB.prepare(`SELECT
+          (SELECT COUNT(*) FROM zero3_results WHERE event_id=? AND battery_id=?) AS result_count,
+          (SELECT COUNT(*) FROM zero3_battery_publications WHERE event_id=? AND battery_id=?) AS publication_count`)
+          .bind(params.data.eventId, battery.id, params.data.eventId, battery.id)
+          .first<{ result_count: number; publication_count: number }>(),
+        DB.prepare("SELECT battery_id FROM zero3_active_batteries WHERE event_id=?")
+          .bind(params.data.eventId).first<{ battery_id: string | null }>(),
+      ]);
+      const marker = `__ZERO3_DELETE_${newD1Id()}__`;
+      const statements = [
+        DB.prepare(`UPDATE zero3_batteries SET name=?
+          WHERE id=? AND event_id=? AND battery_order=? AND name=?
+            AND NOT EXISTS(SELECT 1 FROM zero3_battery_runs
+              WHERE battery_id=? AND event_id=? AND state IN ('PREPARATION','RUNNING','PAUSED'))`)
+          .bind(marker, battery.id, params.data.eventId, battery.order, battery.name,
+            battery.id, params.data.eventId),
+        DB.prepare(`UPDATE zero3_active_batteries SET battery_id=NULL,updated_at=?
+          WHERE event_id=? AND battery_id=?
+            AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND name=?)`)
+          .bind(d1IsoNow(), params.data.eventId, battery.id, battery.id, marker),
+        DB.prepare(`DELETE FROM zero3_results WHERE event_id=? AND battery_id=?
+          AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND name=?)`)
+          .bind(params.data.eventId, battery.id, battery.id, marker),
+        DB.prepare(`DELETE FROM zero3_battery_publications WHERE event_id=? AND battery_id=?
+          AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND name=?)`)
+          .bind(params.data.eventId, battery.id, battery.id, marker),
+        DB.prepare(`DELETE FROM zero3_battery_entries WHERE battery_id=?
+          AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND name=?)`)
+          .bind(battery.id, battery.id, marker),
+        DB.prepare(`DELETE FROM zero3_battery_runs WHERE event_id=? AND battery_id=?
+          AND EXISTS(SELECT 1 FROM zero3_batteries WHERE id=? AND name=?)`)
+          .bind(params.data.eventId, battery.id, battery.id, marker),
+        DB.prepare("DELETE FROM zero3_batteries WHERE id=? AND event_id=? AND name=?")
+          .bind(battery.id, params.data.eventId, marker),
+      ];
+      const deleted = await DB.batch(statements);
+      if ((deleted[0]?.meta.changes ?? 0) !== 1 ||
+          (deleted.at(-1)?.meta.changes ?? 0) !== 1) {
+        d1ApiError(req, res, 409, "BATTERY_CHANGED",
+          "A bateria mudou durante a exclusão. Nada foi removido; atualize a lista e revise o impacto.");
+        return true;
+      }
+      res.json(DeleteZero3EventBatteryResponse.parse({
+        eventId: params.data.eventId,
+        batteryId: battery.id,
+        deleted: true,
+        removedResults: counts?.result_count ?? 0,
+        removedPublications: counts?.publication_count ?? 0,
+        wasActive: active?.battery_id === battery.id,
+      }));
+    } catch (error) {
+      if (isBatteryConstraintConflict(error)) {
+        d1ApiError(req, res, 409, "BATTERY_DELETE_CONFLICT",
+          "A bateria mudou durante a exclusão. Nada foi removido; atualize e tente novamente.");
+      } else {
+        d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível excluir a bateria.");
+      }
     }
     return true;
   }

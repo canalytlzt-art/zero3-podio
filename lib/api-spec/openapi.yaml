@@ -140,6 +140,29 @@ paths:
         "404":
           description: Event not found
   /zero3/events/{eventId}:
+    get:
+      operationId: getZero3Event
+      tags: [zero3]
+      summary: Read an event for an authorized operator
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zero3Event"
+        "401":
+          description: Authentication required
+        "403":
+          description: Event operator role required
+        "404":
+          description: Event not found
     patch:
       operationId: updateZero3Event
       tags: [zero3]
@@ -170,7 +193,7 @@ paths:
     delete:
       operationId: deleteZero3Event
       tags: [zero3]
-      summary: Permanently delete an event after backup and confirmation
+      summary: Permanently delete an event after explicit confirmation
       parameters:
         - in: path
           name: eventId
@@ -197,7 +220,7 @@ paths:
         "404":
           description: Event not found
         "409":
-          description: Backup is stale or confirmation does not match
+          description: Event changed or confirmation does not match
   /zero3/events/{eventId}/proofs:
     get:
       operationId: listZero3Proofs
@@ -346,6 +369,73 @@ paths:
           description: Authentication required
         "409":
           description: Battery order or registration assignment conflicts
+  /zero3/events/{eventId}/batteries/{batteryId}:
+    patch:
+      operationId: updateZero3EventBattery
+      tags: [zero3]
+      summary: Edit an unstarted event battery composition
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: batteryId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3EventBatteryUpdateInput" }
+      responses:
+        "200":
+          description: Updated event battery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3EventBattery" }
+        "400":
+          description: Invalid assignment
+        "401":
+          description: Authentication required
+        "403":
+          description: ADMIN or JUIZ_CHEFE role required
+        "404":
+          description: Battery not found
+        "409":
+          description: Battery is no longer eligible or changed concurrently
+    delete:
+      operationId: deleteZero3EventBattery
+      tags: [zero3]
+      summary: Delete an event battery and its owned results after confirmation
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: batteryId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3EventBatteryDeleteInput" }
+      responses:
+        "200":
+          description: Battery and its operational data deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3EventBatteryDeleteResult" }
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Battery not found
+        "409":
+          description: Battery changed or is currently running
   /zero3/events/{eventId}/active-event-battery:
     patch:
       operationId: setZero3ActiveEventBattery
@@ -1207,10 +1297,14 @@ components:
         digest: { type: string, minLength: 64, maxLength: 64 }
     Zero3EventDeleteInput:
       type: object
-      required: [confirmation, backupDigest]
+      required: [confirmation]
       properties:
         confirmation: { type: string, minLength: 1, maxLength: 160 }
-        backupDigest: { type: string, minLength: 64, maxLength: 64 }
+        backupDigest:
+          type: string
+          minLength: 64
+          maxLength: 64
+          description: Optional compatibility field for older clients; deletion no longer requires a client backup.
     Zero3EventRestoreInput:
       type: object
       required: [backup]
@@ -1222,6 +1316,40 @@ components:
       properties:
         eventId: { type: string }
         deleted: { type: boolean }
+    Zero3EventBatteryUpdateInput:
+      type: object
+      properties:
+        expectedName: { type: string, minLength: 1, maxLength: 120 }
+        expectedRegistrationIds:
+          type: array
+          uniqueItems: true
+          items: { type: string }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        registrationIds:
+          type: array
+          uniqueItems: true
+          items: { type: string }
+      required: [expectedName, expectedRegistrationIds, name, registrationIds]
+    Zero3EventBatteryDeleteInput:
+      type: object
+      properties:
+        confirmation: { type: string, minLength: 1, maxLength: 160 }
+        expectedFingerprint:
+          type: string
+          minLength: 64
+          maxLength: 64
+          pattern: "^[a-f0-9]{64}$"
+      required: [confirmation, expectedFingerprint]
+    Zero3EventBatteryDeleteResult:
+      type: object
+      properties:
+        eventId: { type: string }
+        batteryId: { type: string }
+        deleted: { type: boolean }
+        removedResults: { type: integer, minimum: 0 }
+        removedPublications: { type: integer, minimum: 0 }
+        wasActive: { type: boolean }
+      required: [eventId, batteryId, deleted, removedResults, removedPublications, wasActive]
     Zero3EventRestoreResult:
       type: object
       required: [eventId, restored]

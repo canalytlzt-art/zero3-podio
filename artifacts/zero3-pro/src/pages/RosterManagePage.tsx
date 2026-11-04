@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'wouter';
+import { Link, useSearch } from 'wouter';
 import {
   getGetZero3RosterManagementQueryOptions,
   getGetZero3RosterManagementQueryKey,
@@ -74,12 +74,16 @@ const newDraft = (team: Zero3RosterManagementEntry): Draft => ({
 });
 
 export function RosterManagePage() {
+  const routeQuery = new URLSearchParams(useSearch());
+  const requestedEventId = routeQuery.get('eventId') || '';
+  const requestedRegistrationId = routeQuery.get('registrationId') || '';
+  const deepLinkApplied = useRef(false);
   const qc = useQueryClient();
   const me = useGetZero3Me({ query: { queryKey: getGetZero3MeQueryKey(), retry: false } });
   const isAdmin = me.data?.role === Zero3Role.ADMIN;
   const events = useListZero3Events({ query: { queryKey: getListZero3EventsQueryKey(), enabled: isAdmin } });
   const athletes = useListZero3Athletes({ query: { queryKey: getListZero3AthletesQueryKey(), enabled: isAdmin } });
-  const [eventId, setEventId] = useState('');
+  const [eventId, setEventId] = useState(requestedEventId);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [confirmation, setConfirmation] = useState('');
@@ -104,13 +108,14 @@ export function RosterManagePage() {
   const currentEvent = events.data?.find(event => event.id === eventId);
   const eventCategories = currentEvent?.categories || [];
   useEffect(() => {
-    if (!eventId && events.data?.length) {
+    if (events.data?.length && (!eventId || !events.data.some(event => event.id === eventId))) {
       const preferred = events.data.find(event =>
         event.name.trim().toLocaleLowerCase('pt-BR') === 'zero3 games',
       );
-      setEventId((preferred || events.data[0]).id);
+      const linkedEvent = events.data.find(event => event.id === requestedEventId);
+      setEventId((linkedEvent || preferred || events.data[0]).id);
     }
-  }, [eventId, events.data]);
+  }, [eventId, events.data, requestedEventId]);
   useEffect(() => {
     if (category && !eventCategories.includes(category)) setCategory('');
   }, [category, eventCategories]);
@@ -120,6 +125,18 @@ export function RosterManagePage() {
     }
   }, [eventId, eventCategories, newCategory]);
   const teams = query.data || [];
+  useEffect(() => {
+    if (!requestedRegistrationId || deepLinkApplied.current || query.isLoading || query.isError) return;
+    const team = teams.find(item => item.id === requestedRegistrationId);
+    deepLinkApplied.current = true;
+    if (!team) {
+      setError('A inscrição indicada não está disponível neste evento. Atualize a lista e selecione uma inscrição.');
+      return;
+    }
+    setSelected([team.id]);
+    setDrafts({ [team.id]: newDraft(team) });
+    setSearch(team.athleteNames.join(' '));
+  }, [requestedRegistrationId, query.isLoading, query.isError, teams]);
   const filtered = useMemo(() => teams.filter(team => {
     const q = search.trim().toLocaleLowerCase();
     return (!q || [team.teamName || '', ...team.athleteNames, ...team.sourceCodes].join(' ').toLocaleLowerCase().includes(q))

@@ -18,10 +18,10 @@ import {
   useSetZero3ActiveHeat,
   useSetZero3ActiveBattery, useUpdateZero3HeatProof, useFinalizeZero3Battery,
   useListZero3EventBatteries, useCreateZero3EventBattery, useSetZero3ActiveEventBattery,
-  useFinalizeZero3EventBattery,
+  useFinalizeZero3EventBattery, useUpdateZero3EventBattery, useDeleteZero3EventBattery,
   useSaveZero3PodiumDraft, usePublishZero3Podium,
   useGetZero3PublicBoard,
-   getZero3EventDeletionBackup, useDeleteZero3Event, useRestoreZero3EventBackup,
+   useDeleteZero3Event, useRestoreZero3EventBackup,
 } from '@workspace/api-client-react';
 import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType, Zero3RosterManagementEntry, Zero3Heat, Zero3EventBattery, Zero3PublicBoard } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
@@ -96,38 +96,24 @@ function EventRow({event,isAdmin=false}:{event:Zero3Event;isAdmin?:boolean}) {
   const [newCategory,setNewCategory]=useState('');
  const [categoryError,setCategoryError]=useState('');
  const [deleting,setDeleting]=useState(false);
- const [backup,setBackup]=useState<Awaited<ReturnType<typeof getZero3EventDeletionBackup>>|null>(null);
- const [backupLoading,setBackupLoading]=useState(false);
- const [backupSaved,setBackupSaved]=useState(false);
  const [confirmation,setConfirmation]=useState('');
  const [deleteError,setDeleteError]=useState('');
  useEffect(()=>setCategories(event.categories),[event.categories]);
   const saveCategories=()=>{setCategoryError('');const ordered=orderCategories(categories);if(ordered.length>10||ordered.some(item=>!item.trim()||item.trim().length>32)||new Set(ordered.map(item=>item.trim().toLocaleLowerCase())).size!==ordered.length){setCategoryError('Use de 1 a 10 categorias únicas, com até 32 caracteres cada.');return;}update.mutate({eventId:event.id,data:{categories:ordered}},{onSuccess:()=>{setEditingCategories(false);qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId:event.id})});},onError:err=>setCategoryError(feedback(err))});};
   const addCategory=()=>{const value=newCategory.trim();if(!value)return;if(categories.some(item=>item.toLocaleLowerCase()===value.toLocaleLowerCase())){setCategoryError('Essa categoria já está habilitada.');return;}if(value.length>32||categories.length>=10){setCategoryError('Use até 10 categorias com no máximo 32 caracteres cada.');return;}setCategories(current=>[...current,value]);setNewCategory('');setCategoryError('');};
- const startDelete=()=>{setDeleting(true);setBackup(null);setBackupSaved(false);setConfirmation('');setDeleteError('');};
- const downloadBackup=async()=>{
-  setBackupLoading(true);setDeleteError('');setBackup(null);setBackupSaved(false);setConfirmation('');
-  try{
-   const archive=await getZero3EventDeletionBackup(event.id);
-   const file=new Blob([JSON.stringify(archive,null,2)],{type:'application/json'});
-   const url=URL.createObjectURL(file);const anchor=document.createElement('a');
-   const safeName=event.name.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'evento';
-    anchor.href=url;anchor.download=`zero3-backup-${safeName}-${event.id}.json`;anchor.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
-   setBackup(archive);setBackupSaved(false);
-   }catch(error){setDeleteError(`Falha ao gerar o backup: ${feedback(error)}`);}
-  finally{setBackupLoading(false);}
- };
+  const startDelete=()=>{setDeleting(true);setConfirmation('');setDeleteError('');};
  const confirmDelete=()=>{
-  if(!backup)return;
+   if(confirmation!==`EXCLUIR ${event.name}`)return;
   setDeleteError('');
-  remove.mutate({eventId:event.id,data:{confirmation,backupDigest:backup.digest}},{
+   remove.mutate({eventId:event.id,data:{confirmation}},{
    onSuccess:()=>{
     setDeleting(false);
+     setConfirmation('');
     qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});
     qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});
     qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId:event.id})});
    },
-    onError:error=>{setDeleteError(`Falha ao excluir o evento: ${feedback(error)}`);setBackup(null);setBackupSaved(false);},
+     onError:error=>setDeleteError(`Falha ao excluir o evento: ${feedback(error)}`),
   });
  };
   return <div>
@@ -146,12 +132,10 @@ function EventRow({event,isAdmin=false}:{event:Zero3Event;isAdmin?:boolean}) {
      <h2 id={`delete-event-title-${event.id}`} className="panel-title">Excluir evento definitivamente</h2>
      <p id={`delete-event-warning-${event.id}`} role="alert" style={{color:'#9b312b',fontWeight:700}}>Esta ação é irreversível para os dados operacionais. O evento, suas inscrições, provas, baterias, resultados, revisões, cronômetro, pódios e dados de importação serão removidos. Os atletas cadastrados e os outros eventos serão preservados.</p>
      <p><strong>{event.name}</strong> · {pretty(event.status)}</p>
-     {backup&&<div className="panel" style={{padding:12,margin:'12px 0'}}><strong>Registros incluídos no backup</strong><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:6,marginTop:8}}>{Object.entries(backup.counts).map(([key,count])=><span key={key} className="field-help">{key}: <b>{count}</b></span>)}</div></div>}
-     <div className="toolbar"><button type="button" className="button" onClick={downloadBackup} disabled={backupLoading||remove.isPending}>{backupLoading?'Gerando backup…':'Baixar backup JSON'}</button><span className="field-help">Guarde o arquivo com segurança; ele contém dados do evento e referências a atletas.</span></div>
-     {backup&&<label className="field-help" style={{display:'flex',gap:8,marginTop:12}}><input type="checkbox" checked={backupSaved} onChange={event=>setBackupSaved(event.target.checked)}/> Confirmei que baixei e guardei o arquivo de backup.</label>}
-     <div className="field" style={{marginTop:12}}><label htmlFor={`delete-confirmation-${event.id}`}>Para confirmar, digite EXCLUIR {event.name}</label><input id={`delete-confirmation-${event.id}`} value={confirmation} onChange={event=>setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} placeholder={`EXCLUIR ${event.name}`} disabled={!backupSaved||remove.isPending}/></div>
+      <p className="field-help">A exclusão não depende de baixar um JSON. Um registro mínimo de auditoria é mantido pelo servidor; a operação remove somente este evento e seus dados operacionais.</p>
+      <div className="field" style={{marginTop:12}}><label htmlFor={`delete-confirmation-${event.id}`}>Para confirmar, digite EXCLUIR {event.name}</label><input id={`delete-confirmation-${event.id}`} value={confirmation} onChange={event=>setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} placeholder={`EXCLUIR ${event.name}`} disabled={remove.isPending}/></div>
      {deleteError&&<p role="alert" style={{color:'#9b312b'}}>{deleteError}</p>}
-     <div className="toolbar"><button type="button" className="button" onClick={()=>setDeleting(false)} disabled={remove.isPending}>Cancelar</button><button type="button" className="button" onClick={confirmDelete} disabled={!backup||!backupSaved||confirmation!==`EXCLUIR ${event.name}`||remove.isPending} style={{borderColor:'#9b312b',color:'#9b312b'}}>{remove.isPending?'Excluindo…':'Excluir definitivamente'}</button></div>
+      <div className="toolbar"><button type="button" className="button" onClick={()=>setDeleting(false)} disabled={remove.isPending}>Cancelar</button><button type="button" className="button" onClick={confirmDelete} disabled={confirmation!==`EXCLUIR ${event.name}`||remove.isPending} style={{borderColor:'#9b312b',color:'#9b312b'}}>{remove.isPending?'Excluindo…':'Excluir definitivamente'}</button></div>
     </section>
    </div>}
   </div>;
@@ -572,9 +556,17 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const select=useSetZero3ActiveEventBattery();
  const create=useCreateZero3EventBattery();
  const finalize=useFinalizeZero3EventBattery();
+  const updateBattery=useUpdateZero3EventBattery();
+  const deleteBattery=useDeleteZero3EventBattery();
+  const me=useGetZero3Me();
  const qc=useQueryClient();
  const [error,setError]=useState('');
  const [confirmId,setConfirmId]=useState<string|null>(null);
+  const [editingBatteryId,setEditingBatteryId]=useState<string|null>(null);
+  const [editingName,setEditingName]=useState('');
+  const [editingRegistrationIds,setEditingRegistrationIds]=useState<string[]>([]);
+  const [deleteBatteryId,setDeleteBatteryId]=useState<string|null>(null);
+  const [deleteBatteryConfirmation,setDeleteBatteryConfirmation]=useState('');
  const [order,setOrder]=useState<number|undefined>(undefined);
  const [resultsBatteryId,setResultsBatteryId]=useState<string|null>(null);
  const [resultsFocusIssue,setResultsFocusIssue]=useState<BatteryReadinessIssue|null>(null);
@@ -584,7 +576,30 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const refresh=()=>{
   void qc.invalidateQueries({queryKey:getListZero3EventBatteriesQueryKey(eventId)});
   void qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})});
+   void qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});
  };
+  const beginBatteryEdit=(battery:Zero3EventBattery)=>{
+   setError('');
+   setEditingBatteryId(battery.id);
+   setEditingName(battery.name);
+   setEditingRegistrationIds(battery.registrations.map(item=>item.id));
+  };
+  const saveBatteryEdit=(battery:Zero3EventBattery)=>{
+   updateBattery.mutate({eventId,batteryId:battery.id,data:{
+    expectedName:battery.name,
+    expectedRegistrationIds:battery.registrations.map(item=>item.id),
+    name:editingName.trim(),
+    registrationIds:editingRegistrationIds,
+   }},{onSuccess:()=>{setEditingBatteryId(null);setError('');refresh();},onError:failure=>setError(feedback(failure))});
+  };
+  const confirmBatteryDelete=(battery:Zero3EventBattery)=>{
+   if(!battery.finalizationFingerprint)return;
+   deleteBattery.mutate({eventId,batteryId:battery.id,data:{
+    confirmation:deleteBatteryConfirmation,
+    expectedFingerprint:battery.finalizationFingerprint,
+   }},{onSuccess:()=>{setDeleteBatteryId(null);setDeleteBatteryConfirmation('');setEditingBatteryId(null);setResultsBatteryId(current=>current===battery.id?null:current);setConfirmId(null);setError('');refresh();},
+     onError:failure=>{setError(feedback(failure));refresh();}});
+  };
  const createBattery=(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget);
   const formElement=event.currentTarget;
@@ -636,12 +651,17 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
       (!battery.finalized||!battery.finalizationCurrent);
       const canOpenFinalize=battery.expectedResultCount>0&&Boolean(battery.finalizationFingerprint)&&
        (!battery.finalized||!battery.finalizationCurrent);
+      const canEditBattery=(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&
+       battery.state==='IDLE'&&battery.results.length===0&&!battery.finalized;
+      const isAdmin=me.data?.role==='ADMIN';
      return <article className="panel panel-pad" key={battery.id}>
        <div className="op-section-head"><div><div className="eyebrow">Bateria {String(battery.order).padStart(2,'0')} · todas as provas</div><h3 className="panel-title">{battery.name}</h3></div><span className={`pill ${battery.finalized&&battery.finalizationCurrent?'':'warn'}`}>{battery.finalized?(battery.finalizationCurrent?'Finalizada':'Correção pendente'):canFinalize?'Pronta para finalizar':'Em apuração'}</span></div>
        <div className="toolbar"><span className="field-help">{battery.registrations.length} equipes · {battery.categories.join(' + ')||'sem categoria'} · {readyCount} de {battery.expectedResultCount} resultados prontos</span>
        <button className={`button small ${isActive?'primary':''}`} disabled={select.isPending||isActive} onClick={()=>selectBattery(battery.id)}>{isActive?'Na TV':'Colocar na TV'}</button>
         <button className="button small" type="button" onClick={()=>openResultsPanel(battery.id)}>{resultsBatteryId===battery.id?'Resultados abertos':'Resultados'}</button>
          <button className={`button small ${canFinalize?'primary':''}`} disabled={!canOpenFinalize||finalize.isPending} onClick={()=>requestFinalization(battery,readinessIssues)}>{battery.finalized&&battery.finalizationCurrent?'Finalizada':battery.finalized?'Publicar correção':'Finalizar e publicar bateria'}</button>
+          {(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&<button className="button small" type="button" disabled={!canEditBattery||updateBattery.isPending} onClick={()=>beginBatteryEdit(battery)} aria-label={`Editar bateria ${battery.order}`}>Editar bateria</button>}
+          {isAdmin&&<button className="button small" type="button" disabled={['PREPARATION','RUNNING','PAUSED'].includes(battery.state)||deleteBattery.isPending} onClick={()=>{setDeleteBatteryId(battery.id);setDeleteBatteryConfirmation('');setError('');}} aria-label={`Excluir bateria ${battery.order}`}><Trash2 size={13}/> Excluir bateria</button>}
       </div>
       {battery.expectedResultCount===0&&<p className="field-help">Adicione inscrições à bateria antes de finalizar.</p>}
       {exceptionPending&&<p className="field-help">DNS/DNF requer regra oficial de exceção antes da publicação.</p>}
@@ -654,6 +674,26 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
           return `${proof.order}. ${proof.name||'Prova pendente'}: ${result?.rawValue??state}${result?.status==='PROVISIONAL'?' · Provisório':''}`;
         }).join(' · ')}</div>
        </div></div>)}</div>
+       {editingBatteryId===battery.id&&<section className="panel panel-pad" aria-label={`Editar composição da bateria ${battery.order}`} style={{marginTop:12}}>
+        <h4 className="panel-title">Editar bateria {String(battery.order).padStart(2,'0')}</h4>
+        {!canEditBattery?<p className="field-help">A edição da composição só é permitida antes do início, sem resultados nem publicação.</p>:<>
+         <div className="field"><label htmlFor={`edit-battery-name-${battery.id}`}>Nome</label><input id={`edit-battery-name-${battery.id}`} value={editingName} maxLength={120} onChange={event=>setEditingName(event.target.value)}/></div>
+         <div className="field"><label htmlFor={`edit-battery-registrations-${battery.id}`}>Inscrições</label><select id={`edit-battery-registrations-${battery.id}`} multiple value={editingRegistrationIds} style={{minHeight:150}} onChange={event=>setEditingRegistrationIds(Array.from(event.currentTarget.selectedOptions,option=>option.value))}>
+          {(registrations.data||[]).map(reg=>{
+           const assignedElsewhere=batteries.some(other=>other.id!==battery.id&&other.registrations.some(item=>item.id===reg.id));
+           return <option key={reg.id} value={reg.id} disabled={assignedElsewhere}>{reg.category} · {reg.laneLabel||'sem raia'} · {reg.teamName||reg.athleteNames.join(' / ')}{assignedElsewhere?' · já vinculada':''}</option>;
+          })}
+         </select><small className="field-help">A inscrição permanece no evento e só pode pertencer a uma bateria.</small></div>
+         <div className="toolbar"><button type="button" className="button primary" disabled={!editingName.trim()||updateBattery.isPending} onClick={()=>saveBatteryEdit(battery)}>{updateBattery.isPending?'Salvando…':'Salvar composição'}</button><button type="button" className="button" onClick={()=>setEditingBatteryId(null)} disabled={updateBattery.isPending}>Cancelar</button></div>
+        </>}
+       </section>}
+       {deleteBatteryId===battery.id&&<section className="panel panel-pad" role="alertdialog" aria-label={`Confirmar exclusão da bateria ${battery.order}`} style={{marginTop:12,borderColor:'#a34238'}}>
+        <h4 className="panel-title">Excluir somente esta bateria?</h4>
+        <p className="field-help">Serão removidos {battery.results.length} resultado(s){battery.finalizationVersion?` e a publicação atual v${battery.finalizationVersion}`:''} desta bateria. As {battery.registrations.length} inscrições, atletas, provas e outras baterias permanecerão. {isActive?'A seleção da TV será limpa.':'A TV não está exibindo esta bateria.'} O ranking e o pódio serão recalculados sem esta publicação.</p>
+        <p className="field-help">A exclusão é permitida apenas com o cronômetro parado. Resultados e revisões pertencentes a esta bateria serão apagados.</p>
+        <div className="field"><label htmlFor={`delete-battery-confirm-${battery.id}`}>Digite EXCLUIR BATERIA {battery.order}: {battery.name}</label><input id={`delete-battery-confirm-${battery.id}`} value={deleteBatteryConfirmation} onChange={event=>setDeleteBatteryConfirmation(event.target.value)} autoComplete="off" spellCheck={false} placeholder={`EXCLUIR BATERIA ${battery.order}: ${battery.name}`}/></div>
+        <div className="toolbar"><button type="button" className="button" onClick={()=>{setDeleteBatteryId(null);setDeleteBatteryConfirmation('');}} disabled={deleteBattery.isPending}>Cancelar</button><button type="button" className="button" style={{borderColor:'#a34238',color:'#a34238'}} disabled={deleteBatteryConfirmation!==`EXCLUIR BATERIA ${battery.order}: ${battery.name}`||!battery.finalizationFingerprint||deleteBattery.isPending} onClick={()=>confirmBatteryDelete(battery)}>{deleteBattery.isPending?'Excluindo…':'Excluir bateria e dados dela'}</button></div>
+       </section>}
        {resultsBatteryId===battery.id&&<EventBatteryResultsPanel
         eventId={eventId}
         battery={battery}
@@ -855,12 +895,14 @@ function PodiumEditor({eventId}:{eventId:string}) {
 }
 
 export function RosterPage() {
- const q=useListZero3Athletes({query:{refetchInterval:query=>pollingIntervalAfterError(query.state.error,20000),refetchOnWindowFocus:query=>shouldRefetchAfterError(query.state.error),refetchOnReconnect:query=>shouldRefetchAfterError(query.state.error)}});const create=useCreateZero3Athlete();const qc=useQueryClient();const [error,setError]=useState('');const [editingId,setEditingId]=useState<string|null>(null);const [editingName,setEditingName]=useState('');const [savingId,setSavingId]=useState<string|null>(null);
+ type AffectedRegistration={id:string;eventId:string;eventName:string;category:string;teamName:string|null;laneLabel:string|null;confirmationStatus:string;paymentStatus:string;athleteNames:string[];resultCount:number;batteryCount:number;href:string};
+ const q=useListZero3Athletes({query:{refetchInterval:query=>pollingIntervalAfterError(query.state.error,20000),refetchOnWindowFocus:query=>shouldRefetchAfterError(query.state.error),refetchOnReconnect:query=>shouldRefetchAfterError(query.state.error)}});const create=useCreateZero3Athlete();const qc=useQueryClient();const [error,setError]=useState('');const [deleteConflict,setDeleteConflict]=useState<{athleteName:string;message:string;affectedRegistrations:AffectedRegistration[];importCount:number}|null>(null);const [deleteAuthStatus,setDeleteAuthStatus]=useState<number|null>(null);const [editingId,setEditingId]=useState<string|null>(null);const [editingName,setEditingName]=useState('');const [savingId,setSavingId]=useState<string|null>(null);
  const saveAthlete=async(id:string)=>{setError('');setSavingId(id);try{const response=await fetch(`/api/zero3/athletes/${encodeURIComponent(id)}`,{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName:editingName})});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'Não foi possível atualizar o atleta.');setEditingId(null);await qc.invalidateQueries({queryKey:getListZero3AthletesQueryKey()});}catch(err){setError(feedback(err));}finally{setSavingId(null);}};
- const deleteAthlete=async(id:string,name:string)=>{if(!window.confirm(`Excluir o cadastro sem vínculos de ${name}?`))return;setError('');setSavingId(id);try{const response=await fetch(`/api/zero3/athletes/${encodeURIComponent(id)}`,{method:'DELETE',credentials:'same-origin'});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'Não foi possível excluir o atleta.');await qc.invalidateQueries({queryKey:getListZero3AthletesQueryKey()});}catch(err){setError(feedback(err));}finally{setSavingId(null);}};
+ const deleteAthlete=async(id:string,name:string)=>{if(!window.confirm(`Excluir o cadastro sem vínculos de ${name}?`))return;setError('');setDeleteConflict(null);setDeleteAuthStatus(null);setSavingId(id);try{const response=await fetch(`/api/zero3/athletes/${encodeURIComponent(id)}`,{method:'DELETE',credentials:'same-origin'});const result=await response.json().catch(()=>({}));if(response.status===409&&result.code==='ATHLETE_HAS_LINKS'){setDeleteConflict({athleteName:name,message:result.error||'Este atleta ainda está vinculado.',affectedRegistrations:Array.isArray(result.affectedRegistrations)?result.affectedRegistrations:[],importCount:Number(result.blockedBy?.find((item:{kind?:string})=>item.kind==='IMPORT_HISTORY')?.count||0)});return;}if(!response.ok){if(response.status===401){setDeleteAuthStatus(401);setError('A sessão expirou ou não foi enviada ao servidor. Entre novamente; a exclusão não foi executada.');return;}if(response.status===403){setDeleteAuthStatus(403);setError('Sua conta está autenticada, mas não tem a função necessária para excluir atletas.');return;}throw new Error(result.error||`Falha da API ao excluir atleta (HTTP ${response.status}).`);}await qc.invalidateQueries({queryKey:getListZero3AthletesQueryKey()});setError('');}catch(err){setError(feedback(err));}finally{setSavingId(null);}};
  return <AdminShell><PageHeading eyebrow="Cadastro persistente" title="Atletas" detail="Um roster central para compor inscrições de qualquer evento."><Link href="/admin/roster/manage" className="button" data-testid="link-roster-manage">Gerenciar equipes</Link><Link href="/admin/roster/import" className="button primary" data-testid="link-roster-import">Importar duplas</Link></PageHeading>
-  <div className="grid-two"><form className="panel panel-pad" onSubmit={e=>{e.preventDefault();setError('');const f=new FormData(e.currentTarget);create.mutate({data:{fullName:String(f.get('fullName')).trim()}},{onSuccess:()=>qc.invalidateQueries({queryKey:getListZero3AthletesQueryKey()}),onError:err=>setError(feedback(err))});}}><h2 className="panel-title">Adicionar atleta</h2><Field label="Nome completo" name="fullName" placeholder="Nome e sobrenome" required/><button className="button primary" disabled={create.isPending}><Plus size={14}/> Cadastrar atleta</button>{error&&<p style={{color:'#a34238',fontSize:11,marginTop:10}}>{error}</p>}</form>
-    <section className="panel panel-pad"><div style={{display:'flex',justifyContent:'space-between',marginBottom:15}}><h2 className="panel-title" style={{margin:0}}>Roster</h2><span className="pill">{q.data?.length??'—'} atletas</span></div>{q.isLoading?<LoadingRows/>:q.isError?<QueryError error={q.error} retry={()=>q.refetch()}/>: (q.data||[]).length===0?<EmptyState title="Roster ainda vazio" detail="Cadastre atletas para preparar as inscrições."/>:<div className="lane-list">{q.data?.map(a=><div className="lane-card" key={a.id}><span className="avatar">{a.fullName.slice(0,1).toUpperCase()}</span><div style={{flex:1,minWidth:0}}>{editingId===a.id?<input aria-label={`Nome de ${a.fullName}`} value={editingName} onChange={event=>setEditingName(event.target.value)} data-testid={`input-athlete-name-${a.id}`}/>:<><div className="lane-name">{a.fullName}</div><div className="lane-meta mono">ID {a.id}</div></>}<div className="lane-meta">{new Date(a.createdAt).toLocaleDateString('pt-BR')}</div></div>{editingId===a.id?<div className="toolbar"><button className="button small primary" disabled={savingId===a.id||!editingName.trim()} onClick={()=>void saveAthlete(a.id)} data-testid={`button-save-athlete-${a.id}`}><Save size={13}/>Salvar</button><button className="button small" disabled={savingId===a.id} onClick={()=>setEditingId(null)} aria-label="Cancelar edição"><X size={13}/></button></div>:<div className="toolbar"><button className="button small" disabled={savingId===a.id} onClick={()=>{setEditingId(a.id);setEditingName(a.fullName);}} data-testid={`button-edit-athlete-${a.id}`}><Pencil size={13}/>Editar</button><button className="button small danger" disabled={savingId===a.id} onClick={()=>void deleteAthlete(a.id,a.fullName)} data-testid={`button-delete-athlete-${a.id}`}><Trash2 size={13}/>Excluir</button></div>}</div>)}</div>}{error&&<p role="alert" style={{color:'#a34238',fontSize:11,marginTop:12}}>{error}</p>}</section></div>
+  <div className="grid-two"><form className="panel panel-pad" onSubmit={e=>{e.preventDefault();setError('');setDeleteConflict(null);const f=new FormData(e.currentTarget);create.mutate({data:{fullName:String(f.get('fullName')).trim()}},{onSuccess:()=>qc.invalidateQueries({queryKey:getListZero3AthletesQueryKey()}),onError:err=>setError(feedback(err))});}}><h2 className="panel-title">Adicionar atleta</h2><Field label="Nome completo" name="fullName" placeholder="Nome e sobrenome" required/><button className="button primary" disabled={create.isPending}><Plus size={14}/> Cadastrar atleta</button>{error&&<p role="alert" style={{color:'#a34238',fontSize:11,marginTop:10}}>{error}{deleteAuthStatus===401&&<> <Link href="/sign-in?redirect_url=%2Fadmin%2Froster">Entrar novamente</Link></>}</p>}</form>
+    <section className="panel panel-pad"><div style={{display:'flex',justifyContent:'space-between',marginBottom:15}}><h2 className="panel-title" style={{margin:0}}>Roster</h2><span className="pill">{q.data?.length??'—'} atletas</span></div>{q.isLoading?<LoadingRows/>:q.isError?<QueryError error={q.error} retry={()=>q.refetch()}/>: (q.data||[]).length===0?<EmptyState title="Roster ainda vazio" detail="Cadastre atletas para preparar as inscrições."/>:<div className="lane-list">{q.data?.map(a=><div className="lane-card" key={a.id}><span className="avatar">{a.fullName.slice(0,1).toUpperCase()}</span><div style={{flex:1,minWidth:0}}>{editingId===a.id?<input aria-label={`Nome de ${a.fullName}`} value={editingName} onChange={event=>setEditingName(event.target.value)} data-testid={`input-athlete-name-${a.id}`}/>:<><div className="lane-name">{a.fullName}</div><div className="lane-meta mono">ID {a.id}</div></>}<div className="lane-meta">{new Date(a.createdAt).toLocaleDateString('pt-BR')}</div></div>{editingId===a.id?<div className="toolbar"><button className="button small primary" disabled={savingId===a.id||!editingName.trim()} onClick={()=>void saveAthlete(a.id)} data-testid={`button-save-athlete-${a.id}`}><Save size={13}/>Salvar</button><button className="button small" disabled={savingId===a.id} onClick={()=>setEditingId(null)} aria-label="Cancelar edição"><X size={13}/></button></div>:<div className="toolbar"><button className="button small" disabled={savingId===a.id} onClick={()=>{setEditingId(a.id);setEditingName(a.fullName);}} data-testid={`button-edit-athlete-${a.id}`}><Pencil size={13}/>Editar</button><button className="button small danger" disabled={savingId===a.id} onClick={()=>void deleteAthlete(a.id,a.fullName)} data-testid={`button-delete-athlete-${a.id}`}><Trash2 size={13}/>Excluir</button></div>}</div>)}</div>}{error&&<p role="alert" style={{color:'#a34238',fontSize:11,marginTop:12}}>{error}{deleteAuthStatus===401&&<> <Link href="/sign-in?redirect_url=%2Fadmin%2Froster">Entrar novamente</Link></>}{deleteAuthStatus===403&&<span> Peça a um ADMIN autorizado que revise a função desta conta.</span>}</p>}
+      {deleteConflict&&<div className="error-box" role="alert" style={{marginTop:12}}><strong>Exclusão bloqueada: {deleteConflict.athleteName}</strong><p>{deleteConflict.message}</p>{deleteConflict.affectedRegistrations.length>0?<div className="lane-list">{deleteConflict.affectedRegistrations.map(reg=><div className="lane-card" key={reg.id}><div style={{minWidth:0,flex:1}}><div className="lane-name">{reg.teamName||reg.athleteNames.join(' / ')}</div><div className="lane-meta">{reg.eventName} · {reg.category} · raia {reg.laneLabel||'—'} · {registrationConfirmationLabels[reg.confirmationStatus]||reg.confirmationStatus} · {registrationPaymentLabels[reg.paymentStatus]||reg.paymentStatus}</div><div className="lane-meta">Inscrição preservada · {reg.resultCount} resultado(s) · {reg.batteryCount} bateria(s) · {reg.athleteNames.join(' / ')}</div></div><Link className="button small" href={reg.href}>Revisar inscrição</Link></div>)}</div>:null}{deleteConflict.importCount>0&&<p>Também há {deleteConflict.importCount} vínculo(s) no histórico de importação. <Link href="/admin/roster/import">Revisar importações</Link>.</p>}<p className="field-help">A troca de atleta ou o cancelamento da inscrição seguem as regras do evento. Resultados e histórico oficial não são apagados automaticamente.</p></div>}</section></div>
  </AdminShell>;
 }
 

@@ -1,6 +1,8 @@
 import {
   DeleteZero3EventBody,
   DeleteZero3EventResponse,
+  GetZero3EventParams,
+  GetZero3EventResponse,
   GetZero3EventDeletionBackupParams,
   GetZero3EventDeletionBackupResponse,
   RestoreZero3EventBackupBody,
@@ -13,9 +15,13 @@ import {
   type EventBackupRow,
   type Zero3EventBackup,
 } from "./zero3-event-archive";
-import { d1ApiError, newD1Id, requireD1Member } from "./d1-staging-shared";
+import { d1ApiError, d1Date, d1JsonArray, newD1Id, requireD1Member } from "./d1-staging-shared";
 
 type EventRow = EventBackupRow & { id: string; name: string };
+type EventDetailsRow = {
+  id: string; name: string; proof_name: string; status: string;
+  preparation_seconds: number; categories: string; created_at: string;
+};
 type Rows = { results: EventBackupRow[] };
 
 const adminOnly = ["ADMIN"] as const;
@@ -359,8 +365,31 @@ export async function handleD1StagingEventLifecycle(
 
   const eventId = eventIdFromRoute(route);
   if (eventId && req.method === "GET") {
-    d1ApiError(req, res, 404, "EVENT_DETAILS_ROUTE_NOT_FOUND",
-      "Esta API não expõe GET /events/{id}; para baixar a cópia use /events/{id}/deletion-backup.");
+    if (!await requireD1Member(req, res, DB, ["ADMIN", "JUIZ_CHEFE", "JUIZ"])) return true;
+    const params = GetZero3EventParams.safeParse({ eventId });
+    if (!params.success) {
+      d1ApiError(req, res, 400, "EVENT_ID_INVALID", "ID de evento inválido.");
+      return true;
+    }
+    try {
+      const row = await DB.prepare("SELECT * FROM zero3_events WHERE id=?")
+        .bind(params.data.eventId).first<EventDetailsRow>();
+      if (!row) {
+        d1ApiError(req, res, 404, "EVENT_NOT_FOUND", "Evento não encontrado.");
+        return true;
+      }
+      res.json(GetZero3EventResponse.parse({
+        id: row.id,
+        name: row.name,
+        proofName: row.proof_name,
+        status: row.status,
+        preparationSeconds: row.preparation_seconds,
+        categories: d1JsonArray(row.categories),
+        createdAt: d1Date(row.created_at),
+      }));
+    } catch {
+      d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível consultar o evento.");
+    }
     return true;
   }
   if (eventId && req.method === "DELETE") {
@@ -368,7 +397,7 @@ export async function handleD1StagingEventLifecycle(
     if (!member) return true;
     const params = DeleteZero3EventBody.safeParse(req.body);
     if (!params.success) {
-      d1ApiError(req, res, 400, "EVENT_DELETE_CONFIRMATION_INVALID", "Informe a confirmação e o digest do backup.");
+      d1ApiError(req, res, 400, "EVENT_DELETE_CONFIRMATION_INVALID", "Informe a confirmação do nome do evento.");
       return true;
     }
     try {
@@ -380,9 +409,9 @@ export async function handleD1StagingEventLifecycle(
           `Digite exatamente EXCLUIR ${backup.eventName} para confirmar.`);
         return true;
       }
-      if (params.data.backupDigest !== backup.digest) {
+      if (params.data.backupDigest && params.data.backupDigest !== backup.digest) {
         d1ApiError(req, res, 409, "EVENT_BACKUP_STALE",
-          "Os dados mudaram desde o backup. Baixe um novo JSON antes de excluir.");
+          "Os dados mudaram desde a última consulta. Atualize o evento antes de excluir.");
         return true;
       }
       const auditId = newD1Id();
@@ -431,7 +460,7 @@ export async function handleD1StagingEventLifecycle(
       const results = await DB.batch(statements);
       if ((results.at(-1)?.meta.changes ?? 0) !== 1) {
         d1ApiError(req, res, 409, "EVENT_DELETE_CONFLICT",
-          "O evento mudou durante a exclusão. Nenhum dado foi removido; gere um novo backup.");
+          "O evento mudou durante a exclusão. Nenhum dado foi removido; atualize e revise o evento.");
         return true;
       }
       res.json(DeleteZero3EventResponse.parse({ eventId, deleted: true }));

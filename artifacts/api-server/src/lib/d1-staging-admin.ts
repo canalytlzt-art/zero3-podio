@@ -320,11 +320,72 @@ export async function handleD1StagingAdmin(
         (SELECT COUNT(DISTINCT batch_id) FROM zero3_import_people WHERE athlete_id=?) AS import_count`)
         .bind(athleteId, athleteId, athleteId)
         .first<{ registration_count: number; import_count: number }>();
+      const registrationRows = linked?.registration_count
+        ? await DB.prepare(`WITH linked_registration_ids AS (
+            SELECT registration_id AS id FROM zero3_registration_members WHERE athlete_id=?
+            UNION
+            SELECT related.id FROM zero3_registrations related,json_each(related.athlete_ids) member
+              WHERE member.value=?
+          )
+          SELECT r.id,r.event_id,r.category,r.team_name,
+            CASE WHEN EXISTS(SELECT 1 FROM zero3_registration_members member WHERE member.registration_id=r.id)
+              THEN (SELECT json_group_array(athlete_id) FROM (
+                SELECT athlete_id FROM zero3_registration_members WHERE registration_id=r.id ORDER BY slot
+              ))
+              ELSE r.athlete_ids END AS related_athlete_ids,
+            r.lane_label,
+            r.confirmation_status,r.payment_status,e.name AS event_name,
+            (SELECT COUNT(*) FROM zero3_results result WHERE result.registration_id=r.id) AS result_count,
+            (SELECT COUNT(*) FROM zero3_battery_entries entry WHERE entry.registration_id=r.id) AS battery_count
+          FROM zero3_registrations r
+          LEFT JOIN zero3_events e ON e.id=r.event_id
+          WHERE r.id IN (SELECT id FROM linked_registration_ids)
+          ORDER BY e.name,r.category,r.lane_label,r.id`)
+          .bind(athleteId, athleteId)
+          .all<{
+            id: string; event_id: string; category: string; team_name: string | null;
+            related_athlete_ids: string; lane_label: string | null; confirmation_status: string;
+            payment_status: string; event_name: string | null; result_count: number; battery_count: number;
+          }>()
+        : { results: [] };
+      const relatedAthletes = linked?.registration_count
+        ? await DB.prepare(`WITH linked_registration_ids AS (
+              SELECT registration_id AS id FROM zero3_registration_members WHERE athlete_id=?
+              UNION
+              SELECT related.id FROM zero3_registrations related,json_each(related.athlete_ids) member
+                WHERE member.value=?
+            ), linked_athlete_ids AS (
+              SELECT member.value AS id FROM zero3_registrations r,json_each(r.athlete_ids) member
+                WHERE r.id IN (SELECT id FROM linked_registration_ids)
+              UNION
+              SELECT member.athlete_id AS id FROM zero3_registration_members member
+                WHERE member.registration_id IN (SELECT id FROM linked_registration_ids)
+            )
+            SELECT id,full_name FROM zero3_athletes WHERE id IN (SELECT id FROM linked_athlete_ids)`)
+            .bind(athleteId, athleteId)
+            .all<{ id: string; full_name: string }>()
+        : { results: [] };
+      const athleteNames = new Map(relatedAthletes.results.map((athlete) => [athlete.id, athlete.full_name]));
+      const affectedRegistrations = registrationRows.results.map((registration) => ({
+        id: registration.id,
+        eventId: registration.event_id,
+        eventName: registration.event_name ?? "Evento removido",
+        category: registration.category,
+        teamName: registration.team_name,
+        laneLabel: registration.lane_label,
+        confirmationStatus: registration.confirmation_status,
+        paymentStatus: registration.payment_status,
+        athleteNames: d1JsonArray(registration.related_athlete_ids)
+          .map((id) => athleteNames.get(id) ?? "Atleta removido"),
+        resultCount: registration.result_count,
+        batteryCount: registration.battery_count,
+        href: `/admin/roster/manage?eventId=${encodeURIComponent(registration.event_id)}&registrationId=${encodeURIComponent(registration.id)}`,
+      }));
       const blockedBy = [
         ...(linked?.registration_count ? [{
           kind: "REGISTRATION",
           count: linked.registration_count,
-          href: "/admin/roster/manage",
+          href: affectedRegistrations[0]?.href ?? "/admin/roster/manage",
           label: "Inscrições e equipes",
         }] : []),
         ...(linked?.import_count ? [{
@@ -342,6 +403,7 @@ export async function handleD1StagingAdmin(
           code: "ATHLETE_HAS_LINKS",
           error: `Não é possível excluir: ${locations}. Revise esses vínculos sem apagar o histórico da competição.`,
           blockedBy,
+          affectedRegistrations,
         });
         return true;
       }
