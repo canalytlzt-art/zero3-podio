@@ -20,6 +20,7 @@
     "test:roster-import": "esbuild src/lib/zero3-roster-import.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-roster-import.test.mjs && node --test /tmp/zero3-roster-import.test.mjs",
     "test:roster-audit": "esbuild src/lib/zero3-roster-audit.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-roster-audit.test.mjs && node --test /tmp/zero3-roster-audit.test.mjs",
     "test:event-archive": "esbuild src/lib/zero3-event-archive.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-event-archive.test.mjs && node --test /tmp/zero3-event-archive.test.mjs",
+    "test:import-batch-schema": "esbuild src/lib/zero3-import-batch-schema.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-import-batch-schema.test.mjs && node --test /tmp/zero3-import-batch-schema.test.mjs",
     "test:d1-event-lifecycle": "esbuild src/lib/d1-staging-event-lifecycle.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-d1-event-lifecycle.test.mjs && node --test /tmp/zero3-d1-event-lifecycle.test.mjs",
     "test:auth-session": "esbuild src/lib/auth-session.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-auth-session.test.mjs && node --test /tmp/zero3-auth-session.test.mjs",
     "test:auth-guard": "node scripts/test-auth-guard.mjs",

@@ -160,7 +160,9 @@ export const zero3ImportBatchesTable = pgTable(
     sourceTeamCount: integer("source_team_count").notNull(),
     sourcePeopleCount: integer("source_people_count").notNull(),
     appliedBy: text("applied_by").notNull(),
-    appliedAt: createdAt(),
+    appliedAt: timestamp("applied_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     eventDatasetUnique: uniqueIndex("zero3_import_batch_event_dataset_unique").on(
