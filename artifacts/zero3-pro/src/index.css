@@ -490,6 +490,7 @@ input[aria-invalid="true"] {border-color:#a34238}
 .tv-battery-board,.tv-overall-section {border:1px solid #343936;border-radius:8px;background:#1c1f1d;padding:clamp(12px,1.6vw,22px);margin-top:14px}
 .tv-battery-heading {display:flex;align-items:center;justify-content:space-between;gap:20px;border-bottom:1px solid #353936;padding-bottom:12px;margin-bottom:12px}
 .tv-battery-heading h1 {font-size:clamp(22px,3vw,40px);line-height:1.06;margin:4px 0;font-weight:850;letter-spacing:-.04em}
+.tv-battery-code {color:#d7c3f2;font-size:.58em;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
 .tv-battery-heading p {color:#a4a8a1;font-size:12px;margin:5px 0 0}
 .tv-battery-actions {display:flex;align-items:center;gap:12px}
 .tv-live-board-link {display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #565b56;border-radius:5px;background:#252926;color:#e8e6df;text-decoration:none;font:700 9px var(--font-data);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}

@@ -295,12 +295,17 @@ export interface Zero3EventBatteryUpdateInput {
      * @maxLength 120
      */
   expectedName: string;
+  /** @minimum 1 */
+  expectedOrder: number;
   expectedRegistrationIds: string[];
   /**
      * @minLength 1
      * @maxLength 120
      */
   name: string;
+  /** @minimum 1 */
+  order: number;
+  swapWithBatteryId?: string;
   registrationIds: string[];
 }
 

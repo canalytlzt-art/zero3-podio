@@ -75,14 +75,18 @@ test("event deletion confirmation no longer requires a client-downloaded JSON ba
 test("battery composition edits validate the current name and reject duplicate assignment IDs", () => {
   assert.equal(UpdateZero3EventBatteryBody.safeParse({
     expectedName: "Bateria 1",
+    expectedOrder: 1,
     expectedRegistrationIds: ["registration-a"],
     name: "Bateria 1",
+    order: 1,
     registrationIds: ["registration-b"],
   }).success, true);
   const duplicateInput = UpdateZero3EventBatteryBody.safeParse({
     expectedName: "Bateria 1",
+    expectedOrder: 1,
     expectedRegistrationIds: ["registration-a", "registration-a"],
     name: "Bateria 1",
+    order: 1,
     registrationIds: [],
   });
   assert.equal(duplicateInput.success, true);
@@ -92,11 +96,11 @@ test("battery composition edits validate the current name and reject duplicate a
 
 test("battery deletion requires a fresh fingerprint and explicit confirmation", () => {
   assert.equal(DeleteZero3EventBatteryBody.safeParse({
-    confirmation: "EXCLUIR BATERIA 1: Bateria teste",
+    confirmation: "EXCLUIR BATERIA P01: Bateria teste",
     expectedFingerprint: "f".repeat(64),
   }).success, true);
   assert.equal(DeleteZero3EventBatteryBody.safeParse({
-    confirmation: "EXCLUIR BATERIA 1: Bateria teste",
+    confirmation: "EXCLUIR BATERIA P01: Bateria teste",
     expectedFingerprint: "stale",
   }).success, false);
 });

@@ -17,6 +17,7 @@ import type {
   Zero3PublicResult,
 } from '@workspace/api-client-react';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
+import { eventBatteryCode } from '@/lib/event-battery-code';
 import './LiveBoardPage.css';
 
 type BoardView = 'battery' | 'overall';
@@ -227,7 +228,7 @@ function EventBatteryResultsView({ battery }: { battery: EventBatteryProjection 
   return (
     <article className="lb-event-battery" data-testid={`card-event-battery-${battery.id}`}>
       <header className="lb-event-battery-heading">
-        <div><span>BATERIA {String(battery.order).padStart(2, '0')}</span><h3>{battery.name}</h3></div>
+        <div><span>BATERIA {eventBatteryCode(battery.order)}</span><h3>{battery.name}</h3></div>
         <div className={`lb-event-battery-publication ${official ? 'is-official' : battery.finalized ? 'is-pending' : 'is-provisional'}`}>
           {publicationLabel}
           {battery.finalizationVersion != null && <small>Versão {battery.finalizationVersion}</small>}

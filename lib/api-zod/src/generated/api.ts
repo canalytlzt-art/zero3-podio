@@ -822,7 +822,7 @@ export const CreateZero3EventBatteryResponse = zod.object({
 
 
 /**
- * @summary Edit an unstarted event battery composition
+ * @summary Edit event battery metadata and eligible composition
  */
 export const UpdateZero3EventBatteryParams = zod.object({
   "eventId": zod.coerce.string(),
@@ -831,14 +831,19 @@ export const UpdateZero3EventBatteryParams = zod.object({
 
 export const updateZero3EventBatteryBodyExpectedNameMax = 120;
 
+
 export const updateZero3EventBatteryBodyNameMax = 120;
+
 
 
 
 export const UpdateZero3EventBatteryBody = zod.object({
   "expectedName": zod.string().min(1).max(updateZero3EventBatteryBodyExpectedNameMax),
+  "expectedOrder": zod.number().int().min(1),
   "expectedRegistrationIds": zod.array(zod.string()),
   "name": zod.string().min(1).max(updateZero3EventBatteryBodyNameMax),
+  "order": zod.number().int().min(1),
+  "swapWithBatteryId": zod.string().optional(),
   "registrationIds": zod.array(zod.string())
 })
 

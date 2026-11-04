@@ -4,6 +4,10 @@ export type BatteryOrderRecord = {
   name: string;
 };
 
+export function batteryTimerBlocksStructureChange(state: string) {
+  return state === "PREPARATION" || state === "RUNNING";
+}
+
 export type BatteryOrderDecision =
   | { kind: "unchanged"; current: BatteryOrderRecord }
   | { kind: "move"; current: BatteryOrderRecord; order: number }

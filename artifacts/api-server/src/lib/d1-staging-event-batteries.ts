@@ -29,7 +29,7 @@ import {
   newD1Id,
   requireD1Member,
 } from "./d1-staging-shared";
-import { resolveBatteryOrderChange } from "./d1-staging-battery-order";
+import { batteryTimerBlocksStructureChange, resolveBatteryOrderChange } from "./d1-staging-battery-order";
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
@@ -516,7 +516,11 @@ export async function handleD1StagingEventBatteries(
     }
     try {
       const batteries = await listD1EventBatteries(DB, params.data.eventId);
-      const battery = batteries?.find((item) => item.id === params.data.batteryId);
+      if (!batteries) {
+        d1ApiError(req, res, 404, "EVENT_NOT_FOUND", "Evento não encontrado.");
+        return true;
+      }
+      const battery = batteries.find((item) => item.id === params.data.batteryId);
       if (!battery) {
         d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada neste evento.");
         return true;
@@ -553,8 +557,8 @@ export async function handleD1StagingEventBatteries(
       const otherBattery = decision.kind === "swap"
         ? batteries.find((item) => item.id === decision.other.id)
         : undefined;
-      if (["PREPARATION", "RUNNING"].includes(battery.state) ||
-          (otherBattery && ["PREPARATION", "RUNNING"].includes(otherBattery.state))) {
+      if (batteryTimerBlocksStructureChange(battery.state) ||
+          (otherBattery && batteryTimerBlocksStructureChange(otherBattery.state))) {
         d1ApiError(req, res, 409, "BATTERY_TIMER_ACTIVE",
           "Pare a preparação ou cronômetro em execução antes de alterar a ordem. O tempo pausado é preservado.");
         return true;
@@ -735,13 +739,13 @@ export async function handleD1StagingEventBatteries(
         d1ApiError(req, res, 409, "BATTERY_CHANGED", "A bateria mudou. Atualize e confira o impacto antes de excluir.");
         return true;
       }
-      const confirmation = `EXCLUIR BATERIA ${battery.order}: ${battery.name}`;
+      const confirmation = `EXCLUIR BATERIA P${String(battery.order).padStart(2, "0")}: ${battery.name}`;
       if (body.data.confirmation !== confirmation) {
         d1ApiError(req, res, 409, "BATTERY_DELETE_CONFIRMATION_MISMATCH",
           `Digite exatamente ${confirmation} para confirmar.`);
         return true;
       }
-      if (["PREPARATION", "RUNNING"].includes(battery.state)) {
+      if (batteryTimerBlocksStructureChange(battery.state)) {
         d1ApiError(req, res, 409, "BATTERY_TIMER_ACTIVE",
           "Pare a preparação ou o cronômetro em execução antes de excluir a bateria. O tempo pausado será removido com ela.");
         return true;
@@ -760,7 +764,7 @@ export async function handleD1StagingEventBatteries(
         DB.prepare(`UPDATE zero3_batteries SET name=?
           WHERE id=? AND event_id=? AND battery_order=? AND name=?
             AND NOT EXISTS(SELECT 1 FROM zero3_battery_runs
-              WHERE battery_id=? AND event_id=? AND state IN ('PREPARATION','RUNNING','PAUSED'))`)
+              WHERE battery_id=? AND event_id=? AND state IN ('PREPARATION','RUNNING'))`)
           .bind(marker, battery.id, params.data.eventId, battery.order, battery.name,
             battery.id, params.data.eventId),
         DB.prepare(`UPDATE zero3_active_batteries SET battery_id=NULL,updated_at=?
@@ -862,6 +866,15 @@ export async function handleD1StagingEventBatteries(
       const latest = await DB.prepare(`SELECT * FROM zero3_battery_publications
         WHERE battery_id=? ORDER BY version DESC LIMIT 1`)
         .bind(battery.id).first<PublicationRow>();
+      if (latest && battery.finalized && battery.finalizationCurrent) {
+        res.json(FinalizeZero3EventBatteryResponse.parse({
+          eventId: battery.eventId, batteryId: battery.id, order: battery.order,
+          version: latest.version, resultCount: latest.result_count,
+          publishedAt: d1Date(latest.published_at), fingerprint: latest.result_fingerprint,
+          alreadyPublished: true,
+        }));
+        return true;
+      }
       if (existing && latest?.id === existing.id) {
         res.json(FinalizeZero3EventBatteryResponse.parse({
           eventId: battery.eventId, batteryId: battery.id, order: battery.order,

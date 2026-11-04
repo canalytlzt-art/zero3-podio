@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveBatteryOrderChange } from "./d1-staging-battery-order";
+import { batteryTimerBlocksStructureChange, resolveBatteryOrderChange } from "./d1-staging-battery-order";
 
 const batteries = [
   { id: "battery-1", order: 1, name: "Bateria vazia" },
@@ -41,4 +41,12 @@ test("rejects a swap target when the requested order became free", () => {
     resolveBatteryOrderChange([batteries[0]!], "battery-1", 2, "battery-2"),
     { kind: "conflict", reason: "SWAP_TARGET_CHANGED" },
   );
+});
+
+test("only preparation or a running timer blocks structural controls", () => {
+  assert.equal(batteryTimerBlocksStructureChange("PREPARATION"), true);
+  assert.equal(batteryTimerBlocksStructureChange("RUNNING"), true);
+  assert.equal(batteryTimerBlocksStructureChange("PAUSED"), false);
+  assert.equal(batteryTimerBlocksStructureChange("IDLE"), false);
+  assert.equal(batteryTimerBlocksStructureChange("FINISHED"), false);
 });

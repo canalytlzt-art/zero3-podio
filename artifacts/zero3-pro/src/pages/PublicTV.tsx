@@ -5,6 +5,7 @@ import type { Zero3LeaderboardEntry, Zero3Proof, Zero3PublicBoard, Zero3PublicBa
 import { RotateCw } from 'lucide-react';
 import { liveBoardHrefForBattery, liveBoardHrefForEvent } from '@/lib/live-board-navigation';
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
+import { eventBatteryCode } from '@/lib/event-battery-code';
 
 const clockText=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(d);
 const duration=(ms?:number|null)=>ms==null?'—':`${String(Math.floor(ms/60000)).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(Math.floor(ms%1000/10)).padStart(2,'0')}`;
@@ -66,7 +67,7 @@ function EventBatteryBoard({board}:{board:Zero3PublicBoard}){
   return <section className="tv-battery-board">
     <header className="tv-battery-heading">
       <div><div className="tv-battery-kicker">BATERIA DO EVENTO · QUATRO PROVAS EM PARALELO</div>
-        <h1>{battery.name}</h1>
+        <h1><span className="tv-battery-code">BATERIA {eventBatteryCode(battery.order)}</span> · {battery.name}</h1>
         <p>{battery.registrations.length} inscrições · {categories.join(' + ')||'sem categorias inscritas'}</p>
       </div>
       <div className="tv-battery-actions">

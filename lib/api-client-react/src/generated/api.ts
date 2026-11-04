@@ -1657,7 +1657,7 @@ export const getUpdateZero3EventBatteryUrl = (eventId: string,
 }
 
 /**
- * @summary Edit an unstarted event battery composition
+ * @summary Edit event battery metadata and eligible composition
  */
 export const updateZero3EventBattery = async (eventId: string,
     batteryId: string,
@@ -1725,7 +1725,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateZero3EventBatteryMutationVariables = {eventId: string;batteryId: string;data: BodyType<Zero3EventBatteryUpdateInput>}
 
     /**
- * @summary Edit an unstarted event battery composition
+ * @summary Edit event battery metadata and eligible composition
  */
 export const useUpdateZero3EventBattery = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateZero3EventBattery>>, TError,UpdateZero3EventBatteryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
