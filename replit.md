@@ -40,8 +40,11 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - `/` redirects to the administrative entry; `/tv` is the single public read-only TV. `/inicio` does not replace the primary flow. The civil clock uses `America/Sao_Paulo` and remains independent from sports-timer state.
 - A single TV displays SC and RX together, proof results, progress, scores, and only manually published podiums. Admin menus/forms stay off the TV.
 - Events have four proof slots. Configure official names, units, metric direction, and tie handling only from confirmed event rules.
+- A battery belongs to one event and has a unique order within it; its registrations compete across all four proofs in parallel. RX and SC may share the battery but keep separate results and rankings. Assign each event registration only once.
+- Keep the shared event timer independent from TV selection and finalization. Selecting a battery only changes the display; starting/stopping the timer is a separate action. Publish the complete battery results and update rankings only after all required results are reviewed or have a configured official exception.
 - For configured proofs, validated results receive 1, 2, 3… points by placement; the lower overall sum wins. The server recalculates from stored results after corrections. Provisional results earn no official points; missing proofs are not zero; incomplete entries are not final champions. Do not invent tie-breakers.
 - Preserve timer, registrations, IDs, prior results, role checks, and audit history when changing the app. Keep SC and RX as stored; do not infer that SC means SCALE.
+- Never automatically combine legacy heat rows with different registration sets during migration. Preserve their records and require an explicit, reviewed mapping before converting them into event-scoped batteries.
 - Fictional seed records and preloaded podium fixtures are marked as demo data and must never be presented as official registrations or results.
 - The current spreadsheet contains 29 source teams and has not been applied. For this workbook only, the user approved mapping SCALE to SC; do not generalize that mapping to other sources. Select a destination event, review candidate identities, and explicitly apply; never merge athletes by name.
 

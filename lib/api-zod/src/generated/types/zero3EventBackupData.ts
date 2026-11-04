@@ -5,8 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Zero3EventBackupDataActiveBatteriesItem } from './zero3EventBackupDataActiveBatteriesItem';
 import type { Zero3EventBackupDataActiveHeatsItem } from './zero3EventBackupDataActiveHeatsItem';
 import type { Zero3EventBackupDataAthletesItem } from './zero3EventBackupDataAthletesItem';
+import type { Zero3EventBackupDataBatteriesItem } from './zero3EventBackupDataBatteriesItem';
+import type { Zero3EventBackupDataBatteryEntriesItem } from './zero3EventBackupDataBatteryEntriesItem';
+import type { Zero3EventBackupDataBatteryPublicationsItem } from './zero3EventBackupDataBatteryPublicationsItem';
+import type { Zero3EventBackupDataBatteryRunsItem } from './zero3EventBackupDataBatteryRunsItem';
 import type { Zero3EventBackupDataEvent } from './zero3EventBackupDataEvent';
 import type { Zero3EventBackupDataHeatEntriesItem } from './zero3EventBackupDataHeatEntriesItem';
 import type { Zero3EventBackupDataHeatPublicationsItem } from './zero3EventBackupDataHeatPublicationsItem';
@@ -43,4 +48,9 @@ export type Zero3EventBackupData = {
   podiumVersions: Zero3EventBackupDataPodiumVersionsItem[];
   heatRuns?: Zero3EventBackupDataHeatRunsItem[];
   heatPublications?: Zero3EventBackupDataHeatPublicationsItem[];
+  batteries?: Zero3EventBackupDataBatteriesItem[];
+  batteryEntries?: Zero3EventBackupDataBatteryEntriesItem[];
+  activeBatteries?: Zero3EventBackupDataActiveBatteriesItem[];
+  batteryRuns?: Zero3EventBackupDataBatteryRunsItem[];
+  batteryPublications?: Zero3EventBackupDataBatteryPublicationsItem[];
 };

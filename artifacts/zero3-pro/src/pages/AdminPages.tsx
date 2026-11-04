@@ -108,7 +108,7 @@ function EventRow({event,isAdmin=false}:{event:Zero3Event;isAdmin?:boolean}) {
    const safeName=event.name.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'evento';
     anchor.href=url;anchor.download=`zero3-backup-${safeName}-${event.id}.json`;anchor.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
    setBackup(archive);setBackupSaved(false);
-  }catch(error){setDeleteError(feedback(error));}
+   }catch(error){setDeleteError(`Falha ao gerar o backup: ${feedback(error)}`);}
   finally{setBackupLoading(false);}
  };
  const confirmDelete=()=>{
@@ -121,7 +121,7 @@ function EventRow({event,isAdmin=false}:{event:Zero3Event;isAdmin?:boolean}) {
     qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});
     qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId:event.id})});
    },
-   onError:error=>{setDeleteError(feedback(error));setBackup(null);setBackupSaved(false);},
+    onError:error=>{setDeleteError(`Falha ao excluir o evento: ${feedback(error)}`);setBackup(null);setBackupSaved(false);},
   });
  };
   return <div>

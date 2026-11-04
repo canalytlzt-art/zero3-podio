@@ -174,6 +174,7 @@ export const Zero3EventBackupVersion = {
   NUMBER_1: 1,
   NUMBER_2: 2,
   NUMBER_3: 3,
+  NUMBER_4: 4,
 } as const;
 
 export type Zero3EventBackupCounts = {[key: string]: number};
@@ -214,6 +215,16 @@ export type Zero3EventBackupDataHeatRunsItem = { [key: string]: unknown };
 
 export type Zero3EventBackupDataHeatPublicationsItem = { [key: string]: unknown };
 
+export type Zero3EventBackupDataBatteriesItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataBatteryEntriesItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataActiveBatteriesItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataBatteryRunsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataBatteryPublicationsItem = { [key: string]: unknown };
+
 export type Zero3EventBackupData = {
   event: Zero3EventBackupDataEvent;
   athletes: Zero3EventBackupDataAthletesItem[];
@@ -233,6 +244,11 @@ export type Zero3EventBackupData = {
   podiumVersions: Zero3EventBackupDataPodiumVersionsItem[];
   heatRuns?: Zero3EventBackupDataHeatRunsItem[];
   heatPublications?: Zero3EventBackupDataHeatPublicationsItem[];
+  batteries?: Zero3EventBackupDataBatteriesItem[];
+  batteryEntries?: Zero3EventBackupDataBatteryEntriesItem[];
+  activeBatteries?: Zero3EventBackupDataActiveBatteriesItem[];
+  batteryRuns?: Zero3EventBackupDataBatteryRunsItem[];
+  batteryPublications?: Zero3EventBackupDataBatteryPublicationsItem[];
 };
 
 export interface Zero3EventBackup {

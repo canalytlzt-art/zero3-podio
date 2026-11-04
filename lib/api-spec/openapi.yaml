@@ -115,7 +115,7 @@ paths:
           description: Administrator role required
         "409":
           description: Event or global athlete data conflicts with the backup
-  /zero3/events/{eventId}:
+  /zero3/events/{eventId}/deletion-backup:
     get:
       operationId: getZero3EventDeletionBackup
       tags: [zero3]
@@ -139,6 +139,7 @@ paths:
           description: Administrator role required
         "404":
           description: Event not found
+  /zero3/events/{eventId}:
     patch:
       operationId: updateZero3Event
       tags: [zero3]
@@ -1169,7 +1170,7 @@ components:
       required: [format, version, eventId, eventName, exportedAt, counts, data, digest]
       properties:
         format: { type: string, const: zero3-event-backup }
-        version: { type: integer, enum: [1, 2, 3] }
+        version: { type: integer, enum: [1, 2, 3, 4] }
         eventId: { type: string }
         eventName: { type: string }
         exportedAt: { type: string, format: date-time }
@@ -1198,6 +1199,11 @@ components:
             podiumVersions: { type: array, items: { type: object, additionalProperties: true } }
             heatRuns: { type: array, items: { type: object, additionalProperties: true } }
             heatPublications: { type: array, items: { type: object, additionalProperties: true } }
+            batteries: { type: array, items: { type: object, additionalProperties: true } }
+            batteryEntries: { type: array, items: { type: object, additionalProperties: true } }
+            activeBatteries: { type: array, items: { type: object, additionalProperties: true } }
+            batteryRuns: { type: array, items: { type: object, additionalProperties: true } }
+            batteryPublications: { type: array, items: { type: object, additionalProperties: true } }
         digest: { type: string, minLength: 64, maxLength: 64 }
     Zero3EventDeleteInput:
       type: object

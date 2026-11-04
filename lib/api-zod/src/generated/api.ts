@@ -154,7 +154,7 @@ export const restoreZero3EventBackupBodyBackupDigestMax = 64;
 export const RestoreZero3EventBackupBody = zod.object({
   "backup": zod.object({
   "format": zod.literal("zero3-event-backup"),
-  "version": zod.union([zod.literal(1),zod.literal(2),zod.literal(3)]),
+  "version": zod.union([zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),
   "eventId": zod.string(),
   "eventName": zod.string(),
   "exportedAt": zod.coerce.date(),
@@ -177,7 +177,12 @@ export const RestoreZero3EventBackupBody = zod.object({
   "timers": zod.array(zod.record(zod.string(), zod.unknown())),
   "podiumVersions": zod.array(zod.record(zod.string(), zod.unknown())),
   "heatRuns": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "heatPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "heatPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryEntries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "activeBatteries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryRuns": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 }),
   "digest": zod.string().min(restoreZero3EventBackupBodyBackupDigestMin).max(restoreZero3EventBackupBodyBackupDigestMax)
 })
@@ -203,7 +208,7 @@ export const getZero3EventDeletionBackupResponseDigestMax = 64;
 
 export const GetZero3EventDeletionBackupResponse = zod.object({
   "format": zod.literal("zero3-event-backup"),
-  "version": zod.union([zod.literal(1),zod.literal(2),zod.literal(3)]),
+  "version": zod.union([zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),
   "eventId": zod.string(),
   "eventName": zod.string(),
   "exportedAt": zod.coerce.date(),
@@ -226,7 +231,12 @@ export const GetZero3EventDeletionBackupResponse = zod.object({
   "timers": zod.array(zod.record(zod.string(), zod.unknown())),
   "podiumVersions": zod.array(zod.record(zod.string(), zod.unknown())),
   "heatRuns": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "heatPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "heatPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryEntries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "activeBatteries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryRuns": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 }),
   "digest": zod.string().min(getZero3EventDeletionBackupResponseDigestMin).max(getZero3EventDeletionBackupResponseDigestMax)
 })

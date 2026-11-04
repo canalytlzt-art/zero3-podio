@@ -33,6 +33,11 @@ const RESTORE_DEFINITIONS = [
   { collection: "importBatches", table: "zero3_import_batches", columns: ["id", "event_id", "dataset_key", "source_file", "source_sheet", "source_notes", "content_hash", "source_team_count", "source_people_count", "applied_by", "applied_at"] },
   { collection: "importPeople", table: "zero3_import_people", columns: ["id", "batch_id", "source_key", "source_name", "source_cell", "athlete_id", "created_at"] },
   { collection: "importTeams", table: "zero3_import_teams", columns: ["id", "batch_id", "source_code", "source_category", "source_row", "source_cells", "source_athlete_names", "target_category", "registration_id", "created_at"] },
+  { collection: "batteries", table: "zero3_batteries", columns: ["id", "event_id", "battery_order", "name", "created_at"] },
+  { collection: "batteryEntries", table: "zero3_battery_entries", columns: ["battery_id", "registration_id", "lane_label", "assigned_at"] },
+  { collection: "activeBatteries", table: "zero3_active_batteries", columns: ["event_id", "battery_id", "updated_at"] },
+  { collection: "batteryRuns", table: "zero3_battery_runs", columns: ["battery_id", "event_id", "state", "elapsed_ms", "started_at", "preparation_ends_at", "version", "last_command_id", "updated_at", "preparation_started_at", "first_started_at", "stopped_at"] },
+  { collection: "batteryPublications", table: "zero3_battery_publications", columns: ["id", "event_id", "battery_id", "version", "result_fingerprint", "result_count", "results_json", "leaderboards_json", "published_by", "published_at"] },
   { collection: "heats", table: "zero3_heats", columns: ["id", "event_id", "category", "name", "order", "proof_id", "battery_order"] },
   { collection: "heatEntries", table: "zero3_heat_entries", columns: ["heat_id", "registration_id", "lane_label", "assigned_at"] },
   { collection: "activeHeats", table: "zero3_active_heats", columns: ["event_id", "category", "heat_id", "updated_at"] },
@@ -52,6 +57,11 @@ const COUNT_GUARDS: Array<{ key: string; query: string }> = [
   { key: "importBatches", query: "SELECT COUNT(*) FROM zero3_import_batches WHERE event_id=?" },
   { key: "importPeople", query: "SELECT COUNT(*) FROM zero3_import_people p JOIN zero3_import_batches b ON b.id=p.batch_id WHERE b.event_id=?" },
   { key: "importTeams", query: "SELECT COUNT(*) FROM zero3_import_teams t JOIN zero3_import_batches b ON b.id=t.batch_id WHERE b.event_id=?" },
+  { key: "batteries", query: "SELECT COUNT(*) FROM zero3_batteries WHERE event_id=?" },
+  { key: "batteryEntries", query: "SELECT COUNT(*) FROM zero3_battery_entries e JOIN zero3_batteries b ON b.id=e.battery_id WHERE b.event_id=?" },
+  { key: "activeBatteries", query: "SELECT COUNT(*) FROM zero3_active_batteries WHERE event_id=?" },
+  { key: "batteryRuns", query: "SELECT COUNT(*) FROM zero3_battery_runs WHERE event_id=?" },
+  { key: "batteryPublications", query: "SELECT COUNT(*) FROM zero3_battery_publications WHERE event_id=?" },
   { key: "heats", query: "SELECT COUNT(*) FROM zero3_heats WHERE event_id=?" },
   { key: "heatEntries", query: "SELECT COUNT(DISTINCT h.heat_id || ':' || h.registration_id) FROM zero3_heat_entries h JOIN zero3_heats x ON x.id=h.heat_id WHERE x.event_id=?" },
   { key: "activeHeats", query: "SELECT COUNT(*) FROM zero3_active_heats WHERE event_id=?" },
@@ -73,6 +83,7 @@ async function fetchD1EventBackupData(
 
   const [
     proofs, registrations, registrationMembers, registrationAudit, importBatches,
+    batteries, batteryEntries, activeBatteries, batteryRuns, batteryPublications,
     heats, activeHeats, results, timers, podiumVersions, heatRuns, heatPublications,
   ] = await Promise.all([
     DB.prepare("SELECT * FROM zero3_proofs WHERE event_id=?").bind(eventId).all(),
@@ -80,6 +91,12 @@ async function fetchD1EventBackupData(
     DB.prepare("SELECT * FROM zero3_registration_members WHERE event_id=?").bind(eventId).all(),
     DB.prepare("SELECT * FROM zero3_registration_audit WHERE event_id=?").bind(eventId).all(),
     DB.prepare("SELECT * FROM zero3_import_batches WHERE event_id=?").bind(eventId).all(),
+    DB.prepare("SELECT * FROM zero3_batteries WHERE event_id=?").bind(eventId).all(),
+    DB.prepare(`SELECT e.* FROM zero3_battery_entries e
+      JOIN zero3_batteries b ON b.id=e.battery_id WHERE b.event_id=?`).bind(eventId).all(),
+    DB.prepare("SELECT * FROM zero3_active_batteries WHERE event_id=?").bind(eventId).all(),
+    DB.prepare("SELECT * FROM zero3_battery_runs WHERE event_id=?").bind(eventId).all(),
+    DB.prepare("SELECT * FROM zero3_battery_publications WHERE event_id=? ORDER BY battery_id,version").bind(eventId).all(),
     DB.prepare("SELECT * FROM zero3_heats WHERE event_id=?").bind(eventId).all(),
     DB.prepare("SELECT * FROM zero3_active_heats WHERE event_id=?").bind(eventId).all(),
     DB.prepare("SELECT * FROM zero3_results WHERE event_id=?").bind(eventId).all(),
@@ -119,6 +136,11 @@ async function fetchD1EventBackupData(
     importBatches: importBatches.results,
     importPeople: importPeople.results,
     importTeams: importTeams.results,
+    batteries: batteries.results,
+    batteryEntries: batteryEntries.results,
+    activeBatteries: activeBatteries.results,
+    batteryRuns: batteryRuns.results,
+    batteryPublications: batteryPublications.results,
     heats: heats.results,
     heatEntries: heatEntries.results,
     activeHeats: activeHeats.results,
@@ -265,6 +287,13 @@ export async function handleD1StagingEventLifecycle(
       const guard = "EXISTS (SELECT 1 FROM zero3_event_deletion_audit WHERE id=?)";
       const statements = [
         audit,
+        DB.prepare(`DELETE FROM zero3_battery_publications WHERE event_id=? AND ${guard}`).bind(eventId, auditId),
+        DB.prepare(`DELETE FROM zero3_battery_runs WHERE event_id=? AND ${guard}`).bind(eventId, auditId),
+        DB.prepare(`DELETE FROM zero3_active_batteries WHERE event_id=? AND ${guard}`).bind(eventId, auditId),
+        DB.prepare(`DELETE FROM zero3_battery_entries
+          WHERE battery_id IN (SELECT id FROM zero3_batteries WHERE event_id=?)
+          AND ${guard}`).bind(eventId, auditId),
+        DB.prepare(`DELETE FROM zero3_batteries WHERE event_id=? AND ${guard}`).bind(eventId, auditId),
         DB.prepare(`DELETE FROM zero3_registration_audit WHERE event_id=? AND ${guard}`).bind(eventId, auditId),
         DB.prepare(`DELETE FROM zero3_import_batches WHERE event_id=? AND ${guard}`).bind(eventId, auditId),
         DB.prepare(`DELETE FROM zero3_active_heats WHERE event_id=? AND ${guard}`).bind(eventId, auditId),

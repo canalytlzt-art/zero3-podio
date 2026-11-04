@@ -697,7 +697,7 @@ export const getGetZero3EventDeletionBackupUrl = (eventId: string,) => {
 
 
 
-  return `/api/zero3/events/${eventId}`
+  return `/api/zero3/events/${eventId}/deletion-backup`
 }
 
 /**
@@ -720,7 +720,7 @@ export const getZero3EventDeletionBackup = async (eventId: string, options?: Par
 
 export const getGetZero3EventDeletionBackupQueryKey = (eventId: string,) => {
     return [
-    `/api/zero3/events/${eventId}`
+    `/api/zero3/events/${eventId}/deletion-backup`
     ] as const;
     }
 

@@ -115,6 +115,11 @@ async function readEventBackup(
     podiumVersions: podiumVersions as unknown as EventBackupRow[],
     heatRuns: [],
     heatPublications: [],
+    batteries: [],
+    batteryEntries: [],
+    activeBatteries: [],
+    batteryRuns: [],
+    batteryPublications: [],
   };
   return createZero3EventBackup(event as unknown as EventBackupRow, data);
 }
@@ -243,6 +248,17 @@ router.post(
       return;
     }
     const backup = checked.backup;
+    if ([
+      backup.data.heatRuns, backup.data.heatPublications, backup.data.batteries,
+      backup.data.batteryEntries, backup.data.activeBatteries, backup.data.batteryRuns,
+      backup.data.batteryPublications,
+    ].some((rows) => rows.length > 0)) {
+      res.status(409).json({
+        code: "EVENT_BACKUP_TARGET_UNSUPPORTED",
+        error: "Este backup contém estruturas D1 que não existem no banco PostgreSQL deste ambiente.",
+      });
+      return;
+    }
     const [existingEvent] = await db.select({ id: zero3EventsTable.id })
       .from(zero3EventsTable).where(eq(zero3EventsTable.id, backup.eventId)).limit(1);
     if (existingEvent) {
