@@ -7,6 +7,8 @@
  */
 import type { Zero3BatteryEntry } from './zero3BatteryEntry';
 import type { Zero3CategoryLeaderboard } from './zero3CategoryLeaderboard';
+import type { Zero3Proof } from './zero3Proof';
+import type { Zero3ProofLeaderboards } from './zero3ProofLeaderboards';
 import type { Zero3PublicResult } from './zero3PublicResult';
 import type { Zero3TimerState } from './zero3TimerState';
 
@@ -24,6 +26,8 @@ export interface Zero3PublicBattery {
   leaderboards: Zero3CategoryLeaderboard[];
   state: Zero3TimerState;
   /** @minimum 0 */
+  elapsedMs?: number;
+  /** @minimum 0 */
   pendingResultCount: number;
   /** @minimum 0 */
   reviewedResultCount: number;
@@ -40,4 +44,13 @@ export interface Zero3PublicBattery {
   finalizedAt: Date | null;
   /** @nullable */
   finalizationFingerprint: string | null;
+  batteryId?: string;
+  proofs?: Zero3Proof[];
+  proofLeaderboards?: Zero3ProofLeaderboards[];
+  /** @minimum 0 */
+  eventElapsedMs?: number;
+  /** @minimum 0 */
+  eventLimitMs?: number;
+  /** @nullable */
+  preparationEndsAt?: Date | null;
 }

@@ -7,8 +7,10 @@ import {
   useCaptureZero3Result, useControlZero3Timer, useGetZero3PublicBoard, useListZero3Events,
   useListZero3Proofs, useListZero3Registrations, useUpdateZero3Proof, useGetZero3Me,
   useUpdateZero3Result, useFinalizeZero3Battery,
+  useFinalizeZero3EventBattery, getListZero3EventBatteriesQueryKey,
+  useListZero3EventBatteries,
 } from '@workspace/api-client-react';
-import type { Zero3Proof, Zero3Registration, Zero3Result } from '@workspace/api-client-react';
+import type { Zero3Proof, Zero3Registration, Zero3Result, Zero3PublicBoard } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
 import { ArrowUpRight, Check, Play, Radio, Save, Square } from 'lucide-react';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
@@ -19,6 +21,18 @@ const statusName = (status: string) => ({ PROVISIONAL: 'Provisório', PUBLICATIO
 const metricName = (metric: string) => ({ TIME: 'Tempo', REPETITIONS: 'Repetições', LOAD: 'Carga', CUSTOM: 'Personalizado', UNCONFIGURED: 'Pendente' } as Record<string,string>)[metric] || metric;
 const formatTimer = (ms?:number|null) => ms == null ? '—' : `${String(Math.floor(ms/60000)).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(Math.floor(ms%1000/10)).padStart(2,'0')}`;
 
+function OperationTimerReadout({timer,serverTime,eventElapsedBase,eventBatteryMode}:{timer:Zero3PublicBoard['timer'];serverTime:string;eventElapsedBase:number;eventBatteryMode:boolean}){
+  const [now,setNow]=useState(()=>Date.now());
+  useEffect(()=>{const id=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(id);},[]);
+  const delta=Math.max(0,now-Date.parse(serverTime));
+  const elapsed=(timer?.elapsedMs??0)+(timer?.state==='RUNNING'?delta:0);
+  const preparation=timer?.state==='PREPARATION'&&typeof timer.preparationEndsAt==='string'
+    ?Math.max(0,Date.parse(timer.preparationEndsAt)-now)
+    :Math.max(0,(timer?.preparationRemainingMs??0)-delta);
+  const eventElapsed=eventElapsedBase+(timer?.state==='RUNNING'?delta:0);
+  return <span>{timer?.state==='PREPARATION'?`Preparação ${formatTimer(preparation)}`:`Duração ${formatTimer(elapsed)}`}{eventBatteryMode?` · acumulado ${formatTimer(eventElapsed)} / 120:00`:''}</span>;
+}
+
 export function OperationPage() {
   const events = useListZero3Events({ query: { refetchInterval: 15000 } });
   const me = useGetZero3Me();
@@ -26,7 +40,7 @@ export function OperationPage() {
   const canConfigure = me.data?.role === 'ADMIN' || me.data?.role === 'JUIZ_CHEFE';
   const [routeTarget] = useState(()=>{
     const params=new URLSearchParams(typeof window==='undefined'?'':window.location.search);
-    return {eventId:params.get('eventId')||'',proofId:params.get('proofId')||'',registrationId:params.get('registrationId')||''};
+   return {eventId:params.get('eventId')||'',proofId:params.get('proofId')||'',registrationId:params.get('registrationId')||'',batteryId:params.get('batteryId')||''};
   });
   const [eventId, setEventId] = useState(routeTarget.eventId);
   const selectedEventId = eventId || events.data?.[0]?.id || '';
@@ -45,11 +59,14 @@ export function OperationPage() {
   const capture = useCaptureZero3Result();
   const timerCommand = useControlZero3Timer();
   const finalizeBattery = useFinalizeZero3Battery();
+  const finalizeEventBattery=useFinalizeZero3EventBattery();
+  const eventBatteries=useListZero3EventBatteries(selectedEventId,{query:{queryKey:getListZero3EventBatteriesQueryKey(selectedEventId),enabled:Boolean(selectedEventId),refetchInterval:5000}});
   const updateResult = useUpdateZero3Result();
   const qc = useQueryClient();
   const results = (board.data?.results || []).filter(result => result.proofId !== null);
   const selectedProof = proofs.data?.find(item => item.id === proofId);
   const batteryMode=board.data?.batteryOperationsEnabled===true&&board.data.event?.id===selectedEventId;
+  const eventBatteryMode=batteryMode&&board.data?.batteryModel==='EVENT';
   const activeBattery= batteryMode ? board.data?.activeBattery : null;
   const timer=board.data?.timer;
   const timerAction=primaryTimerAction(timer?.state);
@@ -59,20 +76,24 @@ export function OperationPage() {
     :activeBattery.finalized
       ?activeBattery.finalizationCurrent?'Finalizada':'Correção pendente de publicação'
       :timerStateLabel(timer?.state);
-  const activeProofConfigured=proofs.data?.some(proof=>proof.id===activeBattery?.proofId&&proof.configured)===true;
+  const activeProofConfigured=eventBatteryMode
+    ?proofs.data?.length===4&&proofs.data.every(proof=>proof.configured)===true
+    :proofs.data?.some(proof=>proof.id===activeBattery?.proofId&&proof.configured)===true;
   const activeBatteryHasUnresolvedTie=Boolean(activeBattery?.leaderboards.some(leaderboard=>
     leaderboard.entries.some(entry=>entry.status==='TIE_RULE_PENDING'||entry.proofScores.some(score=>score.status==='TIE_RULE_PENDING'))
   ));
   const canFinalizeActiveBattery=Boolean(canReview&&activeBattery&&activeProofConfigured&&
     activeBattery.expectedResultCount>0&&activeBattery.reviewedResultCount===activeBattery.expectedResultCount&&
-    !activeBatteryHasUnresolvedTie&&activeBattery.finalizationFingerprint&&
+    !activeBatteryHasUnresolvedTie&&!(eventBatteryMode&&activeBattery.results.some(result=>result.status==='DNS'||result.status==='DNF'))&&
+    activeBattery.finalizationFingerprint&&
     (!activeBattery.finalized||!activeBattery.finalizationCurrent));
   const activeBatteryConfirmKey=activeBattery
-    ?`${selectedEventId}:${activeBattery.proofId}:${activeBattery.order}:${activeBattery.finalizationFingerprint||''}:${activeBattery.reviewedResultCount}:${activeBattery.expectedResultCount}`
+    ?`${selectedEventId}:${eventBatteryMode?activeBattery.batteryId:activeBattery.proofId}:${activeBattery.order}:${activeBattery.finalizationFingerprint||''}:${activeBattery.reviewedResultCount}:${activeBattery.expectedResultCount}`
     :'';
   const captureRegistrationIds=new Set(activeBattery?.registrations.map(item=>item.id)??[]);
   const captureRegistrations=batteryMode
-    ? (registrations.data||[]).filter(reg=>captureRegistrationIds.has(reg.id)&&activeBattery?.proofId===proofId)
+    ? (registrations.data||[]).filter(reg=>captureRegistrationIds.has(reg.id)&&
+      (eventBatteryMode||activeBattery?.proofId===proofId))
     : (registrations.data||[]);
   const selectedRegistration = captureRegistrations.find(item => item.id === registrationId);
   const selectedHeatId=activeBattery?.registrations.find(item=>item.id===selectedRegistration?.id)?.heatId;
@@ -96,26 +117,45 @@ export function OperationPage() {
       setRegistrationId(requestedRegistration);
     }
   },[board.data?.event?.id,board.data?.activeBattery?.proofId,board.data?.batteryOperationsEnabled,selectedEventId,proofs.data,routeTarget]);
+  const clockNow=Date.now();
+  const serverTime=typeof board.data?.serverTime==='string'?Date.parse(board.data.serverTime):clockNow;
+  const serverDelta=Math.max(0,clockNow-serverTime);
+  const liveEventElapsed=(timer?.eventElapsedMs??activeBattery?.eventElapsedMs??0)+
+    (timer?.state==='RUNNING'?serverDelta:0);
+  const timerAtLimit=Boolean(timer?.eventLimitMs&&liveEventElapsed>=timer.eventLimitMs);
+  const timerButtonLabel=eventBatteryMode&&timer?.state==='PREPARATION'?'Cancelar preparação':timerAction.label;
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getGetZero3PublicBoardQueryKey({ eventId: selectedEventId }) });
     qc.invalidateQueries({ queryKey: getListZero3ProofsQueryKey(selectedEventId) });
+    qc.invalidateQueries({queryKey:getListZero3EventBatteriesQueryKey(selectedEventId)});
   };
   const controlTimer=()=>{
     if(!canReview||!timer||!activeBattery||board.isError||timerCommand.isPending)return;
+    const action=eventBatteryMode
+      ?timer.state==='PREPARATION'?'reset':['IDLE','FINISHED'].includes(timer.state)?'prepare':timerAction.action
+      :timerAction.action;
+    if(eventBatteryMode&&timer.state==='RUNNING'&&
+      !window.confirm('Confirmar parada do cronômetro desta bateria? A duração fica salva e não publica resultados.'))return;
     setError('');setNotice('');
     timerCommand.mutate({eventId:selectedEventId,data:{
-      action:timerAction.action,expectedVersion:timer.version,commandId:crypto.randomUUID(),
-      expectedProofId:activeBattery.proofId,expectedBatteryOrder:activeBattery.order,
-    }},{onSuccess:()=>{invalidate();setNotice(`Comando ${timerAction.label.toLocaleLowerCase('pt-BR')} confirmado pelo servidor.`);},onError:err=>setError(message(err))});
+      action,expectedVersion:timer.version,commandId:crypto.randomUUID(),
+      ...(eventBatteryMode?{expectedBatteryId:activeBattery.batteryId}:{expectedProofId:activeBattery.proofId,expectedBatteryOrder:activeBattery.order}),
+    }},{onSuccess:()=>{invalidate();setNotice(`Comando ${timerButtonLabel.toLocaleLowerCase('pt-BR')} confirmado pelo servidor.`);},onError:err=>setError(message(err))});
   };
   const finalizeActiveBattery=()=>{
     if(!activeBattery?.finalizationFingerprint||finalizeConfirmKey!==activeBatteryConfirmKey||
-      !canFinalizeActiveBattery||finalizeBattery.isPending)return;
+      !canFinalizeActiveBattery||finalizeBattery.isPending||finalizeEventBattery.isPending)return;
     setError('');setNotice('');
+    const onSuccess=(saved:{alreadyPublished:boolean})=>{setFinalizeConfirmKey(null);invalidate();setNotice(saved.alreadyPublished?'Esta bateria já estava publicada.':'Bateria finalizada e publicada na TV.');};
+    const onError=(err:Error)=>setError(message(err));
+    if(eventBatteryMode&&activeBattery.batteryId){
+      finalizeEventBattery.mutate({eventId:selectedEventId,batteryId:activeBattery.batteryId,
+        data:{expectedFingerprint:activeBattery.finalizationFingerprint}}, {onSuccess,onError});
+      return;
+    }
     finalizeBattery.mutate({eventId:selectedEventId,proofId:activeBattery.proofId,batteryOrder:activeBattery.order,
       data:{expectedFingerprint:activeBattery.finalizationFingerprint}},
-    {onSuccess:saved=>{setFinalizeConfirmKey(null);invalidate();setNotice(saved.alreadyPublished?'Esta bateria já estava publicada.':'Bateria finalizada e publicada na TV.');},
-      onError:err=>setError(message(err))});
+    {onSuccess,onError});
   };
   const saveProof = (event: FormEvent<HTMLFormElement>, proof: Zero3Proof) => {
     event.preventDefault(); setError(''); setNotice('');
@@ -131,7 +171,9 @@ export function OperationPage() {
     event.preventDefault(); if (!selectedProof || !selectedRegistration) return;
     setError(''); setNotice('');
     const rawValue = Number(new FormData(event.currentTarget).get('rawValue'));
-     capture.mutate({ data: { eventId: selectedEventId, registrationId: selectedRegistration.id, proofId: selectedProof.id, ...(batteryMode?{heatId:selectedHeatId}:{}), rawValue, status: Zero3ResultStatus.PROVISIONAL, idempotencyKey: crypto.randomUUID() } }, {
+      capture.mutate({ data: { eventId: selectedEventId, registrationId: selectedRegistration.id, proofId: selectedProof.id,
+        ...(eventBatteryMode?{batteryId:activeBattery?.batteryId}:batteryMode?{heatId:selectedHeatId}:{}),
+        rawValue, status: Zero3ResultStatus.PROVISIONAL, idempotencyKey: crypto.randomUUID() } }, {
       onSuccess: (saved) => { invalidate(); setNotice(`Lançamento provisório salvo · ${saved.placement ? `${saved.placement}º lugar` : 'colocação pendente'} · ${saved.points ?? '—'} pontos.`); },
       onError: err => setError(message(err)),
     });
@@ -142,7 +184,9 @@ export function OperationPage() {
     if (reason.length < 3) { setError('Informe o motivo da validação ou correção.'); return; }
     const raw = String(form.get('rawValue')||'').trim();
     setError(''); setNotice('');
-    updateResult.mutate({ resultId: result.id, data: { status, reason, ...(raw ? { rawValue: Number(raw) } : {}) } }, {
+    updateResult.mutate({ resultId: result.id, data: { status, reason,
+      ...(eventBatteryMode&&result.batteryId?{expectedBatteryId:result.batteryId}:{}),
+      ...(raw ? { rawValue: Number(raw) } : {}) } }, {
       onSuccess: saved => { invalidate(); setEditing(null); setNotice(`Revisão salva · ${saved.placement ? `${saved.placement}º lugar` : 'colocação pendente'} · ${saved.points ?? '—'} pontos.`); },
       onError: err => setError(message(err)),
     });
@@ -163,7 +207,18 @@ export function OperationPage() {
           <div className="field"><label htmlFor="op-category">Categoria</label><select id="op-category" data-testid="select-operation-category" value={category} onChange={e=>setCategory(e.target.value)}><option value="TODAS">Todas</option>{eventCategories.map(value=><option key={value} value={value}>{value==='SC'?'SC / Scale':value}</option>)}</select></div>
           <div className="field"><label htmlFor="op-search">Equipe ou atleta</label><input id="op-search" data-testid="input-operation-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nome"/></div>
         </section>
-        {batteryMode&&<section className="panel panel-pad" style={{marginBottom:16}}><div className="op-section-head"><div><div className="eyebrow">Bateria selecionada para a TV</div><h2 className="panel-title">{activeBattery?`${activeBattery.proofName} · Bateria ${String(activeBattery.order).padStart(2,'0')}`:'Nenhuma bateria selecionada'}</h2></div><span className={`pill ${timer?.state==='RUNNING'?'warn':'neutral'}`}>{activeBatteryStatus}</span></div>{activeBattery?<><p className="lede">{activeBattery.registrations.length} inscrições · {activeBattery.categories.map(value=>value==='SC'?'SC / Scale':value).join(' + ')} · {timer?.state==='PREPARATION'?'Em preparação':timerStateLabel(timer?.state)} · {formatTimer(timer?.state==='PREPARATION'?timer.preparationRemainingMs:timer?.elapsedMs)}. <Link href={`/admin/events/${encodeURIComponent(selectedEventId)}?tab=heats`}>Selecionar bateria</Link></p><div className="toolbar"><button type="button" className={`button ${timerAction.label==='Iniciar'?'primary':''}`} disabled={!canReview||!timer||timerCommand.isPending||board.isError} onClick={controlTimer}>{timerAction.label==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {timerCommand.isPending?'Aguardando confirmação…':timerAction.label}</button><Link className="button small" href={`/admin/events/${encodeURIComponent(selectedEventId)}?${new URLSearchParams({tab:'results',proofId:activeBattery.proofId,batteryOrder:String(activeBattery.order)})}`}>Resultados</Link><button type="button" className={`button small ${canFinalizeActiveBattery?'primary':''}`} disabled={!canFinalizeActiveBattery||finalizeBattery.isPending||board.isError} onClick={()=>setFinalizeConfirmKey(activeBatteryConfirmKey)}>{finalizeBattery.isPending?'Publicando…':activeBattery.finalized&&activeBattery.finalizationCurrent?'Finalizada':'Finalizar bateria'}</button><span className="field-help">{activeBattery.reviewedResultCount} de {activeBattery.expectedResultCount} resultados revisados. A troca da bateria exibida não altera o cronômetro.</span></div>{finalizeConfirmKey===activeBatteryConfirmKey&&Boolean(activeBatteryConfirmKey)&&<div role="alertdialog" aria-label="Confirmar finalização da bateria" className="panel panel-pad" style={{marginTop:10}}><strong>Confirmar finalização da bateria?</strong><p className="field-help">{activeBattery.proofName} · Bateria {String(activeBattery.order).padStart(2,'0')} · {activeBattery.reviewedResultCount} de {activeBattery.expectedResultCount} resultados revisados. A lista completa será publicada na TV.</p><div className="toolbar"><button type="button" className="button primary" disabled={!canFinalizeActiveBattery||finalizeBattery.isPending} onClick={finalizeActiveBattery}>Confirmar e publicar</button><button type="button" className="button" onClick={()=>setFinalizeConfirmKey(null)}>Cancelar</button></div></div>}</>:<p className="lede">Escolha uma bateria em Baterias antes de lançar resultados ou controlar o cronômetro.</p>}</section>}
+         {batteryMode&&<section className="panel panel-pad" style={{marginBottom:16}}>
+           <div className="op-section-head"><div><div className="eyebrow">Bateria selecionada para a TV</div><h2 className="panel-title">{activeBattery?(eventBatteryMode?activeBattery.name:`${activeBattery.proofName} · ${activeBattery.name}`):'Nenhuma bateria selecionada'}</h2></div><span className={`pill ${timer?.state==='RUNNING'?'warn':'neutral'}`}>{activeBatteryStatus}</span></div>
+           {activeBattery?<><p className="lede">{activeBattery.registrations.length} inscrições · {activeBattery.categories.map(value=>value==='SC'?'SC / Scale':value).join(' + ')||'sem equipes'} · {timerStateLabel(timer?.state)} · <OperationTimerReadout timer={timer} serverTime={typeof board.data?.serverTime==='string'?board.data.serverTime:new Date().toISOString()} eventElapsedBase={timer?.eventElapsedMs??activeBattery.eventElapsedMs??0} eventBatteryMode={eventBatteryMode}/> · <Link href={`/admin/events/${encodeURIComponent(selectedEventId)}?tab=heats`}>Selecionar bateria</Link></p>
+             {eventBatteryMode&&timerAtLimit&&<p className="error-box" role="alert">Limite acumulado de 2 horas atingido. Não é possível iniciar outra bateria.</p>}
+             <div className="toolbar"><button type="button" className={`button ${timerAtLimit?'danger':timerButtonLabel==='Iniciar'?'primary':''}`} disabled={!canReview||!timer||timerCommand.isPending||board.isError||(timerAtLimit&&['IDLE','FINISHED','PAUSED'].includes(timer.state))} onClick={controlTimer}>{timerButtonLabel==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {timerCommand.isPending?'Aguardando confirmação…':timerButtonLabel}</button>
+               <Link className="button small" href={eventBatteryMode?`/operacao?${new URLSearchParams({eventId:selectedEventId,batteryId:activeBattery.batteryId||''})}`:`/admin/events/${encodeURIComponent(selectedEventId)}?${new URLSearchParams({tab:'results',proofId:activeBattery.proofId,batteryOrder:String(activeBattery.order)})}`}>Resultados</Link>
+               <button type="button" className={`button small ${canFinalizeActiveBattery?'primary':''}`} disabled={!canFinalizeActiveBattery||(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)||board.isError} onClick={()=>setFinalizeConfirmKey(activeBatteryConfirmKey)}>{(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)?'Publicando…':activeBattery.finalized&&activeBattery.finalizationCurrent?'Finalizada':'Finalizar bateria'}</button>
+               <span className="field-help">{activeBattery.reviewedResultCount} de {activeBattery.expectedResultCount} resultados revisados. Selecionar outra bateria na TV não altera este cronômetro.</span>
+             </div>
+             {finalizeConfirmKey===activeBatteryConfirmKey&&Boolean(activeBatteryConfirmKey)&&<div role="alertdialog" aria-label="Confirmar finalização da bateria" className="panel panel-pad" style={{marginTop:10}}><strong>Confirmar finalização da bateria?</strong><p className="field-help">{eventBatteryMode?activeBattery.name:`${activeBattery.proofName} · ${activeBattery.name}`} · {eventBatteryMode?(activeBattery.proofs?.length??4):1} prova(s) · {activeBattery.registrations.length} inscrições · {activeBattery.reviewedResultCount} de {activeBattery.expectedResultCount} resultados revisados. A lista completa será publicada na TV.</p><div className="toolbar"><button type="button" className="button primary" disabled={!canFinalizeActiveBattery||(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)} onClick={finalizeActiveBattery}>Confirmar e publicar</button><button type="button" className="button" onClick={()=>setFinalizeConfirmKey(null)}>Cancelar</button></div></div>}
+           </>:<p className="lede">Escolha uma bateria em Baterias antes de lançar resultados ou controlar o cronômetro.</p>}
+         </section>}
         <div className="op-grid">
           <section className="panel panel-pad">
             <div className="op-section-head"><div><div className="eyebrow">01 / configuração</div><h2 className="panel-title">As quatro provas</h2></div><span className="pill neutral">{proofs.data?.filter(p=>p.configured).length||0}/4 configuradas</span></div>
@@ -181,7 +236,7 @@ export function OperationPage() {
           <section className="panel panel-pad">
             <div className="eyebrow">02 / lançamento</div><h2 className="panel-title">Registrar resultado</h2>
             <form className="capture-form" onSubmit={captureResult}>
-               <div className="field"><label htmlFor="op-proof">Prova configurada</label><select id="op-proof" data-testid="select-operation-proof" value={proofId} onChange={e=>setProofId(e.target.value)} required disabled={batteryMode}><option value="">Selecione uma prova</option>{proofs.data?.map(p=><option key={p.id} value={p.id} disabled={!p.configured}>{p.configured?`${String(p.order).padStart(2,'0')} · ${p.name}`:`${String(p.order).padStart(2,'0')} · Definição pendente`}</option>)}</select></div>
+                <div className="field"><label htmlFor="op-proof">Prova configurada</label><select id="op-proof" data-testid="select-operation-proof" value={proofId} onChange={e=>setProofId(e.target.value)} required disabled={batteryMode&&!eventBatteryMode}><option value="">Selecione uma prova</option>{proofs.data?.map(p=><option key={p.id} value={p.id} disabled={!p.configured}>{p.configured?`${String(p.order).padStart(2,'0')} · ${p.name}`:`${String(p.order).padStart(2,'0')} · Definição pendente`}</option>)}</select></div>
                <div className="field"><label htmlFor="op-registration">Equipe / atleta</label><select id="op-registration" data-testid="select-operation-registration" value={registrationId} onChange={e=>setRegistrationId(e.target.value)} required><option value="">Selecione uma equipe da bateria</option>{filteredCapture.map(r=><option key={r.id} value={r.id}>{r.category} · {r.laneLabel||'—'} · {r.teamName||r.athleteNames.join(' / ')}</option>)}</select></div>
               <div className="field"><label htmlFor="op-value">{selectedProof?metricFor(selectedProof):'Métrica real'}</label><input id="op-value" name="rawValue" data-testid="input-operation-raw-value" type="number" min="0" step="any" required disabled={!selectedProof?.configured} placeholder={selectedProof?.metricType==='TIME'?'Ex.: 92.45':'Digite o valor registrado'}/><span className="field-help">Somente a métrica real. O sistema calcula classificação e pontos.</span></div>
                <button className="button primary" data-testid="button-save-provisional" disabled={!selectedProof?.configured||!selectedRegistration||(batteryMode&&!activeBattery)||capture.isPending}><Save size={14}/>{capture.isPending?'Salvando…':'Salvar como provisório'}</button>

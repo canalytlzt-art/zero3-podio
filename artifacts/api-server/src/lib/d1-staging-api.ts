@@ -30,6 +30,10 @@ import {
 import { handleD1StagingAdmin } from "./d1-staging-admin";
 import { handleD1StagingControls } from "./d1-staging-controls";
 import { handleD1StagingRoster } from "./d1-staging-roster";
+import {
+  listD1EventBatteries,
+  handleD1StagingEventBatteries,
+} from "./d1-staging-event-batteries";
 import { advanceD1TimerPreparation, d1TimerDto } from "./d1-staging-timer";
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 
@@ -50,7 +54,7 @@ type RegistrationRow = {
 };
 type ResultRow = {
   id: string; event_id: string; registration_id: string; proof_id: string | null;
-  heat_id: string | null; category: string; lane_label: string | null;
+  heat_id: string | null; battery_id: string | null; category: string; lane_label: string | null;
   athlete_ids_snapshot: string; athlete_names_snapshot: string;
   team_name_snapshot: string | null; elapsed_ms: number | null;
   raw_value: string | null; sync_error_ms: number | null; status: string;
@@ -287,6 +291,50 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       resultsJson:publication.results_json,
     })),
   });
+  const eventBatteries=await listD1EventBatteries(DB,event.id,now)??[];
+  const eventBatteryPublications=await DB.prepare(`SELECT p.* FROM zero3_battery_publications p
+    WHERE p.event_id=? AND p.version=(
+      SELECT MAX(latest.version) FROM zero3_battery_publications latest
+      WHERE latest.battery_id=p.battery_id
+    ) ORDER BY p.battery_id`)
+    .bind(event.id).all<{
+      battery_id:string;result_fingerprint:string;results_json:string;
+    }>();
+  const eventPublicationSnapshots=eventBatteryPublications.results.flatMap(publication=>{
+    const battery=eventBatteries.find(item=>item.id===publication.battery_id);
+    if(!battery)return [];
+    let decoded:unknown;
+    try{decoded=JSON.parse(publication.results_json);}
+    catch(cause){throw new Error("Publicação de bateria armazenada está inválida.",{cause});}
+    if(!Array.isArray(decoded))throw new Error("Publicação de bateria não contém resultados.");
+    return battery.proofs.map(proof=>{
+      const proofResults=decoded.filter((result):result is Record<string,unknown>=>
+        Boolean(result&&typeof result==="object"&&!Array.isArray(result)&&
+          (result as Record<string,unknown>).proofId===proof.id));
+      return {
+        proofId:proof.id,resultFingerprint:publication.result_fingerprint,
+        currentFingerprint:battery.finalizationFingerprint,
+        resultsJson:JSON.stringify(proofResults),
+      };
+    });
+  });
+  const allLeaderboardPublications=[
+    ...[...publicationByKey.values()].map(publication=>({
+      proofId:publication.proof_id,
+      resultFingerprint:publication.result_fingerprint,
+      currentFingerprint:batteryFingerprintByKey.get(`${publication.proof_id}:${publication.battery_order}`)??null,
+      resultsJson:publication.results_json,
+    })),
+    ...eventPublicationSnapshots,
+  ];
+  const eventLeaderboardResults=buildD1LeaderboardResults({
+    registrationIds:activeRegistrationIds,
+    liveResults:results.map(row=>({
+      id:row.id,registrationId:row.registration_id,proofId:row.proof_id,
+      rawValue:row.raw_value,status:row.status,
+    })),
+    publications:allLeaderboardPublications,
+  });
   const scoring = calculateAllResultPlacements({
     categories: jsonArray(event.categories),
     eventStatus: event.status,
@@ -295,7 +343,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       metricType: proof.metric_type, unit: proof.unit, direction: proof.direction,
     })),
     registrations: registrationsDto,
-    results: leaderboardResults,
+    results: eventLeaderboardResults.length?eventLeaderboardResults:leaderboardResults,
   });
   const placement = scoring.placements;
   const heatIds = [...new Set(results.flatMap((row) => row.heat_id ? [row.heat_id] : []))];
@@ -309,7 +357,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     const snapshotNames = jsonArray(row.athlete_names_snapshot);
     return {
       id: row.id, eventId: row.event_id, registrationId: row.registration_id,
-      heatId: row.heat_id, category: row.category, laneLabel: row.lane_label,
+      heatId: row.heat_id, batteryId: row.battery_id, category: row.category, laneLabel: row.lane_label,
       elapsedMs: row.elapsed_ms, proofId: row.proof_id,
       rawValue: row.raw_value === null ? null : Number(row.raw_value),
       placement: p?.placement ?? null, points: p?.points ?? null,
@@ -463,6 +511,43 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     };
     return d1TimerDto(timer,event.id,event.preparation_seconds,now);
   })() : undefined;
+  const activeSelection=await DB.prepare("SELECT battery_id FROM zero3_active_batteries WHERE event_id=?")
+    .bind(event.id).first<{battery_id:string|null}>();
+  const selectedEventBattery=activeSelection?.battery_id
+    ?eventBatteries.find(item=>item.id===activeSelection.battery_id)??null:null;
+  const eventBatteryToPublic=(battery:typeof eventBatteries[number])=>{
+    const firstProof=battery.proofs[0];
+    return {
+      eventId:battery.eventId,batteryId:battery.id,
+      proofId:firstProof?.id??"",proofOrder:firstProof?.order??1,proofName:firstProof?.name??"",
+      order:battery.order,name:battery.name,heatIds:[],categories:battery.categories,
+      registrations:battery.registrations.map(reg=>({...reg,heatId:null,batteryId:battery.id})),
+      results:battery.results,leaderboards:battery.proofLeaderboards[0]?.leaderboards??[],
+      state:battery.state,pendingResultCount:battery.pendingResultCount,
+      reviewedResultCount:battery.reviewedResultCount,expectedResultCount:battery.expectedResultCount,
+      elapsedMs:battery.elapsedMs,
+      finalized:battery.finalized,finalizationCurrent:battery.finalizationCurrent,
+      finalizationVersion:battery.finalizationVersion,finalizedAt:battery.finalizedAt,
+      finalizationFingerprint:battery.finalizationFingerprint,
+      proofs:battery.proofs,proofLeaderboards:battery.proofLeaderboards,
+      eventElapsedMs:battery.eventElapsedMs,eventLimitMs:battery.eventLimitMs,
+      preparationEndsAt:battery.preparationEndsAt,
+      preparationStartedAt:battery.preparationStartedAt,
+      firstStartedAt:battery.firstStartedAt,stoppedAt:battery.stoppedAt,
+    };
+  };
+  const activeEventBattery=selectedEventBattery?eventBatteryToPublic(selectedEventBattery):null;
+  const eventBatteryTimer=(battery:typeof eventBatteries[number])=>({
+    eventId:event.id,state:battery.state,elapsedMs:battery.elapsedMs,
+    preparationRemainingMs:battery.preparationRemainingMs,
+    preparationSeconds:battery.preparationSeconds,startedAt:battery.startedAt,
+    preparationEndsAt:battery.preparationEndsAt,version:battery.timerVersion,
+    preparationStartedAt:battery.preparationStartedAt,
+    firstStartedAt:battery.firstStartedAt,stoppedAt:battery.stoppedAt,
+    updatedAt:battery.updatedAt,proofId:null,batteryOrder:battery.order,
+    batteryId:battery.id,eventElapsedMs:battery.eventElapsedMs,eventLimitMs:battery.eventLimitMs,
+  });
+  const activeEventTimer=selectedEventBattery?eventBatteryTimer(selectedEventBattery):undefined;
   const activeHeats = jsonArray(event.categories).map((category) => {
     const row = activeResult.results.find((item) => item.category === category);
     return {
@@ -473,19 +558,22 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     };
   });
   return GetZero3PublicBoardResponse.parse({
-    serverTime: now, event: eventDto(event), timer,
+    serverTime: now, event: eventDto(event), timer:activeEventTimer??timer,
     results: resultDtos, proofs: proofs.map(proofDto),
     registrations: registrationsDto,
     leaderboards: scoring.leaderboards, podiums, activeHeats,
-    batteryOperationsEnabled:true,activeBattery,completedBatteries,
-    batteryTimers:batteryTimers.map((run)=>d1TimerDto(run,event.id,event.preparation_seconds,now)),
+    batteryOperationsEnabled:true,batteryModel:"EVENT",
+    activeBattery:activeEventBattery,
+    completedEventBatteries:eventBatteries.filter(item=>item.finalized),
+    completedBatteries,
+    batteryTimers:eventBatteries.map(eventBatteryTimer),
   });
 }
 
 function captureDto(row: ResultRow, reg: RegistrationRow, names: string[], placement?: {placement: number|null; points: number|null; tiePending: boolean}) {
   return {
     id: row.id, eventId: row.event_id, registrationId: row.registration_id,
-    heatId: row.heat_id, category: row.category, laneLabel: row.lane_label,
+    heatId: row.heat_id, batteryId: row.battery_id, category: row.category, laneLabel: row.lane_label,
     elapsedMs: row.elapsed_ms, proofId: row.proof_id,
     rawValue: row.raw_value === null ? null : Number(row.raw_value),
     placement: placement?.placement ?? null, points: placement?.points ?? null,
@@ -634,18 +722,38 @@ export function d1StagingApi(
           const proof = await DB.prepare("SELECT * FROM zero3_proofs WHERE id=? AND event_id=?")
             .bind(body.data.proofId, body.data.eventId).first<ProofRow>();
           if (!proof) { res.status(400).json({ error: "Prova inválida para este evento." }); return; }
-          if (!body.data.heatId) { res.status(400).json({error:"Informe a bateria do lançamento."}); return; }
-          const heat = await DB.prepare(`SELECT id,event_id,proof_id,battery_order,"order" AS heat_order
-            FROM zero3_heats WHERE id=? AND event_id=?`)
-            .bind(body.data.heatId,body.data.eventId)
-            .first<{id:string;event_id:string;proof_id:string|null;battery_order:number|null;heat_order:number}>();
-          if (!heat || heat.proof_id !== proof.id) {
-            res.status(400).json({error:"A bateria não pertence à prova e ao evento informados."}); return;
+          const targetBatteryId=body.data.batteryId??null;
+          let targetHeatId=body.data.heatId??null;
+          let targetLaneLabel=reg.lane_label;
+          if(targetBatteryId){
+            const selected=await DB.prepare("SELECT battery_id FROM zero3_active_batteries WHERE event_id=?")
+              .bind(body.data.eventId).first<{battery_id:string|null}>();
+            if(selected?.battery_id!==targetBatteryId){
+              error(res,409,"BATTERY_SELECTION_CONFLICT","A bateria exibida mudou. Atualize antes de lançar.",req);return;
+            }
+            const battery=await DB.prepare("SELECT id FROM zero3_batteries WHERE id=? AND event_id=?")
+              .bind(targetBatteryId,body.data.eventId).first<{id:string}>();
+            if(!battery){res.status(400).json({error:"A bateria não pertence a este evento."});return;}
+            const assigned=await DB.prepare(`SELECT lane_label FROM zero3_battery_entries
+              WHERE battery_id=? AND registration_id=?`)
+              .bind(targetBatteryId,reg.id).first<{lane_label:string|null}>();
+            if(!assigned){res.status(400).json({error:"A equipe não está atribuída à bateria selecionada."});return;}
+            targetLaneLabel=assigned.lane_label??reg.lane_label;
+          }else{
+            if (!targetHeatId) { res.status(400).json({error:"Informe a bateria do lançamento."}); return; }
+            const heat = await DB.prepare(`SELECT id,event_id,proof_id,battery_order,"order" AS heat_order
+              FROM zero3_heats WHERE id=? AND event_id=?`)
+              .bind(targetHeatId,body.data.eventId)
+              .first<{id:string;event_id:string;proof_id:string|null;battery_order:number|null;heat_order:number}>();
+            if (!heat || heat.proof_id !== proof.id) {
+              res.status(400).json({error:"A bateria não pertence à prova e ao evento informados."}); return;
+            }
+            const assigned = await DB.prepare(`SELECT lane_label FROM zero3_heat_entries
+              WHERE heat_id=? AND registration_id=?`)
+              .bind(targetHeatId,reg.id).first<{lane_label:string|null}>();
+            if (!assigned) { res.status(400).json({error:"A equipe não está atribuída à bateria selecionada."}); return; }
+            targetLaneLabel=assigned.lane_label??reg.lane_label;
           }
-          const assigned = await DB.prepare(`SELECT lane_label FROM zero3_heat_entries
-            WHERE heat_id=? AND registration_id=?`)
-            .bind(body.data.heatId,reg.id).first<{lane_label:string|null}>();
-          if (!assigned) { res.status(400).json({error:"A equipe não está atribuída à bateria selecionada."}); return; }
           if (proof.metric_type === "UNCONFIGURED" || !proof.name.trim() || !["LOWER","HIGHER"].includes(proof.direction ?? "")) {
             res.status(409).json({ error: "Configure nome, métrica e direção antes de lançar resultados." }); return;
           }
@@ -673,17 +781,17 @@ export function d1StagingApi(
           const athleteNames = names.map((athleteId) => namesById.get(athleteId) ?? "Atleta removido");
           const stamp = new Date().toISOString();
           const row = await DB.prepare(`INSERT INTO zero3_results
-            (id,event_id,registration_id,proof_id,heat_id,category,lane_label,athlete_ids_snapshot,athlete_names_snapshot,team_name_snapshot,elapsed_ms,raw_value,sync_error_ms,status,idempotency_key,captured_at,revision)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'PROVISIONAL',?,?,1)
+            (id,event_id,registration_id,proof_id,heat_id,battery_id,category,lane_label,athlete_ids_snapshot,athlete_names_snapshot,team_name_snapshot,elapsed_ms,raw_value,sync_error_ms,status,idempotency_key,captured_at,revision)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'PROVISIONAL',?,?,1)
             ON CONFLICT DO NOTHING RETURNING *`)
-            .bind(id(), reg.event_id, reg.id, proof.id, body.data.heatId, reg.category, assigned.lane_label??reg.lane_label,
+            .bind(id(), reg.event_id, reg.id, proof.id, targetHeatId, targetBatteryId, reg.category, targetLaneLabel,
               JSON.stringify(names), JSON.stringify(athleteNames), reg.team_name,
               elapsedMs, normalizedRawValue, null, body.data.idempotencyKey, stamp)
             .first<ResultRow>();
           const saved = row ?? await DB.prepare("SELECT * FROM zero3_results WHERE idempotency_key=?")
             .bind(body.data.idempotencyKey).first<ResultRow>();
           if (!saved || saved.event_id !== reg.event_id || saved.registration_id !== reg.id ||
-            saved.proof_id !== proof.id || saved.heat_id !== body.data.heatId ||
+            saved.proof_id !== proof.id || saved.heat_id !== targetHeatId || saved.battery_id !== targetBatteryId ||
             saved.raw_value !== normalizedRawValue || saved.elapsed_ms !== elapsedMs) {
             res.status(409).json({ error: "Já existe um lançamento para esta equipe e prova, ou a chave do envio não corresponde a esta bateria." }); return;
           }
@@ -708,7 +816,8 @@ export function d1StagingApi(
           if (!current) { res.status(404).json({ error: "Resultado não encontrado." }); return; }
           if ((body.data.expectedEventId && current.event_id !== body.data.expectedEventId) ||
             (body.data.expectedProofId && current.proof_id !== body.data.expectedProofId) ||
-            (body.data.expectedHeatId && current.heat_id !== body.data.expectedHeatId)) {
+            (body.data.expectedHeatId && current.heat_id !== body.data.expectedHeatId) ||
+            (body.data.expectedBatteryId && current.battery_id !== body.data.expectedBatteryId)) {
             res.status(409).json({ error: "Este resultado não pertence à prova e à bateria abertas. Atualize a lista." }); return;
           }
           if (body.data.expectedRevision !== undefined && current.revision !== body.data.expectedRevision) {
@@ -758,6 +867,7 @@ export function d1StagingApi(
         }
         return;
       }
+      if (await handleD1StagingEventBatteries(req, res, DB)) return;
       if (await handleD1StagingAdmin(req, res, DB)) return;
       if (await handleD1StagingRoster(req, res, DB, options.allowRosterApply)) return;
       if (await handleD1StagingControls(req, res, DB)) return;

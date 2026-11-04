@@ -17,10 +17,24 @@ export interface Zero3Timer {
   preparationSeconds: number;
   /** @nullable */
   startedAt?: Date | null;
+  /** @nullable */
+  preparationStartedAt?: Date | null;
+  /** @nullable */
+  firstStartedAt?: Date | null;
+  /** @nullable */
+  stoppedAt?: Date | null;
   version: number;
   updatedAt: Date;
   /** @nullable */
   proofId?: string | null;
   /** @nullable */
   batteryOrder?: number | null;
+  /** @nullable */
+  batteryId?: string | null;
+  /** @nullable */
+  preparationEndsAt?: Date | null;
+  /** @minimum 0 */
+  eventElapsedMs?: number;
+  /** @minimum 0 */
+  eventLimitMs?: number;
 }

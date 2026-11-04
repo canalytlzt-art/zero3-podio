@@ -8,6 +8,7 @@ import {
   getGetZero3DashboardQueryKey, getGetZero3MeQueryKey, getListZero3EventsQueryKey, getListZero3AthletesQueryKey,
   getListZero3MembersQueryKey, getListZero3HeatsQueryKey, getListZero3RegistrationsQueryKey, getListZero3ProofsQueryKey,
   getGetZero3PublicBoardQueryKey, getGetZero3PodiumStateQueryKey, getGetZero3RosterManagementQueryKey,
+  getListZero3EventBatteriesQueryKey,
   useGetZero3RosterManagement, useGetZero3PodiumState,
   useHealthCheck, useGetZero3Me, useGetZero3Dashboard, useListZero3Events, useCreateZero3Event,
   useUpdateZero3Event, useListZero3Athletes, useCreateZero3Athlete, useListZero3Members,
@@ -16,11 +17,13 @@ import {
   useUpdateZero3Registration, useUpdateZero3RosterManagement,
   useSetZero3ActiveHeat,
   useSetZero3ActiveBattery, useUpdateZero3HeatProof, useFinalizeZero3Battery,
+  useListZero3EventBatteries, useCreateZero3EventBattery, useSetZero3ActiveEventBattery,
+  useFinalizeZero3EventBattery,
   useSaveZero3PodiumDraft, usePublishZero3Podium,
   useGetZero3PublicBoard,
    getZero3EventDeletionBackup, useDeleteZero3Event, useRestoreZero3EventBackup,
 } from '@workspace/api-client-react';
-import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType, Zero3RosterManagementEntry, Zero3Heat } from '@workspace/api-client-react';
+import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType, Zero3RosterManagementEntry, Zero3Heat, Zero3EventBattery, Zero3PublicBoard } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
 import { AthletePicker } from '@/components/AthletePicker';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
@@ -223,6 +226,9 @@ function Heats({eventId}:{eventId:string}) {
   return Math.max(0,...rows.map(heat=>heat.order))+1;
  },[q.data,proofId,category]);
  const legacyHasResults=(heatId:string)=>Boolean(board.data?.results.some(result=>result.heatId===heatId));
+  if(board.data?.batteryModel==='EVENT'){
+   return <EventBatteries eventId={eventId} batteryModel={board.data}/>;
+  }
  return <div className="detail-layout">
   <section className="panel panel-pad">
    <div className="op-section-head"><div><div className="eyebrow">Operação · prova + número</div><h2 className="panel-title">Baterias e TV</h2></div>{active&&<span className="pill">Na TV · P{active.proofOrder} / B{String(active.order).padStart(2,'0')}</span>}</div>
@@ -552,6 +558,96 @@ function Registrations({eventId}:{eventId:string}) {
   }
   return <GeneralResults {...props}/>;
  }
+
+function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero3PublicBoard}){
+ const batteriesQuery=useListZero3EventBatteries(eventId,{query:{queryKey:getListZero3EventBatteriesQueryKey(eventId),refetchInterval:3000}});
+ const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId),refetchInterval:10000}});
+ const proofs=useListZero3Proofs(eventId,{query:{queryKey:getListZero3ProofsQueryKey(eventId),refetchInterval:10000}});
+ const select=useSetZero3ActiveEventBattery();
+ const create=useCreateZero3EventBattery();
+ const finalize=useFinalizeZero3EventBattery();
+ const qc=useQueryClient();
+ const [error,setError]=useState('');
+ const [confirmId,setConfirmId]=useState<string|null>(null);
+ const [order,setOrder]=useState<number|undefined>(undefined);
+ const activeId=batteryModel.activeBattery?.batteryId;
+ const batteries=batteriesQuery.data??[];
+ const nextOrder=Math.max(0,...batteries.map(item=>item.order))+1;
+ const refresh=()=>{
+  void qc.invalidateQueries({queryKey:getListZero3EventBatteriesQueryKey(eventId)});
+  void qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})});
+ };
+ const createBattery=(event:FormEvent<HTMLFormElement>)=>{
+  event.preventDefault();const form=new FormData(event.currentTarget);
+  const formElement=event.currentTarget;
+  const registrationIds=form.getAll('registrationIds').map(String);
+  create.mutate({eventId,data:{name:String(form.get('name')||'').trim(),order:Number(form.get('order')),registrationIds}},{
+   onSuccess:()=>{refresh();setError('');formElement.reset();setOrder(undefined);},
+   onError:failure=>setError(feedback(failure)),
+  });
+ };
+ const selectBattery=(batteryId:string|null)=>select.mutate({eventId,data:{batteryId}},{
+  onSuccess:()=>{setError('');refresh();},onError:failure=>setError(feedback(failure)),
+ });
+ const finalizeBattery=(battery:Zero3EventBattery)=>{
+  if(confirmId!==battery.id||battery.reviewedResultCount!==battery.expectedResultCount||
+    battery.expectedResultCount===0||!battery.finalizationFingerprint)return;
+  finalize.mutate({eventId,batteryId:battery.id,data:{expectedFingerprint:battery.finalizationFingerprint}},{
+   onSuccess:()=>{setConfirmId(null);setError('');refresh();},
+   onError:failure=>setError(feedback(failure)),
+  });
+ };
+ const unresolved=(battery:Zero3EventBattery)=>battery.proofLeaderboards.some(proof=>
+  proof.leaderboards.some(leaderboard=>leaderboard.entries.some(entry=>
+   entry.status==='TIE_RULE_PENDING'||entry.proofScores.some(score=>score.status==='TIE_RULE_PENDING'))));
+ return <div className="detail-layout">
+  <section className="panel panel-pad">
+   <div className="op-section-head"><div><div className="eyebrow">Operações · bateria única por evento</div><h2 className="panel-title">Baterias e TV</h2></div><div className="toolbar"><Link className="button primary small" href={tvHrefForEvent(eventId)} target="_blank" rel="noopener noreferrer">Abrir TV</Link>{activeId&&<span className="pill">Na TV · B{String(batteries.find(item=>item.id===activeId)?.order||'').padStart(2,'0')}</span>}</div></div>
+   {batteriesQuery.isLoading?<LoadingRows/>:batteriesQuery.isError?<QueryError error={batteriesQuery.error} retry={()=>batteriesQuery.refetch()}/>:!batteries.length?<EmptyState title="Nenhuma bateria montada" detail="Crie uma bateria do evento e vincule as inscrições. RX e SC/Scale compartilham o mesmo número."/>:
+    <div className="event-battery-list">{batteries.map(battery=>{
+     const isActive=activeId===battery.id;
+     const exceptionPending=battery.results.some(result=>result.status==='DNS'||result.status==='DNF');
+     const canFinalize=battery.expectedResultCount>0&&battery.reviewedResultCount===battery.expectedResultCount&&
+      !unresolved(battery)&&!exceptionPending&&Boolean(battery.finalizationFingerprint)&&
+      (!battery.finalized||!battery.finalizationCurrent);
+     return <article className="panel panel-pad" key={battery.id}>
+      <div className="op-section-head"><div><div className="eyebrow">Bateria {String(battery.order).padStart(2,'0')} · todas as provas</div><h3 className="panel-title">{battery.name}</h3></div><span className={`pill ${battery.finalized&&battery.finalizationCurrent?'':'warn'}`}>{battery.finalized?(battery.finalizationCurrent?'Finalizada':'Correção pendente'):'Aberta'}</span></div>
+      <div className="toolbar"><span className="field-help">{battery.registrations.length} equipes · {battery.categories.join(' + ')||'sem categoria'} · {battery.reviewedResultCount} de {battery.expectedResultCount} resultados revisados</span>
+       <button className={`button small ${isActive?'primary':''}`} disabled={select.isPending||isActive} onClick={()=>selectBattery(battery.id)}>{isActive?'Na TV':'Colocar na TV'}</button>
+       <Link className="button small" href={`/operacao?${new URLSearchParams({eventId,batteryId:battery.id})}`}>Resultados</Link>
+       <button className={`button small ${canFinalize?'primary':''}`} disabled={!canFinalize||finalize.isPending} onClick={()=>setConfirmId(battery.id)}>{battery.finalized&&battery.finalizationCurrent?'Finalizada':'Finalizar bateria'}</button>
+      </div>
+      {battery.expectedResultCount===0&&<p className="field-help">Adicione inscrições à bateria antes de finalizar.</p>}
+      {exceptionPending&&<p className="field-help">DNS/DNF requer regra oficial de exceção antes da publicação.</p>}
+      {unresolved(battery)&&<p className="field-help">Há empate sem regra oficial configurada; a finalização está bloqueada.</p>}
+      <div className="lane-list">{battery.registrations.map(reg=><div className="lane-card" key={reg.id}>
+       <span className="lane-tag">{reg.laneLabel||'—'}</span><div style={{minWidth:0,flex:1}}><div className="lane-name">{reg.teamName||reg.athleteNames.join(' / ')||reg.id}</div><div className="lane-meta">{reg.category} · {reg.athleteNames.join(' · ')}</div>
+        <div className="lane-meta">{battery.proofs.slice().sort((a,b)=>a.order-b.order).map(proof=>{
+          const result=battery.results.find(item=>item.registrationId===reg.id&&item.proofId===proof.id);
+          const state=!result?'Faltando':result.status==='PROVISIONAL'?'Provisório · revisar':result.status==='VALIDATED'?'Validado':result.status;
+          return `${proof.order}. ${proof.name||'Prova pendente'}: ${result?.rawValue??state}${result?.status==='PROVISIONAL'?' · Provisório':''}`;
+        }).join(' · ')}</div>
+       </div></div>)}</div>
+      {confirmId===battery.id&&<div role="alertdialog" aria-label="Confirmar finalização da bateria" className="panel panel-pad" style={{marginTop:12}}>
+       <strong>Confirmar finalização e publicação?</strong>
+       <p className="field-help">{battery.name} · {battery.proofs.length} provas · {battery.registrations.length} inscrições · {battery.reviewedResultCount} de {battery.expectedResultCount} resultados revisados. A TV e o ranking geral serão atualizados.</p>
+       <div className="toolbar"><button className="button primary" disabled={!canFinalize||finalize.isPending} onClick={()=>finalizeBattery(battery)}>Confirmar e publicar</button><button className="button" onClick={()=>setConfirmId(null)}>Cancelar</button></div>
+      </div>}
+     </article>;
+    })}</div>}
+   {error&&<p role="alert" className="error-box">{error}</p>}
+  </section>
+  <form className="panel panel-pad" onSubmit={createBattery}>
+   <h2 className="panel-title">Criar bateria do evento</h2>
+   <p className="field-help">Uma inscrição participa uma única vez no evento. A bateria inclui, em paralelo, todas as provas cadastradas.</p>
+   <Field label="Nome da bateria" name="name" required placeholder="Bateria 01"/>
+   <div className="field"><label htmlFor="event-battery-order">Número no evento</label><input id="event-battery-order" name="order" type="number" min="1" required value={order??nextOrder} onChange={event=>setOrder(Number(event.target.value))}/></div>
+   <div className="field"><label htmlFor="event-battery-registrations">Inscrições da bateria</label><select id="event-battery-registrations" name="registrationIds" multiple style={{minHeight:180}}>{registrations.data?.map(reg=><option key={reg.id} value={reg.id} disabled={batteries.some(battery=>battery.registrations.some(item=>item.id===reg.id))}>{reg.category} · {reg.laneLabel||'sem raia'} · {reg.teamName||reg.athleteNames.join(' / ')}</option>)}</select><span className="field-help">A categoria vem da inscrição; é possível misturar RX e SC/Scale.</span></div>
+   <button className="button primary" disabled={create.isPending||!registrations.data?.length}><Plus size={14}/>{create.isPending?'Criando…':'Criar bateria'}</button>
+   {proofs.data?.length!==4&&<p className="field-help">O evento precisa manter quatro provas cadastradas.</p>}
+  </form>
+ </div>;
+}
 
  function BatteryResults({eventId,proofId,batteryOrder}:{eventId:string;proofId:string;batteryOrder:number}) {
   const heats=useListZero3Heats(eventId,{query:{queryKey:getListZero3HeatsQueryKey(eventId),refetchInterval:query=>pollingIntervalAfterError(query.state.error,5000)}});

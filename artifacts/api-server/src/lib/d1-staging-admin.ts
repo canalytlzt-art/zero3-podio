@@ -618,6 +618,7 @@ export async function handleD1StagingAdmin(
     const body = CreateZero3HeatBody.safeParse(req.body);
     if (!body.success) { res.status(400).json({ error: body.error.message }); return true; }
     const registrationIds = body.data.registrationIds ?? [];
+    let proposedOrder: number | null = null;
     try {
       if (!body.data.proofId) { res.status(400).json({error:"Selecione a prova desta bateria."}); return true; }
       const proof = await DB.prepare("SELECT id FROM zero3_proofs WHERE id=? AND event_id=?")
@@ -647,11 +648,12 @@ export async function handleD1StagingAdmin(
       const orderRow = await DB.prepare(`SELECT COALESCE(MAX("order"),0)+1 AS next_order
         FROM zero3_heats WHERE event_id=? AND category=?`)
         .bind(heatMatch[1],body.data.category).first<{next_order:number}>();
+      proposedOrder = orderRow?.next_order ?? 1;
       const heatId = newD1Id();
       const { registrationIds: _ignored, ...heat } = body.data;
       await DB.batch([
         DB.prepare(`INSERT INTO zero3_heats(id,event_id,category,name,"order",proof_id,battery_order) VALUES(?,?,?,?,?,?,?)`)
-          .bind(heatId, heatMatch[1], heat.category, heat.name.trim(), orderRow?.next_order??1, heat.proofId, heat.order),
+          .bind(heatId, heatMatch[1], heat.category, heat.name.trim(), proposedOrder, heat.proofId, heat.order),
         ...registrations.map((registration) => DB.prepare(`INSERT INTO zero3_heat_entries
           (heat_id,registration_id,lane_label) VALUES(?,?,?)`)
           .bind(heatId, registration.id, registration.lane_label)),
@@ -666,7 +668,18 @@ export async function handleD1StagingAdmin(
         registrations: await Promise.all(registrations.map((row) => registrationDto(DB, row))),
       };
       res.status(201).json(CreateZero3HeatResponse.parse(response));
-    } catch { d1ApiError(req, res, 409, "HEAT_CONFLICT", "A ordem da bateria já está ocupada ou a operação conflitou."); }
+    } catch {
+      const occupied = proposedOrder === null ? null : await DB.prepare(`SELECT id FROM zero3_heats
+        WHERE event_id=? AND category=? AND "order"=?`)
+        .bind(heatMatch[1], body.data.category, proposedOrder).first<{ id: string }>().catch(() => null);
+      if (occupied) {
+        d1ApiError(req,res,409,"HEAT_ORDER_CONFLICT",
+          `A ordem ${proposedOrder} já está ocupada nesta categoria do evento.`);
+      } else {
+        d1ApiError(req,res,503,"DATABASE_UNAVAILABLE",
+          "Não foi possível criar a bateria legada. A causa não foi uma ordem ocupada.");
+      }
+    }
     return true;
   }
 

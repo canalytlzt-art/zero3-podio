@@ -37,6 +37,9 @@ function BatteryCategory({category,battery,proof}:{category:string;battery:Zero3
 
 function BatteryBoard({board}:{board:Zero3PublicBoard}){
   const battery=board.activeBattery;
+  if(board.batteryModel==='EVENT'){
+    return <EventBatteryBoard board={board}/>;
+  }
   const proof=battery?.proofId?board.proofs.find(item=>item.id===battery.proofId):undefined;
   const liveBoardHref=battery
     ?liveBoardHrefForBattery(board.event?.id,battery.proofId,battery.order)
@@ -54,28 +57,114 @@ function BatteryBoard({board}:{board:Zero3PublicBoard}){
       :<div className="tv-battery-empty">Selecione uma bateria em Operação → Baterias para mostrar apenas suas inscrições.</div>}
   </section>;
 }
+
+function EventBatteryBoard({board}:{board:Zero3PublicBoard}){
+  const battery=board.activeBattery;
+  if(!battery)return <section className="tv-battery-board"><div className="tv-battery-empty">Selecione uma bateria em Operação → Baterias para mostrar as inscrições.</div></section>;
+  const proofs=(battery.proofs||[]).slice().sort((a,b)=>a.order-b.order);
+  const categories=battery.categories||[];
+  return <section className="tv-battery-board">
+    <header className="tv-battery-heading">
+      <div><div className="tv-battery-kicker">BATERIA DO EVENTO · QUATRO PROVAS EM PARALELO</div>
+        <h1>{battery.name}</h1>
+        <p>{battery.registrations.length} inscrições · {categories.join(' + ')||'sem categorias inscritas'}</p>
+      </div>
+      <div className="tv-battery-actions">
+        <div><div className={`tv-battery-state ${battery.state==='RUNNING'?'running':''}`}>{timerStateLabel(battery.state).toLocaleUpperCase('pt-BR')}</div>
+          <div className="tv-battery-kicker" style={{textAlign:'right',marginTop:6}}>{battery.finalized&&battery.finalizationCurrent?'BATERIA FINALIZADA':battery.finalized?'CORREÇÃO PENDENTE':'BATERIA ABERTA'}</div>
+        </div>
+        <EventBatteryElapsed battery={battery} timer={board.timer} serverTime={board.serverTime}/>
+        <Link className="tv-live-board-link" href={liveBoardHrefForEvent(board.event?.id)} target="_blank" rel="noopener noreferrer">Placar ao vivo ↗</Link>
+      </div>
+    </header>
+    {categories.length?<div className="tv-event-battery-categories">
+      {categories.map(category=>{
+        const registrations=battery.registrations.filter(reg=>reg.category===category);
+        const style=category==='RX'?'rx':category==='SC'?'sc':'custom';
+        return <section key={category} className={`tv-battery-category tv-panel-${style}`} aria-label={`Bateria ${category}`}>
+          <header><span className={`tv-category ${style==='rx'?'rx':''}`}>{category}</span><span className="tv-battery-category-count">{registrations.length} INSCRIÇÕES</span></header>
+          <div className="tv-event-result-table-wrap"><table className="tv-event-result-table">
+            <thead><tr><th>RAIA</th><th>EQUIPE / ATLETAS</th>{proofs.map(proof=><th key={proof.id}>{proof.name||`PROVA ${proof.order}`}</th>)}</tr></thead>
+            <tbody>{registrations.map(reg=><tr key={reg.id}>
+              <td>{reg.laneLabel||'—'}</td>
+              <td><strong>{reg.teamName||reg.athleteNames.join(' / ')||reg.id}</strong><small>{reg.athleteNames.join(' · ')}</small></td>
+              {proofs.map(proof=>{
+                const result=battery.results.find(item=>item.registrationId===reg.id&&item.proofId===proof.id);
+                const leaderboard=battery.proofLeaderboards?.find(item=>item.proofId===proof.id)?.leaderboards
+                  .find(item=>item.category===category);
+                const entry=leaderboard?.entries.find(item=>item.registrationId===reg.id);
+                const score=entry?.proofScores.find(item=>item.proofId===proof.id);
+                const value=result?.status==='DNS'||result?.status==='DNF'?result.status
+                  :result?.rawValue!=null?`${result.rawValue}${proof.unit?` ${proof.unit}`:''}`:'—';
+                const label=!result?'PENDENTE':result.status==='PROVISIONAL'?'PROVISÓRIO'
+                  :result.status==='VALIDATED'?'VALIDADO':result.status;
+                return <td key={proof.id}><strong>{score?.placement?`${score.placement}º · `:''}{value}</strong><small className={result?.status==='PROVISIONAL'?'provisional':''}>{label}</small></td>;
+              })}
+            </tr>)}</tbody>
+          </table></div>
+          <footer className="tv-heat-podium">
+            <div className="tv-podium-title">CLASSIFICAÇÃO DA BATERIA <span>{battery.finalized&&battery.finalizationCurrent?'PUBLICADA':battery.finalized?'CORREÇÃO PENDENTE':'PROVISÓRIA'}</span></div>
+            <div className="tv-podium-list">{proofs.map(proof=>{
+              const leaderboard=battery.proofLeaderboards?.find(item=>item.proofId===proof.id)?.leaderboards
+                .find(item=>item.category===category);
+              const top=(leaderboard?.entries||[]).filter(entry=>entry.proofScores.some(score=>score.proofId===proof.id&&score.status==='VALIDATED'))
+                .sort((a,b)=>(a.proofScores.find(score=>score.proofId===proof.id)?.placement??Number.MAX_SAFE_INTEGER)-
+                  (b.proofScores.find(score=>score.proofId===proof.id)?.placement??Number.MAX_SAFE_INTEGER)).slice(0,3);
+              return <div key={proof.id}><div className="tv-place">{proof.name||`Prova ${proof.order}`}</div>
+                <div className="tv-place-detail">{top.length?top.map(entry=>{
+                  const reg=registrations.find(item=>item.id===entry.registrationId);
+                  const place=entry.proofScores.find(score=>score.proofId===proof.id)?.placement;
+                  return `${place}º ${reg?.teamName||reg?.athleteNames.join(' / ')||'Equipe'}`;
+                }).join(' · '):battery.finalized?'Sem resultado validado':'Aguardando finalização'}</div>
+              </div>;
+            })}</div>
+          </footer>
+        </section>;
+      })}
+    </div>:<div className="tv-battery-empty">Nenhuma equipe vinculada a esta bateria.</div>}
+  </section>;
+}
+
+function EventBatteryElapsed({battery,timer,serverTime}:{battery:NonNullable<Zero3PublicBoard['activeBattery']>;timer:Zero3PublicBoard['timer'];serverTime:string}){
+  const [now,setNow]=useState(()=>Date.now());
+  useEffect(()=>{const id=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(id);},[]);
+  const delta=Math.max(0,now-Date.parse(serverTime));
+  const batteryElapsed=timer&&timer.batteryId===battery.batteryId
+    ?timer.elapsedMs+(timer.state==='RUNNING'?delta:0)
+    :battery.elapsedMs??0;
+  const eventElapsed=(battery.eventElapsedMs??0)+(battery.state==='RUNNING'?delta:0);
+  return <span className="tv-event-elapsed">BATERIA {duration(batteryElapsed)} · EVENTO {duration(eventElapsed)} / 120:00</span>;
+}
 export function PublicTV(){
-  const [now,setNow]=useState(()=>new Date());
   const search=useSearch();
   const requestedEventId=new URLSearchParams(search).get('eventId')||undefined;
   const boardParams=requestedEventId?{eventId:requestedEventId}:undefined;
   const boardQuery=useGetZero3PublicBoard(boardParams,{query:{queryKey:boardParams?getGetZero3PublicBoardQueryKey(boardParams):getGetZero3PublicBoardQueryKey(),refetchInterval:2000,refetchOnWindowFocus:true,retry:2}});
   const data=boardQuery.data;
-  useEffect(()=>{const t=window.setInterval(()=>setNow(new Date()),1000);return()=>window.clearInterval(t);},[]);
   const board=data;
   const timer=board?.timer;
   const connected=boardQuery.isSuccess&&!boardQuery.isError;
   const connectionLabel=boardQuery.isError
     ?boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO · DADOS CONFIRMADOS'
     :connected?'AO VIVO':'SINCRONIZANDO';
-  if(boardQuery.isLoading&&!board)return <main className="tv-root"><div className="tv-board"><header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/></header><ClockBlock now={now}/><div className="public-empty"><h1>Conectando à transmissão</h1><p>Carregando o placar oficial do evento.</p></div></div></main>;
-  if(boardQuery.isError&&!board)return <main className="tv-root"><div className="tv-board"><header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/><span className="tv-status-chip offline">{boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'}</span></header><ClockBlock now={now}/><div className="public-empty"><h1>Transmissão indisponível</h1><p>Não foi possível carregar dados oficiais.</p><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button></div></div></main>;
-  if(!board?.event)return <main className="tv-root"><div className="tv-board"><header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/><span className={`tv-status-chip ${connected?'':'offline'}`}>{connected?'CONECTADO':'DADOS ANTERIORES'}</span></header><ClockBlock now={now}/><div className="public-empty"><h1>Aguardando evento</h1><p>A transmissão será atualizada quando um evento estiver disponível.</p></div></div></main>;
+  if(boardQuery.isLoading&&!board)return <main className="tv-root"><div className="tv-board"><header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/></header><ClockBlock/><div className="public-empty"><h1>Conectando à transmissão</h1><p>Carregando o placar oficial do evento.</p></div></div></main>;
+  if(boardQuery.isError&&!board)return <main className="tv-root"><div className="tv-board"><header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/><span className="tv-status-chip offline">{boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'}</span></header><ClockBlock/><div className="public-empty"><h1>Transmissão indisponível</h1><p>Não foi possível carregar dados oficiais.</p><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button></div></div></main>;
+  if(!board?.event)return <main className="tv-root"><div className="tv-board"><header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/><span className={`tv-status-chip ${connected?'':'offline'}`}>{connected?'CONECTADO':'DADOS ANTERIORES'}</span></header><ClockBlock/><div className="public-empty"><h1>Aguardando evento</h1><p>A transmissão será atualizada quando um evento estiver disponível.</p></div></div></main>;
   return <main className="tv-root"><div className="tv-board">
      <header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/><div className="tv-eventline">{board.event.name}<span> · </span>{board.event.proofName}</div><span className={`tv-status-chip ${connected?'':'offline'}`}><i/> {connectionLabel}</span></header>
-      <section className="tv-clock-section"><div className="tv-timer-box"><small>{timer?.state==='PREPARATION'?'PREPARAÇÃO · BATERIA': 'DURAÇÃO DA BATERIA'}</small><strong>{duration(timer?.state==='PREPARATION'?timer.preparationRemainingMs:timer?.elapsedMs)}</strong><small>{timerStateLabel(timer?.state)}</small></div><ClockBlock now={now}/><div className="tv-event-status">{board.event.status==='ACTIVE'?'EVENTO EM ANDAMENTO':board.event.status==='FINISHED'?'EVENTO FINALIZADO':'EVENTO PREPARADO'}</div></section>
+        <section className="tv-clock-section"><TimerReadout timer={timer} serverTime={board.serverTime}/><ClockBlock/><div className="tv-event-status">{board.event.status==='ACTIVE'?'EVENTO EM ANDAMENTO':board.event.status==='FINISHED'?'EVENTO FINALIZADO':'EVENTO PREPARADO'}</div></section>
        {board.batteryOperationsEnabled?<BatteryBoard board={board}/>:<div className="tv-live-board-callout"><span>Listas completas e ranking geral do evento</span><Link href={liveBoardHrefForEvent(board.event.id)} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">Abrir Placar ao Vivo <span aria-hidden="true">↗</span></Link></div>}
     <div className="tv-footer-note">PLACAR OFICIAL · PONTUAÇÃO E CLASSIFICAÇÃO CALCULADAS NO SERVIDOR</div>
   </div></main>;
 }
-function ClockBlock({now}:{now:Date}){return <div className="tv-clock-block"><div className="tv-clock-label">HORÁRIO DE BRASÍLIA</div><div className="tv-clock">{clockText(now)}</div><div className="tv-clock-label">RELÓGIO CIVIL · UTC−03</div></div>}
+function TimerReadout({timer,serverTime}:{timer:Zero3PublicBoard['timer'];serverTime:string}){
+ const [now,setNow]=useState(()=>Date.now());
+ useEffect(()=>{const id=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(id);},[]);
+ const delta=Math.max(0,now-Date.parse(serverTime));
+ const elapsed=(timer?.elapsedMs??0)+(timer?.state==='RUNNING'?delta:0);
+ const prep=timer?.state==='PREPARATION'&&typeof timer.preparationEndsAt==='string'
+  ?Math.max(0,Date.parse(timer.preparationEndsAt)-now)
+  :Math.max(0,(timer?.preparationRemainingMs??0)-delta);
+ return <div className="tv-timer-box"><small>{timer?.state==='PREPARATION'?'PREPARAÇÃO · BATERIA':'DURAÇÃO DA BATERIA'}</small><strong>{duration(timer?.state==='PREPARATION'?prep:elapsed)}</strong><small>{timerStateLabel(timer?.state)}</small></div>;
+}
+function ClockBlock(){const [now,setNow]=useState(()=>new Date());useEffect(()=>{const id=window.setInterval(()=>setNow(new Date()),1000);return()=>window.clearInterval(id);},[]);return <div className="tv-clock-block"><div className="tv-clock-label">HORÁRIO DE BRASÍLIA</div><div className="tv-clock">{clockText(now)}</div><div className="tv-clock-label">RELÓGIO CIVIL · UTC−03</div></div>}

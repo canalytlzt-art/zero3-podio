@@ -12,6 +12,7 @@ export interface Zero3ResultInput {
   registrationId: string;
   /** @nullable */
   heatId?: string | null;
+  batteryId?: string;
   /**
      * @minimum 0
      * @nullable

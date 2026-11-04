@@ -24,6 +24,7 @@ export interface Zero3ResultUpdate {
   expectedEventId?: string;
   expectedProofId?: string;
   expectedHeatId?: string;
+  expectedBatteryId?: string;
   /** @minimum 1 */
   expectedRevision?: number;
 }

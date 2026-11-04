@@ -8,7 +8,9 @@
 import type { Zero3Category } from './zero3Category';
 
 export interface Zero3BatteryEntry {
-  heatId: string;
+  /** @nullable */
+  heatId?: string | null;
+  batteryId?: string;
   id: string;
   category: Zero3Category;
   /** @nullable */

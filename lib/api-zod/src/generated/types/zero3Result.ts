@@ -14,6 +14,8 @@ export interface Zero3Result {
   registrationId: string;
   /** @nullable */
   heatId?: string | null;
+  /** @nullable */
+  batteryId?: string | null;
   category: Zero3Category;
   /** @nullable */
   laneLabel?: string | null;

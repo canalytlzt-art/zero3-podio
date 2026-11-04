@@ -299,6 +299,113 @@ paths:
           description: Authentication required
         "409":
           description: Heat order already exists
+  /zero3/events/{eventId}/batteries:
+    get:
+      operationId: listZero3EventBatteries
+      tags: [zero3]
+      summary: List event-scoped batteries with all four proof results
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Event batteries and proof results
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Zero3EventBattery" }
+        "401":
+          description: Authentication required
+    post:
+      operationId: createZero3EventBattery
+      tags: [zero3]
+      summary: Create one event battery and assign registrations
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3EventBatteryInput" }
+      responses:
+        "201":
+          description: Created event battery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3EventBattery" }
+        "400":
+          description: Invalid registration assignment
+        "401":
+          description: Authentication required
+        "409":
+          description: Battery order or registration assignment conflicts
+  /zero3/events/{eventId}/active-event-battery:
+    patch:
+      operationId: setZero3ActiveEventBattery
+      tags: [zero3]
+      summary: Select the event battery shown on the TV without changing its timer
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3ActiveEventBatteryInput" }
+      responses:
+        "200":
+          description: Active event battery
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/Zero3EventBattery" }
+                  - { type: "null" }
+        "400":
+          description: Battery does not belong to the event
+        "401":
+          description: Authentication required
+  /zero3/events/{eventId}/batteries/{batteryId}/finalize:
+    post:
+      operationId: finalizeZero3EventBattery
+      tags: [zero3]
+      summary: Review all proofs and atomically publish an event battery
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: batteryId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3FinalizeEventBatteryInput" }
+      responses:
+        "200":
+          description: Existing or newly published event battery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3FinalizeEventBatteryResponse" }
+        "401":
+          description: Authentication required
+        "403":
+          description: ADMIN or JUIZ_CHEFE role required
+        "404":
+          description: Event battery not found
+        "409":
+          description: One or more proof results are incomplete or unreviewed
   /zero3/events/{eventId}/active-heats/{category}:
     put:
       operationId: setZero3ActiveHeat
@@ -1470,6 +1577,86 @@ components:
         fingerprint: { type: string, minLength: 64, maxLength: 64 }
         alreadyPublished: { type: boolean }
       required: [eventId, proofId, batteryOrder, version, resultCount, publishedAt, fingerprint, alreadyPublished]
+    Zero3EventBatteryInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        order: { type: integer, minimum: 1 }
+        registrationIds:
+          type: array
+          uniqueItems: true
+          items: { type: string }
+      required: [name, order, registrationIds]
+    Zero3ActiveEventBatteryInput:
+      type: object
+      properties:
+        batteryId: { type: ["string", "null"] }
+      required: [batteryId]
+    Zero3FinalizeEventBatteryInput:
+      type: object
+      properties:
+        expectedFingerprint:
+          type: string
+          minLength: 64
+          maxLength: 64
+          pattern: "^[a-f0-9]{64}$"
+      required: [expectedFingerprint]
+    Zero3FinalizeEventBatteryResponse:
+      type: object
+      properties:
+        eventId: { type: string }
+        batteryId: { type: string }
+        order: { type: integer, minimum: 1 }
+        version: { type: integer, minimum: 1 }
+        resultCount: { type: integer, minimum: 1 }
+        publishedAt: { type: string, format: date-time }
+        fingerprint: { type: string, minLength: 64, maxLength: 64 }
+        alreadyPublished: { type: boolean }
+      required: [eventId, batteryId, order, version, resultCount, publishedAt, fingerprint, alreadyPublished]
+    Zero3EventBattery:
+      type: object
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        order: { type: integer, minimum: 1 }
+        name: { type: string }
+        state: { $ref: "#/components/schemas/Zero3TimerState" }
+        elapsedMs: { type: integer, minimum: 0 }
+        eventElapsedMs: { type: integer, minimum: 0 }
+        eventLimitMs: { type: integer, minimum: 0 }
+        preparationEndsAt: { type: ["string", "null"], format: date-time }
+        preparationRemainingMs: { type: integer, minimum: 0 }
+        preparationSeconds: { type: integer, minimum: 0 }
+        startedAt: { type: ["string", "null"], format: date-time }
+        preparationStartedAt: { type: ["string", "null"], format: date-time }
+        firstStartedAt: { type: ["string", "null"], format: date-time }
+        stoppedAt: { type: ["string", "null"], format: date-time }
+        registrations: { type: array, items: { $ref: "#/components/schemas/Zero3BatteryEntry" } }
+        proofLeaderboards:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3ProofLeaderboards" }
+        proofs: { type: array, items: { $ref: "#/components/schemas/Zero3Proof" } }
+        results: { type: array, items: { $ref: "#/components/schemas/Zero3PublicResult" } }
+        categories: { type: array, items: { type: string } }
+        pendingResultCount: { type: integer, minimum: 0 }
+        reviewedResultCount: { type: integer, minimum: 0 }
+        expectedResultCount: { type: integer, minimum: 0 }
+        finalizationCurrent: { type: boolean }
+        finalized: { type: boolean }
+        finalizationFingerprint: { type: ["string", "null"] }
+        finalizationVersion: { type: ["integer", "null"], minimum: 1 }
+        finalizedAt: { type: ["string", "null"], format: date-time }
+        timerVersion: { type: integer, minimum: 0 }
+        updatedAt: { type: string, format: date-time }
+      required: [id, eventId, order, name, state, elapsedMs, eventElapsedMs, eventLimitMs, preparationEndsAt, preparationRemainingMs, preparationSeconds, startedAt, preparationStartedAt, firstStartedAt, stoppedAt, registrations, proofs, proofLeaderboards, results, categories, pendingResultCount, reviewedResultCount, expectedResultCount, finalizationCurrent, finalized, finalizationFingerprint, finalizationVersion, finalizedAt, timerVersion, updatedAt]
+    Zero3ProofLeaderboards:
+      type: object
+      properties:
+        proofId: { type: string }
+        leaderboards:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3CategoryLeaderboard" }
+      required: [proofId, leaderboards]
     Zero3HeatProofInput:
       type: object
       properties:
@@ -1495,10 +1682,17 @@ components:
         preparationRemainingMs: { type: integer, minimum: 0 }
         preparationSeconds: { type: integer }
         startedAt: { type: ["string", "null"], format: date-time }
+        preparationStartedAt: { type: ["string", "null"], format: date-time }
+        firstStartedAt: { type: ["string", "null"], format: date-time }
+        stoppedAt: { type: ["string", "null"], format: date-time }
         version: { type: integer }
         updatedAt: { type: string, format: date-time }
         proofId: { type: ["string", "null"] }
         batteryOrder: { type: ["integer", "null"] }
+        batteryId: { type: ["string", "null"] }
+        preparationEndsAt: { type: ["string", "null"], format: date-time }
+        eventElapsedMs: { type: integer, minimum: 0 }
+        eventLimitMs: { type: integer, minimum: 0 }
       required: [eventId, state, elapsedMs, preparationRemainingMs, preparationSeconds, version, updatedAt]
     Zero3TimerCommand:
       type: object
@@ -1510,6 +1704,7 @@ components:
         commandId: { type: string, minLength: 1 }
         expectedProofId: { type: string, minLength: 1 }
         expectedBatteryOrder: { type: integer, minimum: 1 }
+        expectedBatteryId: { type: string, minLength: 1 }
       required: [action, expectedVersion, commandId]
     Zero3Result:
       type: object
@@ -1518,6 +1713,7 @@ components:
         eventId: { type: string }
         registrationId: { type: string }
         heatId: { type: ["string", "null"] }
+        batteryId: { type: ["string", "null"] }
         category: { $ref: "#/components/schemas/Zero3Category" }
         laneLabel: { type: ["string", "null"] }
         elapsedMs: { type: ["integer", "null"], minimum: 0 }
@@ -1542,6 +1738,7 @@ components:
         eventId: { type: string }
         registrationId: { type: string }
         heatId: { type: ["string", "null"] }
+        batteryId: { type: string }
         elapsedMs: { type: ["integer", "null"], minimum: 0 }
         proofId: { type: ["string", "null"] }
         rawValue: { type: ["number", "null"], minimum: 0 }
@@ -1558,6 +1755,7 @@ components:
         expectedEventId: { type: string }
         expectedProofId: { type: string }
         expectedHeatId: { type: string }
+        expectedBatteryId: { type: string }
         expectedRevision: { type: integer, minimum: 1 }
       required: [reason]
       minProperties: 2
@@ -1648,6 +1846,9 @@ components:
       properties:
         serverTime: { type: string, format: date-time }
         batteryOperationsEnabled: { type: boolean }
+        batteryModel:
+          type: string
+          enum: [LEGACY_PROOF, EVENT]
         activeBattery:
           oneOf:
             - { $ref: "#/components/schemas/Zero3PublicBattery" }
@@ -1655,6 +1856,9 @@ components:
         completedBatteries:
           type: array
           items: { $ref: "#/components/schemas/Zero3CompletedBattery" }
+        completedEventBatteries:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3EventBattery" }
         batteryTimers:
           type: array
           items: { $ref: "#/components/schemas/Zero3Timer" }
@@ -1682,13 +1886,14 @@ components:
     Zero3BatteryEntry:
       type: object
       properties:
-        heatId: { type: string }
+        heatId: { type: ["string", "null"] }
+        batteryId: { type: string }
         id: { type: string }
         category: { $ref: "#/components/schemas/Zero3Category" }
         teamName: { type: ["string", "null"] }
         laneLabel: { type: ["string", "null"] }
         athleteNames: { type: array, items: { type: string } }
-      required: [heatId, id, category, teamName, laneLabel, athleteNames]
+      required: [id, category, teamName, laneLabel, athleteNames]
     Zero3PublicBattery:
       type: object
       properties:
@@ -1704,6 +1909,7 @@ components:
         results: { type: array, items: { $ref: "#/components/schemas/Zero3PublicResult" } }
         leaderboards: { type: array, items: { $ref: "#/components/schemas/Zero3CategoryLeaderboard" } }
         state: { $ref: "#/components/schemas/Zero3TimerState" }
+        elapsedMs: { type: integer, minimum: 0 }
         pendingResultCount: { type: integer, minimum: 0 }
         reviewedResultCount: { type: integer, minimum: 0 }
         expectedResultCount: { type: integer, minimum: 0 }
@@ -1712,6 +1918,14 @@ components:
         finalizationVersion: { type: ["integer", "null"], minimum: 1 }
         finalizedAt: { type: ["string", "null"], format: date-time }
         finalizationFingerprint: { type: ["string", "null"] }
+        batteryId: { type: string }
+        proofs: { type: array, items: { $ref: "#/components/schemas/Zero3Proof" } }
+        proofLeaderboards:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3ProofLeaderboards" }
+        eventElapsedMs: { type: integer, minimum: 0 }
+        eventLimitMs: { type: integer, minimum: 0 }
+        preparationEndsAt: { type: ["string", "null"], format: date-time }
       required: [eventId, proofId, proofOrder, proofName, order, name, heatIds, categories, registrations, results, leaderboards, state, pendingResultCount, reviewedResultCount, expectedResultCount, finalized, finalizationCurrent, finalizationVersion, finalizedAt, finalizationFingerprint]
     Zero3CompletedBattery:
       type: object

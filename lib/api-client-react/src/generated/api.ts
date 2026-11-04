@@ -29,6 +29,7 @@ import type {
   HealthStatus,
   Zero3ActiveBatteryInput,
   Zero3ActiveBatteryResponse,
+  Zero3ActiveEventBatteryInput,
   Zero3ActiveHeat,
   Zero3ActiveHeatInput,
   Zero3Athlete,
@@ -38,6 +39,8 @@ import type {
   Zero3Dashboard,
   Zero3Event,
   Zero3EventBackup,
+  Zero3EventBattery,
+  Zero3EventBatteryInput,
   Zero3EventDeleteInput,
   Zero3EventDeleteResult,
   Zero3EventInput,
@@ -46,6 +49,8 @@ import type {
   Zero3EventUpdate,
   Zero3FinalizeBatteryInput,
   Zero3FinalizeBatteryResponse,
+  Zero3FinalizeEventBatteryInput,
+  Zero3FinalizeEventBatteryResponse,
   Zero3Heat,
   Zero3HeatInput,
   Zero3HeatProofInput,
@@ -1346,6 +1351,376 @@ export const useCreateZero3Heat = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCreateZero3HeatMutationOptions(options), queryClient);
+    }
+
+export const getListZero3EventBatteriesUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/batteries`
+}
+
+/**
+ * @summary List event-scoped batteries with all four proof results
+ */
+export const listZero3EventBatteries = async (eventId: string, options?: Parameters<typeof customFetch>[1]): Promise<Zero3EventBattery[]> => {
+
+  return customFetch<Zero3EventBattery[]>(getListZero3EventBatteriesUrl(eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListZero3EventBatteriesQueryKey = (eventId: string,) => {
+    return [
+    `/api/zero3/events/${eventId}/batteries`
+    ] as const;
+    }
+
+
+export const getListZero3EventBatteriesQueryOptions = <TData = Awaited<ReturnType<typeof listZero3EventBatteries>>, TError = ErrorType<void>>(eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3EventBatteries>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListZero3EventBatteriesQueryKey(eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listZero3EventBatteries>>> = ({ signal }) => listZero3EventBatteries(eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listZero3EventBatteries>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListZero3EventBatteriesQueryResult = NonNullable<Awaited<ReturnType<typeof listZero3EventBatteries>>>
+export type ListZero3EventBatteriesQueryError = ErrorType<void>
+
+
+export function useListZero3EventBatteries<TData = Awaited<ReturnType<typeof listZero3EventBatteries>>, TError = ErrorType<void>>(
+ eventId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3EventBatteries>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listZero3EventBatteries>>,
+          TError,
+          Awaited<ReturnType<typeof listZero3EventBatteries>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListZero3EventBatteries<TData = Awaited<ReturnType<typeof listZero3EventBatteries>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3EventBatteries>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listZero3EventBatteries>>,
+          TError,
+          Awaited<ReturnType<typeof listZero3EventBatteries>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListZero3EventBatteries<TData = Awaited<ReturnType<typeof listZero3EventBatteries>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3EventBatteries>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List event-scoped batteries with all four proof results
+ */
+
+export function useListZero3EventBatteries<TData = Awaited<ReturnType<typeof listZero3EventBatteries>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listZero3EventBatteries>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListZero3EventBatteriesQueryOptions(eventId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateZero3EventBatteryUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/batteries`
+}
+
+/**
+ * @summary Create one event battery and assign registrations
+ */
+export const createZero3EventBattery = async (eventId: string,
+    zero3EventBatteryInput: Zero3EventBatteryInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3EventBattery> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3EventBattery>(getCreateZero3EventBatteryUrl(eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3EventBatteryInput)
+  }
+);}
+
+
+
+
+
+export const getCreateZero3EventBatteryMutationKey = () => ['createZero3EventBattery'] as const;
+
+export const getCreateZero3EventBatteryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createZero3EventBattery>>, TError,CreateZero3EventBatteryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createZero3EventBattery>>, TError,CreateZero3EventBatteryMutationVariables, TContext> => {
+
+const mutationKey = getCreateZero3EventBatteryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createZero3EventBattery>>, CreateZero3EventBatteryMutationVariables> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  createZero3EventBattery(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateZero3EventBatteryMutationResult = NonNullable<Awaited<ReturnType<typeof createZero3EventBattery>>>
+    export type CreateZero3EventBatteryMutationBody = BodyType<Zero3EventBatteryInput>
+    export type CreateZero3EventBatteryMutationError = ErrorType<void>
+    export type CreateZero3EventBatteryMutationVariables = {eventId: string;data: BodyType<Zero3EventBatteryInput>}
+
+    /**
+ * @summary Create one event battery and assign registrations
+ */
+export const useCreateZero3EventBattery = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createZero3EventBattery>>, TError,CreateZero3EventBatteryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createZero3EventBattery>>,
+        TError,
+        CreateZero3EventBatteryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateZero3EventBatteryMutationOptions(options), queryClient);
+    }
+
+export const getSetZero3ActiveEventBatteryUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/active-event-battery`
+}
+
+/**
+ * @summary Select the event battery shown on the TV without changing its timer
+ */
+export const setZero3ActiveEventBattery = async (eventId: string,
+    zero3ActiveEventBatteryInput: Zero3ActiveEventBatteryInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3EventBattery | null> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3EventBattery | null>(getSetZero3ActiveEventBatteryUrl(eventId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3ActiveEventBatteryInput)
+  }
+);}
+
+
+
+
+
+export const getSetZero3ActiveEventBatteryMutationKey = () => ['setZero3ActiveEventBattery'] as const;
+
+export const getSetZero3ActiveEventBatteryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setZero3ActiveEventBattery>>, TError,SetZero3ActiveEventBatteryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setZero3ActiveEventBattery>>, TError,SetZero3ActiveEventBatteryMutationVariables, TContext> => {
+
+const mutationKey = getSetZero3ActiveEventBatteryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setZero3ActiveEventBattery>>, SetZero3ActiveEventBatteryMutationVariables> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  setZero3ActiveEventBattery(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetZero3ActiveEventBatteryMutationResult = NonNullable<Awaited<ReturnType<typeof setZero3ActiveEventBattery>>>
+    export type SetZero3ActiveEventBatteryMutationBody = BodyType<Zero3ActiveEventBatteryInput>
+    export type SetZero3ActiveEventBatteryMutationError = ErrorType<void>
+    export type SetZero3ActiveEventBatteryMutationVariables = {eventId: string;data: BodyType<Zero3ActiveEventBatteryInput>}
+
+    /**
+ * @summary Select the event battery shown on the TV without changing its timer
+ */
+export const useSetZero3ActiveEventBattery = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setZero3ActiveEventBattery>>, TError,SetZero3ActiveEventBatteryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof setZero3ActiveEventBattery>>,
+        TError,
+        SetZero3ActiveEventBatteryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetZero3ActiveEventBatteryMutationOptions(options), queryClient);
+    }
+
+export const getFinalizeZero3EventBatteryUrl = (eventId: string,
+    batteryId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/batteries/${batteryId}/finalize`
+}
+
+/**
+ * @summary Review all proofs and atomically publish an event battery
+ */
+export const finalizeZero3EventBattery = async (eventId: string,
+    batteryId: string,
+    zero3FinalizeEventBatteryInput: Zero3FinalizeEventBatteryInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3FinalizeEventBatteryResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3FinalizeEventBatteryResponse>(getFinalizeZero3EventBatteryUrl(eventId,batteryId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3FinalizeEventBatteryInput)
+  }
+);}
+
+
+
+
+
+export const getFinalizeZero3EventBatteryMutationKey = () => ['finalizeZero3EventBattery'] as const;
+
+export const getFinalizeZero3EventBatteryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finalizeZero3EventBattery>>, TError,FinalizeZero3EventBatteryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof finalizeZero3EventBattery>>, TError,FinalizeZero3EventBatteryMutationVariables, TContext> => {
+
+const mutationKey = getFinalizeZero3EventBatteryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof finalizeZero3EventBattery>>, FinalizeZero3EventBatteryMutationVariables> = (props) => {
+          const {eventId,batteryId,data} = props ?? {};
+
+          return  finalizeZero3EventBattery(eventId,batteryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FinalizeZero3EventBatteryMutationResult = NonNullable<Awaited<ReturnType<typeof finalizeZero3EventBattery>>>
+    export type FinalizeZero3EventBatteryMutationBody = BodyType<Zero3FinalizeEventBatteryInput>
+    export type FinalizeZero3EventBatteryMutationError = ErrorType<void>
+    export type FinalizeZero3EventBatteryMutationVariables = {eventId: string;batteryId: string;data: BodyType<Zero3FinalizeEventBatteryInput>}
+
+    /**
+ * @summary Review all proofs and atomically publish an event battery
+ */
+export const useFinalizeZero3EventBattery = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finalizeZero3EventBattery>>, TError,FinalizeZero3EventBatteryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof finalizeZero3EventBattery>>,
+        TError,
+        FinalizeZero3EventBatteryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getFinalizeZero3EventBatteryMutationOptions(options), queryClient);
     }
 
 export const getSetZero3ActiveHeatUrl = (eventId: string,
