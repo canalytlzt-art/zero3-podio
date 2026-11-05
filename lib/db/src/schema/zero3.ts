@@ -306,6 +306,10 @@ export const zero3ResultsTable = pgTable(
     teamNameSnapshot: text("team_name_snapshot"),
     elapsedMs: integer("elapsed_ms"),
     rawValue: numeric("raw_value", { precision: 12, scale: 3 }),
+    publishedStatus: text("published_status"),
+    publishedElapsedMs: integer("published_elapsed_ms"),
+    publishedRawValue: numeric("published_raw_value", { precision: 12, scale: 3 }),
+    publishedRevision: integer("published_revision"),
     syncErrorMs: integer("sync_error_ms"),
     status: text("status").notNull().default("PROVISIONAL"),
     idempotencyKey: text("idempotency_key").notNull().unique(),
@@ -333,6 +337,39 @@ export const zero3ResultRevisionsTable = pgTable("zero3_result_revisions", {
   actorId: text("actor_id").notNull(),
   createdAt: createdAt(),
 });
+
+export const zero3RankingPublicationsTable = pgTable(
+  "zero3_ranking_publications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => zero3EventsTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    resultCount: integer("result_count").notNull(),
+    resultsJson: jsonb("results_json").$type<unknown[]>().notNull(),
+    leaderboardsJson: jsonb("leaderboards_json").$type<unknown[]>().notNull(),
+    publishedBy: text("published_by").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    eventVersionUnique: uniqueIndex("zero3_ranking_publication_version_unique").on(
+      table.eventId,
+      table.version,
+    ),
+    eventFingerprintUnique: uniqueIndex("zero3_ranking_publication_fingerprint_unique").on(
+      table.eventId,
+      table.fingerprint,
+    ),
+    latest: index("zero3_ranking_publication_latest_idx").on(
+      table.eventId,
+      table.version,
+    ),
+  }),
+);
 
 export const zero3TimersTable = pgTable("zero3_timers", {
   eventId: uuid("event_id")

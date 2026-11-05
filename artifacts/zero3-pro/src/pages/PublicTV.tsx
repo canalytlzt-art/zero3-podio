@@ -89,7 +89,8 @@ function EventBatteryBoard({board}:{board:Zero3PublicBoard}){
       </div>
       <div className="tv-battery-actions">
         <div><div className={`tv-battery-state ${battery.state==='RUNNING'?'running':''}`}>{timerStateLabel(battery.state).toLocaleUpperCase('pt-BR')}</div>
-          <div className="tv-battery-kicker" style={{textAlign:'right',marginTop:6}}>{battery.finalized&&battery.finalizationCurrent?'BATERIA FINALIZADA':battery.finalized?'CORREÇÃO PENDENTE':'BATERIA ABERTA'}</div>
+          <div className="tv-battery-kicker" style={{textAlign:'right',marginTop:6}}>{battery.operationalFinalized?'BATERIA FINALIZADA':'BATERIA ABERTA'}</div>
+          <div className="tv-battery-kicker" style={{textAlign:'right',marginTop:4}}>{battery.results.some(result=>result.publishedRevision===result.revision)?'RANKING OFICIAL PARCIAL':'RESULTADOS PROVISÓRIOS'}</div>
         </div>
         <EventBatteryElapsed battery={battery} timer={board.timer} serverTime={board.serverTime}/>
         <Link className="tv-live-board-link" href={liveBoardHrefForEvent(board.event?.id)} target="_blank" rel="noopener noreferrer">Placar ao vivo ↗</Link>
@@ -99,6 +100,11 @@ function EventBatteryBoard({board}:{board:Zero3PublicBoard}){
       {categories.map(category=>{
         const registrations=battery.registrations.filter(reg=>reg.category===category);
         const style=category==='RX'?'rx':category==='SC'?'sc':'custom';
+        const publishedForProof=(proofId:string)=>{
+          const categoryResults=registrations.map(reg=>battery.results.find(item=>item.registrationId===reg.id&&item.proofId===proofId));
+          return categoryResults.length>0&&categoryResults.every(result=>
+            result?.status==='VALIDATED'&&result.publishedRevision===result.revision);
+        };
         return <section key={category} className={`tv-battery-category tv-panel-${style}`} aria-label={`Bateria ${category}`}>
           <header><span className={`tv-category ${style==='rx'?'rx':''}`}>{category}</span><span className="tv-battery-category-count">{registrations.length} INSCRIÇÕES</span></header>
           <div className="tv-event-result-table-wrap"><table className="tv-event-result-table">
@@ -108,28 +114,29 @@ function EventBatteryBoard({board}:{board:Zero3PublicBoard}){
               <td><strong>{reg.teamName||reg.athleteNames.join(' / ')||reg.id}</strong><small>{reg.athleteNames.join(' · ')}</small></td>
               {proofs.map(proof=>{
                 const result=battery.results.find(item=>item.registrationId===reg.id&&item.proofId===proof.id);
+                const rankingIsPublished=publishedForProof(proof.id);
                 const leaderboard=battery.proofLeaderboards?.find(item=>item.proofId===proof.id)?.leaderboards
                   .find(item=>item.category===category);
                 const entry=leaderboard?.entries.find(item=>item.registrationId===reg.id);
                 const score=entry?.proofScores.find(item=>item.proofId===proof.id);
                 const value=result?.status==='DNS'||result?.status==='DNF'?result.status
                   :result?.rawValue!=null?`${result.rawValue}${proof.unit?` ${proof.unit}`:''}`:'—';
-                 const label=!result?'PENDENTE':result.status==='PROVISIONAL'?'PROVISÓRIO · AGUARDANDO REVISÃO'
-                   :result.status==='VALIDATED'&&battery.finalized&&battery.finalizationCurrent?'VALIDADO · PUBLICADO'
-                   :result.status==='VALIDATED'&&battery.finalized?'VALIDADO · CORREÇÃO PENDENTE'
-                   :result.status==='VALIDATED'?'REVISADO · AGUARDANDO PUBLICAÇÃO':result.status;
-                 const provisionalStatus=result?.status==='PROVISIONAL'||
-                   result?.status==='VALIDATED'&&(!battery.finalized||!battery.finalizationCurrent);
-                 return <td key={proof.id}><strong>{score?.placement?`${score.placement}º · `:''}{value}</strong><small className={provisionalStatus?'provisional':''}>{label}</small></td>;
+                  const isPublished=result?.status==='VALIDATED'&&result.publishedRevision===result.revision;
+                  const label=!result?'PENDENTE':result.status==='PROVISIONAL'?'PROVISÓRIO · AGUARDA REVISÃO'
+                    :result.status==='VALIDATED'&&isPublished?'PUBLICADO NO RANKING'
+                    :result.status==='VALIDATED'?'REVISADO · AGUARDA PUBLICAR RANKING':result.status;
+                  const provisionalStatus=result?.status==='PROVISIONAL'||(result?.status==='VALIDATED'&&!isPublished);
+                  const placement=rankingIsPublished?score?.placement:null;
+                  return <td key={proof.id}><strong>{placement?`${placement}º · `:''}{value}</strong><small className={provisionalStatus?'provisional':''}>{label}</small></td>;
               })}
             </tr>)}</tbody>
           </table></div>
           <footer className="tv-heat-podium">
-            <div className="tv-podium-title">CLASSIFICAÇÃO DA BATERIA <span>{battery.finalized&&battery.finalizationCurrent?'PUBLICADA':battery.finalized?'CORREÇÃO PENDENTE':'PROVISÓRIA'}</span></div>
+             <div className="tv-podium-title">CLASSIFICAÇÃO DA BATERIA <span>{proofs.length>0&&proofs.every(proof=>publishedForProof(proof.id))?'OFICIAL':proofs.some(proof=>battery.results.some(result=>result.proofId===proof.id&&result.publishedRevision===result.revision))?'OFICIAL PARCIAL':'PROVISÓRIA'}</span></div>
             <div className="tv-podium-list">{proofs.map(proof=>{
               const leaderboard=battery.proofLeaderboards?.find(item=>item.proofId===proof.id)?.leaderboards
                 .find(item=>item.category===category);
-              const top=(leaderboard?.entries||[]).filter(entry=>entry.proofScores.some(score=>score.proofId===proof.id&&score.status==='VALIDATED'))
+               const top=(leaderboard?.entries||[]).filter(entry=>publishedForProof(proof.id)&&entry.proofScores.some(score=>score.proofId===proof.id&&score.status==='VALIDATED'))
                 .sort((a,b)=>(a.proofScores.find(score=>score.proofId===proof.id)?.placement??Number.MAX_SAFE_INTEGER)-
                   (b.proofScores.find(score=>score.proofId===proof.id)?.placement??Number.MAX_SAFE_INTEGER)).slice(0,3);
               return <div key={proof.id}><div className="tv-place">{proof.name||`Prova ${proof.order}`}</div>
@@ -137,7 +144,7 @@ function EventBatteryBoard({board}:{board:Zero3PublicBoard}){
                   const reg=registrations.find(item=>item.id===entry.registrationId);
                   const place=entry.proofScores.find(score=>score.proofId===proof.id)?.placement;
                   return `${place}º ${reg?.teamName||reg?.athleteNames.join(' / ')||'Equipe'}`;
-                }).join(' · '):battery.finalized?'Sem resultado validado':'Aguardando finalização'}</div>
+                 }).join(' · '):publishedForProof(proof.id)?'Sem resultado validado':'Aguardando publicação oficial'}</div>
               </div>;
             })}</div>
           </footer>

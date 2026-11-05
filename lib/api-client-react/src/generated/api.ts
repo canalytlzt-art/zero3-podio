@@ -67,6 +67,9 @@ import type {
   Zero3Proof,
   Zero3ProofUpdate,
   Zero3PublicBoard,
+  Zero3RankingPublicationInput,
+  Zero3RankingPublicationPreview,
+  Zero3RankingPublicationResult,
   Zero3Registration,
   Zero3RegistrationCancelInput,
   Zero3RegistrationCancelResult,
@@ -1928,7 +1931,7 @@ export const getFinalizeZero3EventBatteryUrl = (eventId: string,
 }
 
 /**
- * @summary Review all proofs and atomically publish an event battery
+ * @summary Operationally finalize one event battery without publishing results
  */
 export const finalizeZero3EventBattery = async (eventId: string,
     batteryId: string,
@@ -1996,7 +1999,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type FinalizeZero3EventBatteryMutationVariables = {eventId: string;batteryId: string;data: BodyType<Zero3FinalizeEventBatteryInput>}
 
     /**
- * @summary Review all proofs and atomically publish an event battery
+ * @summary Operationally finalize one event battery without publishing results
  */
 export const useFinalizeZero3EventBattery = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finalizeZero3EventBattery>>, TError,FinalizeZero3EventBatteryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -3716,6 +3719,196 @@ export const useCaptureZero3Result = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCaptureZero3ResultMutationOptions(options), queryClient);
+    }
+
+export const getGetZero3RankingPublicationUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/ranking-publication`
+}
+
+/**
+ * @summary Preview reviewed results and the current event ranking publication
+ */
+export const getZero3RankingPublication = async (eventId: string, options?: Parameters<typeof customFetch>[1]): Promise<Zero3RankingPublicationPreview> => {
+
+  return customFetch<Zero3RankingPublicationPreview>(getGetZero3RankingPublicationUrl(eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetZero3RankingPublicationQueryKey = (eventId: string,) => {
+    return [
+    `/api/zero3/events/${eventId}/ranking-publication`
+    ] as const;
+    }
+
+
+export const getGetZero3RankingPublicationQueryOptions = <TData = Awaited<ReturnType<typeof getZero3RankingPublication>>, TError = ErrorType<void>>(eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RankingPublication>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetZero3RankingPublicationQueryKey(eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getZero3RankingPublication>>> = ({ signal }) => getZero3RankingPublication(eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getZero3RankingPublication>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetZero3RankingPublicationQueryResult = NonNullable<Awaited<ReturnType<typeof getZero3RankingPublication>>>
+export type GetZero3RankingPublicationQueryError = ErrorType<void>
+
+
+export function useGetZero3RankingPublication<TData = Awaited<ReturnType<typeof getZero3RankingPublication>>, TError = ErrorType<void>>(
+ eventId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RankingPublication>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getZero3RankingPublication>>,
+          TError,
+          Awaited<ReturnType<typeof getZero3RankingPublication>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetZero3RankingPublication<TData = Awaited<ReturnType<typeof getZero3RankingPublication>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RankingPublication>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getZero3RankingPublication>>,
+          TError,
+          Awaited<ReturnType<typeof getZero3RankingPublication>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetZero3RankingPublication<TData = Awaited<ReturnType<typeof getZero3RankingPublication>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RankingPublication>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Preview reviewed results and the current event ranking publication
+ */
+
+export function useGetZero3RankingPublication<TData = Awaited<ReturnType<typeof getZero3RankingPublication>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getZero3RankingPublication>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetZero3RankingPublicationQueryOptions(eventId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPublishZero3RankingUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/ranking-publication`
+}
+
+/**
+ * @summary Publish the reviewed results for one event as an atomic ranking revision
+ */
+export const publishZero3Ranking = async (eventId: string,
+    zero3RankingPublicationInput: Zero3RankingPublicationInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3RankingPublicationResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3RankingPublicationResult>(getPublishZero3RankingUrl(eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3RankingPublicationInput)
+  }
+);}
+
+
+
+
+
+export const getPublishZero3RankingMutationKey = () => ['publishZero3Ranking'] as const;
+
+export const getPublishZero3RankingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishZero3Ranking>>, TError,PublishZero3RankingMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishZero3Ranking>>, TError,PublishZero3RankingMutationVariables, TContext> => {
+
+const mutationKey = getPublishZero3RankingMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishZero3Ranking>>, PublishZero3RankingMutationVariables> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  publishZero3Ranking(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishZero3RankingMutationResult = NonNullable<Awaited<ReturnType<typeof publishZero3Ranking>>>
+    export type PublishZero3RankingMutationBody = BodyType<Zero3RankingPublicationInput>
+    export type PublishZero3RankingMutationError = ErrorType<void>
+    export type PublishZero3RankingMutationVariables = {eventId: string;data: BodyType<Zero3RankingPublicationInput>}
+
+    /**
+ * @summary Publish the reviewed results for one event as an atomic ranking revision
+ */
+export const usePublishZero3Ranking = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishZero3Ranking>>, TError,PublishZero3RankingMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof publishZero3Ranking>>,
+        TError,
+        PublishZero3RankingMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPublishZero3RankingMutationOptions(options), queryClient);
     }
 
 export const getUpdateZero3ResultUrl = (resultId: string,) => {

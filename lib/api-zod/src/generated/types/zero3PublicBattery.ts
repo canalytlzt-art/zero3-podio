@@ -44,6 +44,9 @@ export interface Zero3PublicBattery {
   finalizedAt: Date | null;
   /** @nullable */
   finalizationFingerprint: string | null;
+  operationalFinalized?: boolean;
+  /** @nullable */
+  operationalFinalizedAt?: Date | null;
   batteryId?: string;
   proofs?: Zero3Proof[];
   proofLeaderboards?: Zero3ProofLeaderboards[];

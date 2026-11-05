@@ -1,4 +1,5 @@
 - [ZERO3 display and scoring](zero3-public-display.md) — One Brasília-clock TV shows SC/RX, four-proof points, progress and manually published podiums; admin stays separate.
+- [ZERO3 ranking publication](zero3-ranking-publication.md) — Only an explicit, versioned admin publication changes official event scoring; partials and corrections stay out until republished.
 - [Clerk package compatibility](clerk-package-compatibility.md) — Keep Clerk React and shared packages on compatible major lines; misaligned exports can fail only during Vite bundling.
 - [Cloudflare Clerk instance](clerk-cloudflare-instance.md) — The user confirmed Cloudflare should keep using the existing Clerk test instance; do not switch instances implicitly.
 - [ZERO3 Worker cutover](zero3-worker-cutover.md) — The user intends to adopt the D1 staging Worker and retire `zero3-podio` only after readiness checks.
@@ -11,6 +12,6 @@
 - [Workerd network errors](workerd-network-errors.md) — PostgreSQL TCP failures may lack Node codes; classify only with specific SQL context, never from timing alone.
 - [Wrangler D1 query limits](wrangler-d1-query-limits.md) — Large compound SELECT count queries can be rejected by remote D1; use scalar subqueries or separate SELECTs.
 - [ZERO3 event-specific duplas](zero3-event-specific-duplas.md) — Athletes are reusable; pre-result swaps keep the event registration ID and battery links, while result and published podium history stays protected.
-- [ZERO3 event batteries](zero3-logical-batteries.md) — Keep event-scoped four-proof batteries separate by category; preserve legacy rows and unlinked results until explicitly mapped.
+- [ZERO3 event batteries](zero3-logical-batteries.md) — Finishing a battery freezes only its timer; official results and rankings require explicit event-level publication.
 - [ZERO3 new-tab navigation](zero3-new-tab-navigation.md) — Use native anchors for target-blank links on the TV; Wouter can cancel the click and prevent the new tab.
 - [Wrangler local Clerk config](wrangler-local-clerk-secrets.md) — Wrangler local does not inherit Replit Secrets; auth middleware can fail before route tests unless local runtime secrets are configured safely.

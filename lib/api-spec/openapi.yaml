@@ -468,7 +468,7 @@ paths:
     post:
       operationId: finalizeZero3EventBattery
       tags: [zero3]
-      summary: Review all proofs and atomically publish an event battery
+      summary: Operationally finalize one event battery without publishing results
       parameters:
         - in: path
           name: eventId
@@ -485,7 +485,7 @@ paths:
             schema: { $ref: "#/components/schemas/Zero3FinalizeEventBatteryInput" }
       responses:
         "200":
-          description: Existing or newly published event battery
+          description: Operationally finalized event battery; official ranking publication is separate
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Zero3FinalizeEventBatteryResponse" }
@@ -998,6 +998,58 @@ paths:
           description: Invalid or duplicate finish
         "401":
           description: Authentication required
+  /zero3/events/{eventId}/ranking-publication:
+    get:
+      operationId: getZero3RankingPublication
+      tags: [zero3]
+      summary: Preview reviewed results and the current event ranking publication
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Publication preview and current revision
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3RankingPublicationPreview" }
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Event not found
+    post:
+      operationId: publishZero3Ranking
+      tags: [zero3]
+      summary: Publish the reviewed results for one event as an atomic ranking revision
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3RankingPublicationInput" }
+      responses:
+        "200":
+          description: Published ranking revision
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3RankingPublicationResult" }
+        "400":
+          description: No reviewed results or a blocking scoring rule
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Event not found
+        "409":
+          description: Results changed after the preview
   /zero3/results/{resultId}:
     patch:
       operationId: updateZero3Result
@@ -1260,7 +1312,7 @@ components:
       required: [format, version, eventId, eventName, exportedAt, counts, data, digest]
       properties:
         format: { type: string, const: zero3-event-backup }
-        version: { type: integer, enum: [1, 2, 3, 4] }
+        version: { type: integer, enum: [1, 2, 3, 4, 5, 6] }
         eventId: { type: string }
         eventName: { type: string }
         exportedAt: { type: string, format: date-time }
@@ -1284,6 +1336,7 @@ components:
             heatEntries: { type: array, items: { type: object, additionalProperties: true } }
             activeHeats: { type: array, items: { type: object, additionalProperties: true } }
             results: { type: array, items: { type: object, additionalProperties: true } }
+            rankingPublications: { type: array, items: { type: object, additionalProperties: true } }
             resultRevisions: { type: array, items: { type: object, additionalProperties: true } }
             timers: { type: array, items: { type: object, additionalProperties: true } }
             podiumVersions: { type: array, items: { type: object, additionalProperties: true } }
@@ -1744,12 +1797,13 @@ components:
         eventId: { type: string }
         batteryId: { type: string }
         order: { type: integer, minimum: 1 }
-        version: { type: integer, minimum: 1 }
-        resultCount: { type: integer, minimum: 1 }
-        publishedAt: { type: string, format: date-time }
-        fingerprint: { type: string, minLength: 64, maxLength: 64 }
-        alreadyPublished: { type: boolean }
-      required: [eventId, batteryId, order, version, resultCount, publishedAt, fingerprint, alreadyPublished]
+        operationalFinalizedAt: { type: string, format: date-time }
+        elapsedMs: { type: integer, minimum: 0 }
+        timerVersion: { type: integer, minimum: 1 }
+        resultCount: { type: integer, minimum: 0 }
+        pendingResultCount: { type: integer, minimum: 0 }
+        alreadyFinalized: { type: boolean }
+      required: [eventId, batteryId, order, operationalFinalizedAt, elapsedMs, timerVersion, resultCount, pendingResultCount, alreadyFinalized]
     Zero3EventBattery:
       type: object
       properties:
@@ -1783,6 +1837,8 @@ components:
         finalizationFingerprint: { type: ["string", "null"] }
         finalizationVersion: { type: ["integer", "null"], minimum: 1 }
         finalizedAt: { type: ["string", "null"], format: date-time }
+        operationalFinalized: { type: boolean }
+        operationalFinalizedAt: { type: ["string", "null"], format: date-time }
         timerVersion: { type: integer, minimum: 0 }
         updatedAt: { type: string, format: date-time }
       required: [id, eventId, order, name, state, elapsedMs, eventElapsedMs, eventLimitMs, preparationEndsAt, preparationRemainingMs, preparationSeconds, startedAt, preparationStartedAt, firstStartedAt, stoppedAt, registrations, proofs, proofLeaderboards, results, categories, pendingResultCount, reviewedResultCount, expectedResultCount, finalizationCurrent, finalized, finalizationFingerprint, finalizationVersion, finalizedAt, timerVersion, updatedAt]
@@ -1863,6 +1919,7 @@ components:
         status: { $ref: "#/components/schemas/Zero3ResultStatus" }
         capturedAt: { type: string, format: date-time }
         revision: { type: integer }
+        publishedRevision: { type: ["integer", "null"], minimum: 1 }
         names:
           type: array
           items: { type: string }
@@ -1896,6 +1953,75 @@ components:
         expectedRevision: { type: integer, minimum: 1 }
       required: [reason]
       minProperties: 2
+    Zero3RankingPublicationInput:
+      type: object
+      properties:
+        expectedFingerprint:
+          type: string
+          minLength: 64
+          maxLength: 64
+          pattern: "^[a-f0-9]{64}$"
+        expectedVersion: { type: integer, minimum: 0 }
+      required: [expectedFingerprint, expectedVersion]
+    Zero3RankingPublicationAffectedScope:
+      type: object
+      properties:
+        proofId: { type: string }
+        proofOrder: { type: integer, minimum: 1 }
+        proofName: { type: string }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        resultCount: { type: integer, minimum: 1 }
+      required: [proofId, proofOrder, proofName, category, resultCount]
+    Zero3RankingPublicationIssue:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        blocking: { type: boolean }
+        resultId: { type: ["string", "null"] }
+      required: [code, message, blocking, resultId]
+    Zero3RankingResultState:
+      type: object
+      properties:
+        resultId: { type: string }
+        revision: { type: integer, minimum: 1 }
+        state:
+          type: string
+          enum: [PARCIAL, REVISADO, PUBLICADO]
+        previouslyPublished: { type: boolean }
+      required: [resultId, revision, state, previouslyPublished]
+    Zero3RankingPublicationPreview:
+      type: object
+      properties:
+        eventId: { type: string }
+        version: { type: integer, minimum: 0 }
+        publishedAt: { type: ["string", "null"], format: date-time }
+        publishedBy: { type: ["string", "null"] }
+        eligibleResultCount: { type: integer, minimum: 0 }
+        partialResultCount: { type: integer, minimum: 0 }
+        affected:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3RankingPublicationAffectedScope" }
+        issues:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3RankingPublicationIssue" }
+        resultStates:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3RankingResultState" }
+        fingerprint: { type: string, minLength: 64, maxLength: 64 }
+        canPublish: { type: boolean }
+      required: [eventId, version, publishedAt, publishedBy, eligibleResultCount, partialResultCount, affected, issues, resultStates, fingerprint, canPublish]
+    Zero3RankingPublicationResult:
+      type: object
+      properties:
+        eventId: { type: string }
+        version: { type: integer, minimum: 1 }
+        resultCount: { type: integer, minimum: 1 }
+        publishedAt: { type: string, format: date-time }
+        publishedBy: { type: string }
+        fingerprint: { type: string, minLength: 64, maxLength: 64 }
+        alreadyPublished: { type: boolean }
+      required: [eventId, version, resultCount, publishedAt, publishedBy, fingerprint, alreadyPublished]
     Zero3Podium:
       type: object
       properties:
@@ -2055,6 +2181,8 @@ components:
         finalizationVersion: { type: ["integer", "null"], minimum: 1 }
         finalizedAt: { type: ["string", "null"], format: date-time }
         finalizationFingerprint: { type: ["string", "null"] }
+        operationalFinalized: { type: boolean }
+        operationalFinalizedAt: { type: ["string", "null"], format: date-time }
         batteryId: { type: string }
         proofs: { type: array, items: { $ref: "#/components/schemas/Zero3Proof" } }
         proofLeaderboards:

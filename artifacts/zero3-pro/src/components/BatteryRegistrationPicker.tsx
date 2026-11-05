@@ -63,6 +63,7 @@ export function BatteryRegistrationPicker({
   const draftRegistrations = draftIds
     .map((id) => registrationById.get(id))
     .filter((registration): registration is BatteryPickerRegistration => Boolean(registration));
+  const currentBattery = batteries.find((battery) => battery.id === currentBatteryId);
 
   const openPicker = () => {
     setDraftIds([...selectedIds]);
@@ -105,8 +106,17 @@ export function BatteryRegistrationPicker({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="battery-picker-dialog" aria-describedby="battery-picker-description">
+        <DialogContent
+          className="battery-picker-dialog"
+          overlayClassName="battery-picker-overlay"
+          aria-describedby="battery-picker-description"
+        >
           <DialogHeader className="battery-picker-header">
+            <span className="battery-picker-context">
+              {currentBattery
+                ? `Editando ${eventBatteryCode(currentBattery.order)} · ${currentBattery.name}`
+                : "Nova bateria"}
+            </span>
             <DialogTitle>Selecionar inscrições</DialogTitle>
             <DialogDescription id="battery-picker-description">
               Marque várias inscrições sem perder a seleção ao pesquisar ou trocar de categoria.
@@ -147,7 +157,21 @@ export function BatteryRegistrationPicker({
             </span>
           </div>
 
-          <div className="battery-picker-results" role="group" aria-label="Inscrições disponíveis">
+          <div className="battery-picker-results" role="group" aria-label="Inscrições e seleção atual">
+            <div className="battery-picker-draft">
+              <strong>Selecionadas nesta janela: {draftIds.length}</strong>
+              {draftRegistrations.length ? (
+                <ul>
+                  {draftRegistrations.map((registration) => (
+                    <li key={registration.id}>
+                      {teamLabel(registration)} · {categoryLabel(registration.category)} · {registration.laneLabel || "sem raia"}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span>Nenhuma inscrição marcada.</span>
+              )}
+            </div>
             {filteredRegistrations.length ? filteredRegistrations.map((registration) => {
               const checked = selectedSet.has(registration.id);
               const assignedBattery = findRegistrationBattery(
@@ -193,22 +217,10 @@ export function BatteryRegistrationPicker({
             )}
           </div>
 
-          <div className="battery-picker-draft">
-            <strong>Selecionadas nesta janela: {draftIds.length}</strong>
-            {draftRegistrations.length ? (
-              <ul>
-                {draftRegistrations.map((registration) => (
-                  <li key={registration.id}>
-                    {teamLabel(registration)} · {categoryLabel(registration.category)} · {registration.laneLabel || "sem raia"}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span>Nenhuma</span>
-            )}
-          </div>
-
           <DialogFooter className="battery-picker-footer">
+            <span className="battery-picker-footer-count" aria-live="polite">
+              {draftIds.length} inscrição(ões) selecionada(s)
+            </span>
             <button className="button" type="button" onClick={() => setOpen(false)}>
               Cancelar
             </button>

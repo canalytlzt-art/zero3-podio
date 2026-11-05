@@ -1,3 +1,23 @@
+.erw-publication-card{display:grid;gap:10px;margin:12px;padding:14px;border:1px solid rgba(124,78,193,.24);border-radius:14px;background:linear-gradient(135deg,rgba(89,52,143,.08),rgba(16,15,21,.03))}
+.erw-publication-card>div:first-child{display:grid;gap:4px}
+.erw-publication-card>div:first-child>strong{font-size:14px;line-height:1.35}
+.erw-publication-card>div:first-child>small{color:var(--muted-foreground,#817c8d);font-size:12px;line-height:1.4}
+.erw-publication-card>.button{justify-self:start}
+.erw-publication-error,.erw-publication-note{margin:0;color:#a83c48;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.erw-publication-note{color:var(--muted-foreground,#817c8d)}
+.erw-publication-backdrop{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:20px;background:rgba(10,9,13,.72)}
+.erw-publication-dialog{width:min(620px,100%);max-height:min(88vh,780px);overflow:auto;padding:24px;border:1px solid rgba(150,111,208,.38);border-radius:18px;background:var(--background,#17151d);color:var(--foreground,#f7f5fb);box-shadow:0 24px 80px rgba(0,0,0,.48)}
+.erw-publication-dialog h2{margin:8px 0 10px;font-size:clamp(20px,3vw,28px);line-height:1.15}
+.erw-publication-dialog>p{margin:0;color:var(--muted-foreground,#aaa5b3);line-height:1.55}
+.erw-publication-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:18px 0}
+.erw-publication-counts>div{padding:12px;border-radius:12px;background:rgba(255,255,255,.045)}
+.erw-publication-counts dt{color:var(--muted-foreground,#aaa5b3);font-size:11px;line-height:1.35}
+.erw-publication-counts dd{margin:5px 0 0;font-size:20px;font-weight:750;font-variant-numeric:tabular-nums}
+.erw-publication-scope,.erw-publication-issues{margin-top:14px}
+.erw-publication-scope ul,.erw-publication-issues ul{display:grid;gap:6px;margin:8px 0 0;padding-left:20px;color:var(--muted-foreground,#c0bbc8);line-height:1.45;overflow-wrap:anywhere}
+.erw-publication-issues li.is-blocking{color:#ff9ca6}
+.erw-publication-dialog footer{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+@media(max-width:520px){.erw-publication-counts{grid-template-columns:1fr}.erw-publication-dialog{padding:18px}.erw-publication-dialog footer{flex-wrap:wrap}.erw-publication-dialog footer .button{flex:1}}
 .event-results-workspace {
   --erw-ink: #303831;
   --erw-muted: #777e75;

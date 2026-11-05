@@ -117,6 +117,11 @@ export interface Zero3Result {
   status: Zero3ResultStatus;
   capturedAt: string;
   revision: number;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  publishedRevision?: number | null;
   names: string[];
   /** @nullable */
   teamName?: string | null;
@@ -175,6 +180,8 @@ export const Zero3EventBackupVersion = {
   NUMBER_2: 2,
   NUMBER_3: 3,
   NUMBER_4: 4,
+  NUMBER_5: 5,
+  NUMBER_6: 6,
 } as const;
 
 export type Zero3EventBackupCounts = {[key: string]: number};
@@ -204,6 +211,8 @@ export type Zero3EventBackupDataHeatEntriesItem = { [key: string]: unknown };
 export type Zero3EventBackupDataActiveHeatsItem = { [key: string]: unknown };
 
 export type Zero3EventBackupDataResultsItem = { [key: string]: unknown };
+
+export type Zero3EventBackupDataRankingPublicationsItem = { [key: string]: unknown };
 
 export type Zero3EventBackupDataResultRevisionsItem = { [key: string]: unknown };
 
@@ -239,6 +248,7 @@ export type Zero3EventBackupData = {
   heatEntries: Zero3EventBackupDataHeatEntriesItem[];
   activeHeats: Zero3EventBackupDataActiveHeatsItem[];
   results: Zero3EventBackupDataResultsItem[];
+  rankingPublications?: Zero3EventBackupDataRankingPublicationsItem[];
   resultRevisions: Zero3EventBackupDataResultRevisionsItem[];
   timers: Zero3EventBackupDataTimersItem[];
   podiumVersions: Zero3EventBackupDataPodiumVersionsItem[];
@@ -799,17 +809,16 @@ export interface Zero3FinalizeEventBatteryResponse {
   batteryId: string;
   /** @minimum 1 */
   order: number;
+  operationalFinalizedAt: string;
+  /** @minimum 0 */
+  elapsedMs: number;
   /** @minimum 1 */
-  version: number;
-  /** @minimum 1 */
+  timerVersion: number;
+  /** @minimum 0 */
   resultCount: number;
-  publishedAt: string;
-  /**
-     * @minLength 64
-     * @maxLength 64
-     */
-  fingerprint: string;
-  alreadyPublished: boolean;
+  /** @minimum 0 */
+  pendingResultCount: number;
+  alreadyFinalized: boolean;
 }
 
 export interface Zero3BatteryEntry {
@@ -975,6 +984,9 @@ export interface Zero3EventBattery {
   finalizationVersion: number | null;
   /** @nullable */
   finalizedAt: string | null;
+  operationalFinalized?: boolean;
+  /** @nullable */
+  operationalFinalizedAt?: string | null;
   /** @minimum 0 */
   timerVersion: number;
   updatedAt: string;
@@ -1097,6 +1109,91 @@ export interface Zero3ResultUpdate {
   expectedRevision?: number;
 }
 
+export interface Zero3RankingPublicationInput {
+  /**
+     * @minLength 64
+     * @maxLength 64
+     * @pattern ^[a-f0-9]{64}$
+     */
+  expectedFingerprint: string;
+  /** @minimum 0 */
+  expectedVersion: number;
+}
+
+export interface Zero3RankingPublicationAffectedScope {
+  proofId: string;
+  /** @minimum 1 */
+  proofOrder: number;
+  proofName: string;
+  category: Zero3Category;
+  /** @minimum 1 */
+  resultCount: number;
+}
+
+export interface Zero3RankingPublicationIssue {
+  code: string;
+  message: string;
+  blocking: boolean;
+  /** @nullable */
+  resultId: string | null;
+}
+
+export type Zero3RankingResultStateState = typeof Zero3RankingResultStateState[keyof typeof Zero3RankingResultStateState];
+
+
+export const Zero3RankingResultStateState = {
+  PARCIAL: 'PARCIAL',
+  REVISADO: 'REVISADO',
+  PUBLICADO: 'PUBLICADO',
+} as const;
+
+export interface Zero3RankingResultState {
+  resultId: string;
+  /** @minimum 1 */
+  revision: number;
+  state: Zero3RankingResultStateState;
+  previouslyPublished: boolean;
+}
+
+export interface Zero3RankingPublicationPreview {
+  eventId: string;
+  /** @minimum 0 */
+  version: number;
+  /** @nullable */
+  publishedAt: string | null;
+  /** @nullable */
+  publishedBy: string | null;
+  /** @minimum 0 */
+  eligibleResultCount: number;
+  /** @minimum 0 */
+  partialResultCount: number;
+  affected: Zero3RankingPublicationAffectedScope[];
+  issues: Zero3RankingPublicationIssue[];
+  resultStates: Zero3RankingResultState[];
+  /**
+     * @minLength 64
+     * @maxLength 64
+     */
+  fingerprint: string;
+  canPublish: boolean;
+}
+
+export interface Zero3RankingPublicationResult {
+  eventId: string;
+  /** @minimum 1 */
+  version: number;
+  /** @minimum 1 */
+  resultCount: number;
+  publishedAt: string;
+  publishedBy: string;
+  /**
+     * @minLength 64
+     * @maxLength 64
+     */
+  fingerprint: string;
+  alreadyPublished: boolean;
+}
+
 export interface Zero3Podium {
   eventId: string;
   category: Zero3Category;
@@ -1209,6 +1306,9 @@ export interface Zero3PublicBattery {
   finalizedAt: string | null;
   /** @nullable */
   finalizationFingerprint: string | null;
+  operationalFinalized?: boolean;
+  /** @nullable */
+  operationalFinalizedAt?: string | null;
   batteryId?: string;
   proofs?: Zero3Proof[];
   proofLeaderboards?: Zero3ProofLeaderboards[];

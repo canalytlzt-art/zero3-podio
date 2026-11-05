@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Zero3ResultStatus,
   Zero3Role,
@@ -11,22 +11,21 @@ import {
 } from '@workspace/api-client-react';
 import type { Zero3EventBattery, Zero3Proof } from '@workspace/api-client-react';
 import { batteryIssueHref, type BatteryReadinessIssue } from '@/lib/event-battery-readiness';
+import { eventBatteryCode } from '@/lib/event-battery-code';
 import { getHttpErrorStatus } from '@/lib/api-error-policy';
+import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { Link } from 'wouter';
 
 interface EventBatteryResultsPanelProps {
   eventId: string;
+  eventName: string;
   battery: Zero3EventBattery;
   focusIssue: BatteryReadinessIssue | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: () => void | Promise<unknown>;
 }
 
-interface PartialDraft {
-  value: string;
-  reason: string;
-  expectedRevision: number;
-}
+type Draft = { value: string; reason: string };
 
 function mutationMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Erro desconhecido da API.';
@@ -41,22 +40,39 @@ function formatValue(value: number | null, proof: Zero3Proof) {
   return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 }).format(value)}${proof.unit ? ` ${proof.unit}` : ''}`;
 }
 
-function resultState(battery: Zero3EventBattery, status?: string) {
-  if (!status) return 'Faltando resultado';
-  if (status === 'PROVISIONAL') return 'Provisório · ajuste aqui; confirme em Resultados';
-  if (status === 'VALIDATED') {
-    if (battery.finalized && battery.finalizationCurrent) return 'Confirmado · bateria publicada';
-    return battery.finalized
-      ? 'Confirmado · confira a correção em Resultados'
-      : 'Confirmado · confira em Resultados';
+function resultLabel(result: Zero3EventBattery['results'][number] | undefined) {
+  if (!result) return 'Faltando resultado';
+  if (result.status === 'PROVISIONAL') return 'Provisório · aguarda revisão';
+  if (result.status === 'VALIDATED') {
+    return result.publishedRevision === result.revision
+      ? 'Revisado · publicado no ranking'
+      : 'Revisado · aguarda publicar ranking';
   }
-  if (status === 'PUBLICATION_PENDING') return 'Correção aguardando publicação';
-  if (status === 'DNS' || status === 'DNF') return `${status} · regra de exceção pendente`;
-  return status;
+  if (result.status === 'DNS' || result.status === 'DNF') return `${result.status} · exceção pendente`;
+  return result.status;
 }
+
+function localStart(value: Date | string | null | undefined) {
+  if (!value) return 'Ainda não iniciada';
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Horário indisponível';
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function batteryDuration(ms: number) {
+  const centiseconds = Math.floor(Math.max(0, ms) / 10);
+  return `${String(Math.floor(centiseconds / 6000)).padStart(2, '0')}:${String(Math.floor(centiseconds / 100) % 60).padStart(2, '0')}.${String(centiseconds % 100).padStart(2, '0')}`;
+}
+
+const rowKey = (registrationId: string, proofId: string) => `${registrationId}:${proofId}`;
 
 export function EventBatteryResultsPanel({
   eventId,
+  eventName,
   battery,
   focusIssue,
   onClose,
@@ -65,342 +81,402 @@ export function EventBatteryResultsPanel({
   const capture = useCaptureZero3Result();
   const update = useUpdateZero3Result();
   const me = useGetZero3Me({ query: { queryKey: getGetZero3MeQueryKey(), retry: false } });
-  const [editingResultId, setEditingResultId] = useState<string | null>(null);
+  const [proofId, setProofId] = useState(focusIssue?.proofId ?? battery.proofs[0]?.id ?? '');
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [savedValues, setSavedValues] = useState<Record<string, string>>({});
+  const [captureKeys, setCaptureKeys] = useState<Record<string, string>>({});
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
+  const [conflictKey, setConflictKey] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [conflictResultId, setConflictResultId] = useState<string | null>(null);
-  const [partialDrafts, setPartialDrafts] = useState<Record<string, PartialDraft>>({});
-  const [captureKeys, setCaptureKeys] = useState<Record<string, string>>({});
   const batteriesQuery = useListZero3EventBatteries(eventId, {
-    query: { queryKey: getListZero3EventBatteriesQueryKey(eventId), enabled: Boolean(conflictResultId) },
+    query: { queryKey: getListZero3EventBatteriesQueryKey(eventId), enabled: Boolean(conflictKey) },
   });
   const canEditProvisional = me.data?.role === Zero3Role.ADMIN || me.data?.role === Zero3Role.JUIZ_CHEFE;
-  const proofs = [...battery.proofs].sort((a, b) => a.order - b.order);
+  const proofs = useMemo(() => [...battery.proofs].sort((a, b) => a.order - b.order), [battery.proofs]);
+  const proof = proofs.find((item) => item.id === proofId) ?? proofs[0];
+  const timerStart = battery.firstStartedAt ?? battery.preparationStartedAt;
 
   useEffect(() => {
-    if (!focusIssue?.resultId) return;
-    const focusedResult = battery.results.find((result) => result.id === focusIssue.resultId);
-    if (focusedResult?.status === 'PROVISIONAL' && canEditProvisional) {
-      setPartialDrafts((previous) => {
-        if (previous[focusedResult.id]) return previous;
-        return { ...previous, [focusedResult.id]: {
-          value: focusedResult.rawValue === null ? '' : String(focusedResult.rawValue),
-          reason: '',
-          expectedRevision: focusedResult.revision,
-        } };
-      });
-      setEditingResultId(focusedResult.id);
-    } else {
-      setEditingResultId(null);
+    if (focusIssue?.proofId && proofs.some((item) => item.id === focusIssue.proofId)) {
+      setProofId(focusIssue.proofId);
     }
-  }, [battery.results, canEditProvisional, focusIssue?.resultId]);
+  }, [focusIssue?.proofId, proofs]);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, []);
+
+  const resultFor = useCallback((registrationId: string, selectedProofId: string) =>
+    battery.results.find((item) => item.registrationId === registrationId && item.proofId === selectedProofId),
+  [battery.results]);
+
+  useEffect(() => {
+    setSavedValues((previous) => {
+      const next = { ...previous };
+      for (const [key, value] of Object.entries(previous)) {
+        const [registrationId, selectedProofId] = key.split(':');
+        const current = resultFor(registrationId, selectedProofId);
+        if (current && String(current.rawValue ?? '') === value) delete next[key];
+      }
+      return next;
+    });
+  }, [battery.results, resultFor]);
+
+  const hasUnsaved = (registrationId: string, selectedProofId = proof?.id) => {
+    if (!selectedProofId) return false;
+    const key = rowKey(registrationId, selectedProofId);
+    const draft = drafts[key];
+    if (!draft) return false;
+    const value = draft.value;
+    if (savedValues[key] === value) return false;
+    const current = resultFor(registrationId, selectedProofId);
+    if (current && current.status !== 'PROVISIONAL') return false;
+    return current
+      ? String(current.rawValue ?? '') !== value
+      : value.trim() !== '';
+  };
+
+  const pendingRows = proof
+    ? battery.registrations.filter((registration) => hasUnsaved(registration.id))
+    : [];
+  const unsavedCount = pendingRows.length;
+  const allUnsavedCount = proofs.reduce((count, item) =>
+    count + battery.registrations.filter((registration) => hasUnsaved(registration.id, item.id)).length,
+  0);
+  const capturedCount = proof
+    ? battery.registrations.filter((registration) => Boolean(resultFor(registration.id, proof.id))).length
+    : 0;
+
+  const requestClose = useCallback(() => {
+    if ((allUnsavedCount > 0 || savingAll || savingKey) &&
+        !window.confirm('Há alterações não salvas. Fechar e descartá-las?')) return;
+    onClose();
+  }, [allUnsavedCount, onClose, savingAll, savingKey]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        requestClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [requestClose]);
 
   useEffect(() => {
     if (!focusIssue) return;
     const frame = window.requestAnimationFrame(() => {
-      const resultStillExists = focusIssue.resultId
-        ? battery.results.some((result) => result.id === focusIssue.resultId)
-        : false;
-      const focusedResult = focusIssue.resultId
-        ? battery.results.find((result) => result.id === focusIssue.resultId)
-        : null;
-      const targetId = resultStillExists && focusedResult?.status === 'PROVISIONAL' && canEditProvisional
-        ? `event-battery-review-value-${focusIssue.resultId}`
-        : resultStillExists
-          ? `event-battery-results-link-${focusIssue.resultId}`
-        : focusIssue.registrationId
-          ? `event-battery-capture-value-${focusIssue.registrationId}-${focusIssue.proofId}`
-          : `event-battery-proof-${focusIssue.proofId}`;
-      const target = document.getElementById(targetId);
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      target?.focus();
+      const input = focusIssue.registrationId
+        ? document.getElementById(`event-battery-capture-value-${focusIssue.registrationId}-${focusIssue.proofId}`)
+        : document.getElementById('event-results-proof-select');
+      input?.focus();
+      input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [
-    battery.id,
-    battery.results,
-    canEditProvisional,
-    editingResultId,
-    focusIssue?.proofId,
-    focusIssue?.registrationId,
-    focusIssue?.resultId,
-  ]);
+  }, [battery.id, focusIssue, proofId]);
 
-  const saveProvisional = (
-    event: FormEvent<HTMLFormElement>,
-    registrationId: string,
-    proof: Zero3Proof,
-  ) => {
-    event.preventDefault();
-    const rawValue = Number(new FormData(event.currentTarget).get('rawValue'));
-    const draftKey = `${registrationId}:${proof.id}`;
-    const idempotencyKey = captureKeys[draftKey] ?? crypto.randomUUID();
-    if (!captureKeys[draftKey]) {
-      setCaptureKeys((previous) => ({ ...previous, [draftKey]: idempotencyKey }));
-    }
+  const writeDraft = (key: string, field: keyof Draft, value: string, initialValue = '') => {
+    setDrafts((previous) => ({
+      ...previous,
+      [key]: { value: previous[key]?.value ?? initialValue, reason: previous[key]?.reason ?? '', [field]: value },
+    }));
+    setRowErrors((previous) => { const next = { ...previous }; delete next[key]; return next; });
     setError('');
     setNotice('');
-    capture.mutate({
-      data: {
-        eventId,
-        registrationId,
-        proofId: proof.id,
-        batteryId: battery.id,
-        rawValue,
-        status: Zero3ResultStatus.PROVISIONAL,
-        idempotencyKey,
-      },
-    }, {
-      onSuccess: () => {
-        setCaptureKeys((previous) => { const next = { ...previous }; delete next[draftKey]; return next; });
-        setNotice('Resultado salvo como Provisório. Ele ainda precisa ser revisado antes da publicação oficial.');
-        onSaved();
-      },
-      onError: (failure) => setError(`Falha ao salvar resultado: ${mutationMessage(failure)}`),
-    });
   };
 
-  const saveProvisionalEdit = (
-    event: FormEvent<HTMLFormElement>,
-    resultId: string,
-    proof: Zero3Proof,
-  ) => {
-    event.preventDefault();
-    const draft = partialDrafts[resultId];
-    if (!draft || !Number.isFinite(Number(draft.value)) || Number(draft.value) < 0) {
-      setError('Informe um valor numérico igual ou maior que zero.');
-      return;
+  const saveOne = async (registrationId: string, selectedProof: Zero3Proof, refreshAfter = true) => {
+    const key = rowKey(registrationId, selectedProof.id);
+    const result = resultFor(registrationId, selectedProof.id);
+    const draft = drafts[key];
+    const value = draft?.value ?? String(result?.rawValue ?? '');
+    if (!value.trim()) {
+      setRowErrors((previous) => ({ ...previous, [key]: 'Campo vazio não é enviado; informe um valor ou restaure a marca atual.' }));
+      return false;
     }
-    const reason = draft.reason.trim();
-    if (reason.length < 3) {
-      setError('Informe um motivo com pelo menos três caracteres para ajustar o resultado.');
-      return;
+    const rawValue = Number(value);
+    if (!Number.isFinite(rawValue) || rawValue < 0) {
+      setRowErrors((previous) => ({ ...previous, [key]: 'Use um valor numérico igual ou maior que zero.' }));
+      return false;
     }
+    if (result && result.status !== 'PROVISIONAL') {
+      setRowErrors((previous) => ({ ...previous, [key]: 'Resultados revisados devem ser corrigidos na área Resultados.' }));
+      return false;
+    }
+    if (result && String(result.rawValue ?? '') !== value && (draft?.reason.trim().length ?? 0) < 3) {
+      setRowErrors((previous) => ({ ...previous, [key]: 'Informe o motivo da correção provisória (mínimo de 3 caracteres).' }));
+      return false;
+    }
+
+    setSavingKey(key);
+    setRowErrors((previous) => { const next = { ...previous }; delete next[key]; return next; });
     setError('');
     setNotice('');
-    update.mutate({
-      resultId,
-      data: {
-        status: Zero3ResultStatus.PROVISIONAL,
-        reason,
-        expectedEventId: eventId,
-        expectedProofId: proof.id,
-        expectedBatteryId: battery.id,
-        expectedRevision: draft.expectedRevision,
-        rawValue: Number(draft.value),
-      },
-    }, {
-      onSuccess: () => {
-        setEditingResultId(null);
-        setConflictResultId(null);
-        setPartialDrafts((previous) => { const next = { ...previous }; delete next[resultId]; return next; });
-        setNotice('Ajuste salvo como Provisório no mesmo resultado. Confirme-o na aba Resultados.');
-        onSaved();
-      },
-      onError: (failure) => {
-        if (getHttpErrorStatus(failure) === 409) {
-          setConflictResultId(resultId);
-          setError('O resultado mudou no servidor. Seu rascunho foi preservado; atualize os dados antes de tentar novamente.');
-          return;
-        }
-        setError(`Falha ao salvar ajuste provisório: ${mutationMessage(failure)}`);
-      },
-    });
+    try {
+      if (result) {
+        await update.mutateAsync({
+          resultId: result.id,
+          data: {
+            status: Zero3ResultStatus.PROVISIONAL,
+            reason: draft?.reason.trim() || 'Ajuste de resultado provisório',
+            expectedEventId: eventId,
+            expectedProofId: selectedProof.id,
+            expectedBatteryId: battery.id,
+            expectedRevision: result.revision,
+            rawValue,
+          },
+        });
+      } else {
+        const idempotencyKey = captureKeys[key] ?? crypto.randomUUID();
+        if (!captureKeys[key]) setCaptureKeys((previous) => ({ ...previous, [key]: idempotencyKey }));
+        await capture.mutateAsync({
+          data: {
+            eventId,
+            registrationId,
+            proofId: selectedProof.id,
+            batteryId: battery.id,
+            rawValue,
+            status: Zero3ResultStatus.PROVISIONAL,
+            idempotencyKey,
+          },
+        });
+        setCaptureKeys((previous) => { const next = { ...previous }; delete next[key]; return next; });
+      }
+      setSavedValues((previous) => ({ ...previous, [key]: value }));
+      setNotice(`${result ? 'Ajuste' : 'Resultado'} salvo como Provisório. Nada foi publicado.`);
+      if (refreshAfter) await onSaved();
+      return true;
+    } catch (failure) {
+      if (getHttpErrorStatus(failure) === 409) setConflictKey(key);
+      const message = `Falha ao salvar ${result ? 'ajuste' : 'resultado'}: ${mutationMessage(failure)}`;
+      setRowErrors((previous) => ({ ...previous, [key]: message }));
+      return false;
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const saveAll = async () => {
+    if (!proof || !canEditProvisional || savingAll || unsavedCount === 0) return;
+    setSavingAll(true);
+    setError('');
+    setNotice('');
+    let saved = 0;
+    let failed = 0;
+    for (const registration of pendingRows) {
+      if (await saveOne(registration.id, proof, false)) saved += 1;
+      else failed += 1;
+    }
+    if (saved > 0) await onSaved();
+    setNotice(`${saved} resultado(s) provisório(s) salvo(s)${failed ? `; ${failed} falha(s) mantiveram o rascunho` : ''}. Nada foi publicado.`);
+    setSavingAll(false);
   };
 
   const reloadConflictAndKeepDraft = async () => {
-    if (!conflictResultId) return;
+    if (!conflictKey) return;
     const refreshed = await batteriesQuery.refetch();
     if (refreshed.isError || !refreshed.data) {
-      setError('Não foi possível atualizar a bateria. Seu rascunho foi preservado; tente recarregar novamente.');
+      setError('Não foi possível atualizar os dados. O rascunho foi preservado.');
       return;
     }
-    const latest = refreshed.data
-      ?.find((candidate) => candidate.id === battery.id)
-      ?.results.find((result) => result.id === conflictResultId);
+    const [registrationId, selectedProofId] = conflictKey.split(':');
+    const latest = refreshed.data.find((item) => item.id === battery.id)
+      ?.results.find((item) => item.registrationId === registrationId && item.proofId === selectedProofId);
     if (!latest) {
-      setError('O resultado não está mais nesta bateria. O rascunho foi preservado; confira a fila e abra a bateria atual.');
+      setError('O resultado não está mais nesta bateria. O rascunho foi preservado; confira a área Resultados.');
       return;
     }
-    setPartialDrafts((previous) => ({
-      ...previous,
-      [conflictResultId]: {
-        ...(previous[conflictResultId] ?? { value: String(latest.rawValue ?? ''), reason: '' }),
-        expectedRevision: latest.revision,
-      },
-    }));
-    setConflictResultId(null);
+    setConflictKey(null);
     setError('');
-    setNotice('Dados atualizados. Seu rascunho foi mantido; confira a marca atual antes de salvar.');
+    setNotice('Dados atualizados. Seu rascunho foi mantido; confira o valor atual antes de salvar.');
   };
 
-  const beginProvisionalEdit = (result: { id: string; rawValue: number | null; revision: number }) => {
-    setPartialDrafts((previous) => {
-      if (previous[result.id]) return previous;
-      return { ...previous, [result.id]: {
-        value: result.rawValue === null ? '' : String(result.rawValue),
-        reason: '',
-        expectedRevision: result.revision,
-      } };
-    });
-    setEditingResultId(result.id);
+  const changeProof = (nextProofId: string) => {
+    if (nextProofId === proofId) return;
+    if (unsavedCount > 0 && !window.confirm('Há parciais não salvos nesta prova. Trocar de prova e manter os rascunhos?')) return;
+    setProofId(nextProofId);
     setError('');
     setNotice('');
   };
 
+  const categorySummary = [...new Set(battery.registrations.map((item) => item.category))]
+    .map((category) => `${category}: ${battery.registrations.filter((item) => item.category === category).length}`)
+    .join(' · ');
+
   return (
-    <section className="event-battery-results" aria-label={`Resultados de ${battery.name}`} data-testid={`event-battery-results-${battery.id}`}>
-      <header className="event-battery-results-header">
-        <div>
-          <div className="eyebrow">Resultados · {battery.name}</div>
-          <h4>{battery.registrations.length} inscrições · {battery.results.length} de {battery.expectedResultCount} marcas registradas</h4>
-          <p>Esta tela captura e ajusta marcas provisórias. Confirmação e correção oficial ficam na aba Resultados.</p>
-        </div>
-        <button type="button" className="button small" onClick={onClose}>Fechar resultados</button>
-      </header>
+    <div
+      className="event-results-modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}
+    >
+      <section
+        className="event-results-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="event-results-modal-title"
+        aria-describedby="event-results-modal-description"
+        data-testid={`event-battery-results-${battery.id}`}
+      >
+        <header className="event-results-modal-header">
+          <div className="event-results-modal-heading">
+            <div className="eyebrow">{eventName} · Bateria {eventBatteryCode(battery.order)}</div>
+            <h2 id="event-results-modal-title">Resultados · {battery.name}</h2>
+            <p id="event-results-modal-description">
+              {battery.registrations.length} inscrições · {categorySummary || 'sem inscrições'} · cronômetro {batteryDuration(battery.elapsedMs)} · {timerStateLabel(battery.state)}
+            </p>
+            <small>Início: {localStart(timerStart)} · horário de Brasília</small>
+          </div>
+          <button type="button" className="button small" onClick={requestClose} aria-label="Fechar resultados">Fechar</button>
+        </header>
 
-      {error && (
-        <div role="alert" className="error-box">
-          <p>{error}</p>
-          {conflictResultId && (
-            <button type="button" className="button small" onClick={() => void reloadConflictAndKeepDraft()} disabled={batteriesQuery.isFetching}>
-              {batteriesQuery.isFetching ? 'Atualizando…' : 'Atualizar e manter rascunho'}
-            </button>
-          )}
+        <div className="event-results-modal-controls">
+          <label className="field" htmlFor="event-results-proof-select">
+            <span>Prova</span>
+            <select id="event-results-proof-select" value={proof?.id ?? ''} onChange={(event) => changeProof(event.target.value)}>
+              {proofs.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {String(item.order).padStart(2, '0')} · {item.name || `Prova ${item.order}`}{item.configured ? '' : ' · configuração pendente'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="event-results-summary">
+            <strong>{capturedCount} de {battery.registrations.length} marcas</strong>
+            <span>{battery.reviewedResultCount} de {battery.expectedResultCount} resultados revisados</span>
+          </div>
         </div>
-      )}
-      {notice && <p role="status" className="notice">{notice}</p>}
-      {me.isError && <p role="status" className="field-help">Não foi possível verificar sua função; o ajuste provisório fica indisponível até a verificação funcionar.</p>}
 
-      <div className="event-battery-result-registrations">
-        {battery.registrations.map((registration) => (
-          <article className="event-battery-result-registration" key={registration.id}>
-            <header>
-              <span className="lane-tag">{registration.laneLabel || '—'}</span>
-              <div>
-                <strong>{registration.teamName || registration.athleteNames.join(' / ') || registration.id}</strong>
-                <small>{registration.category} · {registration.athleteNames.join(' · ')}</small>
-              </div>
-            </header>
-            <div className="event-battery-result-proof-grid">
-              {proofs.map((proof) => {
-                const result = battery.results.find((item) =>
-                  item.registrationId === registration.id && item.proofId === proof.id,
-                );
-                const configurationIssue: BatteryReadinessIssue = {
-                  kind: 'CONFIGURATION',
-                  registrationId: '',
-                  proofId: proof.id,
-                  resultId: null,
-                  laneLabel: null,
-                  teamName: 'Todas as equipes',
-                  category: '—',
-                  proofOrder: proof.order,
-                  proofName: proof.name || `Prova ${proof.order}`,
-                };
-                const valueId = result
-                  ? `event-battery-review-value-${result.id}`
-                  : `event-battery-capture-value-${registration.id}-${proof.id}`;
-                return (
-                  <section
-                    className="event-battery-result-cell"
-                    id={`event-battery-cell-${registration.id}-${proof.id}`}
-                    key={proof.id}
-                  >
-                    <h5 id={`event-battery-proof-${proof.id}`}>Prova {proof.order} · {proof.name || 'Sem nome'}</h5>
-                    <strong className="event-battery-result-value">{formatValue(result?.rawValue ?? null, proof)}</strong>
-                    <span
-                      className={`event-battery-result-state ${result?.status === 'PROVISIONAL' ? 'is-provisional' : result?.status === 'VALIDATED' && battery.finalized && battery.finalizationCurrent ? 'is-published' : ''}`}
-                      data-testid={`event-result-state-${registration.id}-${proof.id}`}
-                    >
-                      {resultState(battery, result?.status)}
-                    </span>
-                    {!proof.configured ? (
-                      <>
-                        <p className="field-help">Configure esta prova antes de lançar resultados.</p>
-                        <Link className="button small" href={batteryIssueHref(eventId, battery.id, configurationIssue)}>Configurar prova</Link>
-                      </>
-                    ) : !result ? (
-                      <form onSubmit={(event) => saveProvisional(event, registration.id, proof)}>
-                        <label htmlFor={valueId}>{proof.metricType === 'TIME' ? 'Tempo em segundos' : `Resultado${proof.unit ? ` · ${proof.unit}` : ''}`}</label>
-                        <input id={valueId} name="rawValue" type="number" min="0" step="any" required />
-                        <button className="button small primary" type="submit" disabled={capture.isPending}>
-                          {capture.isPending ? 'Salvando…' : 'Salvar provisório'}
-                        </button>
-                      </form>
-                    ) : editingResultId === result.id && result.status === 'PROVISIONAL' && canEditProvisional ? (
-                      <form onSubmit={(event) => saveProvisionalEdit(event, result.id, proof)}>
-                        <label htmlFor={valueId}>{proof.metricType === 'TIME' ? 'Tempo em segundos' : `Resultado${proof.unit ? ` · ${proof.unit}` : ''}`}</label>
-                        <input
-                          id={valueId}
-                          name="rawValue"
-                          type="number"
-                          min="0"
-                          step="any"
-                          required
-                          value={partialDrafts[result.id]?.value ?? String(result.rawValue ?? '')}
-                          onChange={(event) => setPartialDrafts((previous) => ({
-                            ...previous,
-                            [result.id]: {
-                              value: event.target.value,
-                              reason: previous[result.id]?.reason ?? '',
-                              expectedRevision: previous[result.id]?.expectedRevision ?? result.revision,
-                            },
-                          }))}
-                        />
-                        <label htmlFor={`event-battery-review-reason-${result.id}`}>Motivo do ajuste</label>
-                        <input
-                          id={`event-battery-review-reason-${result.id}`}
-                          name="reason"
-                          minLength={3}
-                          required
-                          placeholder="Ex.: conferido pela súmula"
-                          value={partialDrafts[result.id]?.reason ?? ''}
-                          onChange={(event) => setPartialDrafts((previous) => ({
-                            ...previous,
-                            [result.id]: {
-                              value: previous[result.id]?.value ?? String(result.rawValue ?? ''),
-                              reason: event.target.value,
-                              expectedRevision: previous[result.id]?.expectedRevision ?? result.revision,
-                            },
-                          }))}
-                        />
-                        <div className="toolbar">
-                          <button className="button small primary" type="submit" disabled={update.isPending}>
-                            {update.isPending ? 'Salvando…' : 'Salvar provisório'}
+        {error && <div role="alert" className="error-box event-results-feedback">{error}</div>}
+        {notice && <p role="status" className="notice event-results-feedback">{notice}</p>}
+        {me.isError && <p role="status" className="field-help event-results-feedback">Falha ao verificar a função. O servidor continua protegendo todas as gravações.</p>}
+        {!canEditProvisional && !me.isError && <p role="status" className="field-help event-results-feedback">Sua função não permite lançar ou ajustar parciais nesta tela.</p>}
+
+        <div className="event-results-table-scroll">
+          {proof ? (
+            <table className="event-results-table">
+              <thead><tr><th>Raia</th><th>Equipe / atletas</th><th>Categoria</th><th>Resultado</th><th>Status</th><th>Ação</th></tr></thead>
+              <tbody>
+                {battery.registrations.map((registration) => {
+                  const key = rowKey(registration.id, proof.id);
+                  const result = resultFor(registration.id, proof.id);
+                  const value = drafts[key]?.value ?? String(result?.rawValue ?? '');
+                  const editable = canEditProvisional && proof.configured &&
+                    (!result || result.status === 'PROVISIONAL');
+                  const changed = hasUnsaved(registration.id);
+                  const valueId = result
+                    ? `event-battery-review-value-${result.id}`
+                    : `event-battery-capture-value-${registration.id}-${proof.id}`;
+                  const issue: BatteryReadinessIssue = {
+                    kind: 'CONFIGURATION',
+                    registrationId: '',
+                    proofId: proof.id,
+                    resultId: null,
+                    laneLabel: null,
+                    teamName: 'Todas as equipes',
+                    category: registration.category,
+                    proofOrder: proof.order,
+                    proofName: proof.name || `Prova ${proof.order}`,
+                  };
+                  return (
+                    <tr key={registration.id} id={`event-battery-cell-${registration.id}-${proof.id}`}>
+                      <td data-label="Raia"><span className="lane-tag">{registration.laneLabel || '—'}</span></td>
+                      <td data-label="Equipe / atletas" className="event-results-team">
+                        <strong>{registration.teamName || registration.athleteNames.join(' / ') || registration.id}</strong>
+                        <small>{registration.athleteNames.join(' · ')}</small>
+                      </td>
+                      <td data-label="Categoria"><span className={`pill ${registration.category === 'RX' ? 'rx' : 'neutral'}`}>{registration.category === 'SC' ? 'Scale' : registration.category}</span></td>
+                      <td data-label="Resultado">
+                        {editable ? (
+                          <div className="event-results-edit-fields">
+                            <label className="sr-only" htmlFor={valueId}>{proof.metricType === 'TIME' ? 'Tempo em segundos' : `Resultado${proof.unit ? ` em ${proof.unit}` : ''}`}</label>
+                            <input
+                              id={valueId}
+                              type="number"
+                              min="0"
+                              step={proof.metricType === 'TIME' ? '0.01' : 'any'}
+                              value={value}
+                              onChange={(event) => writeDraft(key, 'value', event.target.value, String(result?.rawValue ?? ''))}
+                              aria-label={`${registration.teamName || registration.athleteNames.join(' / ')} · ${proof.name || `Prova ${proof.order}`}`}
+                              placeholder={proof.metricType === 'TIME' ? 'Segundos' : 'Valor'}
+                              disabled={savingAll || Boolean(savingKey)}
+                            />
+                            {result?.status === 'PROVISIONAL' && changed && (
+                              <label className="event-results-reason">
+                                <span>Motivo da correção</span>
+                                <input
+                                  value={drafts[key]?.reason ?? ''}
+                                  onChange={(event) => writeDraft(key, 'reason', event.target.value, String(result.rawValue ?? ''))}
+                                  placeholder="Ex.: conferido pela súmula"
+                                  disabled={savingAll || Boolean(savingKey)}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        ) : <strong className="event-results-value">{formatValue(result?.rawValue ?? null, proof)}</strong>}
+                      </td>
+                      <td data-label="Status">
+                        <span className={`event-battery-result-state ${result?.status === 'PROVISIONAL' ? 'is-provisional' : result?.publishedRevision === result?.revision ? 'is-published' : ''}`}>
+                          {resultLabel(result)}
+                        </span>
+                        {rowErrors[key] && <small role="alert" className="event-results-row-error">{rowErrors[key]}</small>}
+                        {conflictKey === key && (
+                          <button type="button" className="button small" onClick={() => void reloadConflictAndKeepDraft()} disabled={batteriesQuery.isFetching}>
+                            {batteriesQuery.isFetching ? 'Atualizando…' : 'Atualizar mantendo rascunho'}
                           </button>
-                          <button className="button small" type="button" onClick={() => setEditingResultId(null)}>Cancelar</button>
-                        </div>
-                      </form>
-                    ) : (
-                      <div className="toolbar">
-                        {result.status === 'PROVISIONAL' && canEditProvisional && (
+                        )}
+                      </td>
+                      <td data-label="Ação" className="event-results-actions">
+                        {editable && (
                           <button
                             type="button"
                             className="button small"
-                            onClick={() => beginProvisionalEdit(result)}
-                            data-testid={`button-edit-provisional-result-${result.id}`}
+                            disabled={!changed || savingAll || Boolean(savingKey) || !canEditProvisional}
+                            onClick={() => void saveOne(registration.id, proof)}
+                            data-testid={`button-save-partial-${registration.id}-${proof.id}`}
                           >
-                            Ajustar provisório
+                            {savingKey === key ? 'Salvando…' : result ? 'Salvar parcial' : 'Salvar provisório'}
                           </button>
                         )}
-                        <Link
-                          id={`event-battery-results-link-${result.id}`}
-                          className="button small"
-                          href={`/admin/events/${encodeURIComponent(eventId)}?tab=results&registrationId=${encodeURIComponent(registration.id)}&proofId=${encodeURIComponent(proof.id)}`}
-                          data-testid={`link-review-result-${result.id}`}
-                        >
-                          {result.status === 'VALIDATED' ? 'Corrigir em Resultados' : 'Confirmar em Resultados'}
-                        </Link>
-                      </div>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
+                        {result?.status === 'VALIDATED' && (
+                          <Link
+                            id={`event-battery-results-link-${result.id}`}
+                            className="button small"
+                            href={`/admin/events/${encodeURIComponent(eventId)}?tab=results&registrationId=${encodeURIComponent(registration.id)}&proofId=${encodeURIComponent(proof.id)}`}
+                          >
+                            Revisar em Resultados
+                          </Link>
+                        )}
+                        {result?.status === 'PROVISIONAL' && (
+                          <small className="event-results-hint">A revisão e a publicação do ranking são ações separadas.</small>
+                        )}
+                        {!proof.configured && (
+                          <Link className="button small" href={batteryIssueHref(eventId, battery.id, issue)}>Configurar prova</Link>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : <p className="field-help">Esta bateria ainda não tem provas cadastradas.</p>}
+        </div>
+
+        <footer className="event-results-modal-footer">
+          <span className="field-help">Campos vazios não são enviados. Salvar parcial mantém o status Provisório; a revisão e “Publicar Ranking” continuam separadas.</span>
+          <div className="toolbar">
+            <button type="button" className="button" onClick={requestClose}>Fechar</button>
+            <button type="button" className="button primary" disabled={!proof || unsavedCount === 0 || !canEditProvisional || savingAll || Boolean(savingKey)} onClick={() => void saveAll()}>
+              {savingAll ? 'Salvando parciais…' : `Salvar Parciais${unsavedCount ? ` (${unsavedCount})` : ''}`}
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>
   );
 }

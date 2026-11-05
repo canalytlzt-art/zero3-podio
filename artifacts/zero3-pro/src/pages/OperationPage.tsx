@@ -14,6 +14,7 @@ import type { Zero3Proof, Zero3Registration, Zero3Result, Zero3PublicBoard, Zero
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
 import { ArrowUpRight, Check, Play, Radio, Save, Square } from 'lucide-react';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
+import { eventBatteryCode } from '@/lib/event-battery-code';
 import { primaryTimerAction, timerStateLabel } from '@/lib/zero3-timer-controls';
 import {
   batteryIssueActionLabel, batteryIssueHref, batteryIssueLabel, batteryReadinessCount,
@@ -111,9 +112,11 @@ export function OperationPage() {
     ?board.isFetching||eventBatteries.isFetching?'Reconectando':'Sem conexão'
     :operationBatteryLoading?'Carregando bateria'
     :operationBatteryNotFound?'Bateria não encontrada'
-    :!operationBattery?'Aguardando seleção'
-    :operationBattery.finalized
-      ?operationBattery.finalizationCurrent?'Finalizada':'Correção pendente de publicação'
+     :!operationBattery?'Aguardando seleção'
+     :eventBatteryMode&&operationBattery.operationalFinalized
+       ?'Finalizada'
+       :!eventBatteryMode&&operationBattery.finalized
+       ?operationBattery.finalizationCurrent?'Finalizada':'Correção pendente de publicação'
       :eventBatteryMode&&readinessIssues.length>0?'Em apuração'
       :eventBatteryMode&&readyResultCount===operationBattery.expectedResultCount?'Pronta para finalizar'
       :timerStateLabel(timer?.state);
@@ -123,18 +126,15 @@ export function OperationPage() {
   const activeBatteryHasUnresolvedTie=operationLeaderboards.some(leaderboard=>
     leaderboard.entries.some(entry=>entry.status==='TIE_RULE_PENDING'||entry.proofScores.some(score=>score.status==='TIE_RULE_PENDING'))
   );
-  const canFinalizeActiveBattery=Boolean(canReview&&operationBattery&&activeProofConfigured&&
-    operationBattery.expectedResultCount>0&&
-    (eventBatteryMode
-      ?readinessIssues.length===0
-      :operationBattery.reviewedResultCount===operationBattery.expectedResultCount)&&
-    !activeBatteryHasUnresolvedTie&&!(eventBatteryMode&&operationBattery.results.some(result=>result.status==='DNS'||result.status==='DNF'))&&
-    operationBattery.finalizationFingerprint&&
-    (!operationBattery.finalized||!operationBattery.finalizationCurrent));
-  const canOpenFinalization=eventBatteryMode
-    ?Boolean(canReview&&operationBattery&&operationBattery.expectedResultCount>0&&
-      operationBattery.finalizationFingerprint&&(!operationBattery.finalized||!operationBattery.finalizationCurrent))
-    :canFinalizeActiveBattery;
+   const canFinalizeActiveBattery=eventBatteryMode
+     ?Boolean(canReview&&operationBattery&&operationBattery.registrations.length>0&&
+       operationBattery.finalizationFingerprint&&!operationBattery.operationalFinalized)
+     :Boolean(canReview&&operationBattery&&activeProofConfigured&&
+       operationBattery.expectedResultCount>0&&
+       operationBattery.reviewedResultCount===operationBattery.expectedResultCount&&
+       !activeBatteryHasUnresolvedTie&&operationBattery.finalizationFingerprint&&
+       (!operationBattery.finalized||!operationBattery.finalizationCurrent));
+   const canOpenFinalization=canFinalizeActiveBattery;
   const activeBatteryConfirmKey=operationBattery
     ?`${selectedEventId}:${eventBatteryMode?operationBatteryId:legacyOperationBattery?.proofId}:${operationBattery.order}:${operationBattery.finalizationFingerprint||''}:${operationBattery.reviewedResultCount}:${operationBattery.expectedResultCount}`
     :'';
@@ -217,7 +217,9 @@ export function OperationPage() {
   const liveEventElapsed=(timer?.eventElapsedMs??operationBattery?.eventElapsedMs??0)+
     (timer?.state==='RUNNING'?serverDelta:0);
   const timerAtLimit=Boolean(timer?.eventLimitMs&&liveEventElapsed>=timer.eventLimitMs);
-  const timerButtonLabel=eventBatteryMode&&timer?.state==='PREPARATION'?'Cancelar preparação':timerAction.label;
+  const timerButtonLabel=eventBatteryMode&&operationBattery?.operationalFinalized
+    ?'Finalizada'
+    :eventBatteryMode&&timer?.state==='PREPARATION'?'Cancelar preparação':timerAction.label;
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getGetZero3PublicBoardQueryKey({ eventId: selectedEventId }) });
     qc.invalidateQueries({ queryKey: getListZero3ProofsQueryKey(selectedEventId) });
@@ -231,7 +233,7 @@ export function OperationPage() {
     });
   };
   const controlTimer=()=>{
-    if(!canReview||!timer||!operationBattery||board.isError||timerCommand.isPending)return;
+    if(!canReview||!timer||!operationBattery||(eventBatteryMode&&operationBattery.operationalFinalized)||board.isError||timerCommand.isPending)return;
     const action=eventBatteryMode
       ?timer.state==='PREPARATION'?'reset':['IDLE','FINISHED'].includes(timer.state)?'prepare':timerAction.action
       :timerAction.action;
@@ -243,20 +245,22 @@ export function OperationPage() {
       ...(eventBatteryMode?{expectedBatteryId:operationBatteryId??undefined}:{expectedProofId:legacyOperationBattery?.proofId??'',expectedBatteryOrder:operationBattery.order}),
     }},{onSuccess:()=>{invalidate();setNotice(`Comando ${timerButtonLabel.toLocaleLowerCase('pt-BR')} confirmado pelo servidor.`);},onError:err=>setError(message(err))});
   };
-  const finalizeActiveBattery=()=>{
-    if(!operationBattery?.finalizationFingerprint||finalizeConfirmKey!==activeBatteryConfirmKey||
-      !canFinalizeActiveBattery||finalizeBattery.isPending||finalizeEventBattery.isPending)return;
+   const finalizeActiveBattery=()=>{
+     if(!operationBattery?.finalizationFingerprint||finalizeConfirmKey!==activeBatteryConfirmKey||
+       !canFinalizeActiveBattery||finalizeBattery.isPending||finalizeEventBattery.isPending)return;
     setError('');setNotice('');
-    const onSuccess=(saved:{alreadyPublished:boolean})=>{setFinalizeConfirmKey(null);invalidate();setNotice(saved.alreadyPublished?'Esta bateria já estava publicada.':'Bateria finalizada e publicada. A TV atualiza automaticamente se esta bateria estiver selecionada.');};
-    const onError=(err:Error)=>{setError(message(err));invalidate();};
     if(eventBatteryMode&&operationBatteryId){
       finalizeEventBattery.mutate({eventId:selectedEventId,batteryId:operationBatteryId,
-        data:{expectedFingerprint:operationBattery.finalizationFingerprint}}, {onSuccess,onError});
+         data:{expectedFingerprint:operationBattery.finalizationFingerprint}}, {
+           onSuccess:saved=>{setFinalizeConfirmKey(null);invalidate();setNotice(saved.alreadyFinalized?'Esta bateria já estava finalizada.':'Bateria finalizada; somente este cronômetro foi encerrado. O ranking não foi publicado.');},
+           onError:err=>{setError(message(err));invalidate();},
+         });
       return;
     }
     finalizeBattery.mutate({eventId:selectedEventId,proofId:legacyOperationBattery?.proofId??'',batteryOrder:operationBattery.order,
       data:{expectedFingerprint:operationBattery.finalizationFingerprint}},
-    {onSuccess,onError});
+     {onSuccess:saved=>{setFinalizeConfirmKey(null);invalidate();setNotice(saved.alreadyPublished?'Esta bateria já estava publicada.':'Bateria finalizada e publicada.');},
+       onError:err=>{setError(message(err));invalidate();}});
   };
   const saveProof = (event: FormEvent<HTMLFormElement>, proof: Zero3Proof) => {
     event.preventDefault(); setError(''); setNotice('');
@@ -322,25 +326,22 @@ export function OperationPage() {
             <div className="op-section-head"><div><div className="eyebrow">{eventBatteryMode?'Bateria da operação':'Bateria selecionada para a TV'}</div><h2 className="panel-title">{operationBattery?(eventBatteryMode?operationBattery.name:`${legacyOperationBattery?.proofName} · ${operationBattery.name}`):'Nenhuma bateria selecionada'}</h2></div><span className={`pill ${timer?.state==='RUNNING'?'warn':'neutral'}`}>{activeBatteryStatus}</span></div>
             {operationBattery?<><p className="lede">{operationBattery.registrations.length} inscrições · {operationBattery.categories.map(value=>value==='SC'?'SC / Scale':value).join(' + ')||'sem equipes'} · {timerStateLabel(timer?.state)} · <OperationTimerReadout timer={timer} serverTime={typeof board.data?.serverTime==='string'?board.data.serverTime:new Date().toISOString()} eventElapsedBase={timer?.eventElapsedMs??operationBattery.eventElapsedMs??0} eventBatteryMode={eventBatteryMode}/> · <Link href={`/admin/events/${encodeURIComponent(selectedEventId)}?tab=heats`}>Selecionar bateria</Link></p>
              {eventBatteryMode&&timerAtLimit&&<p className="error-box" role="alert">Limite acumulado de 2 horas atingido. Não é possível iniciar outra bateria.</p>}
-              <div className="toolbar"><button type="button" className={`button ${timerAtLimit?'danger':timerButtonLabel==='Iniciar'?'primary':''}`} disabled={!canReview||!timer||timerCommand.isPending||board.isError||operationBatteryLoading||(timerAtLimit&&['IDLE','FINISHED','PAUSED'].includes(timer.state))} onClick={controlTimer}>{timerButtonLabel==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {timerCommand.isPending?'Aguardando confirmação…':timerButtonLabel}</button>
+              <div className="toolbar"><button type="button" className={`button ${timerAtLimit?'danger':timerButtonLabel==='Iniciar'?'primary':''}`} disabled={!canReview||!timer||timerCommand.isPending||board.isError||operationBatteryLoading||(eventBatteryMode&&Boolean(operationBattery?.operationalFinalized))||(timerAtLimit&&['IDLE','FINISHED','PAUSED'].includes(timer.state))} onClick={controlTimer}>{timerButtonLabel==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {timerCommand.isPending?'Aguardando confirmação…':timerButtonLabel}</button>
                 {eventBatteryMode&&!operationBatteryIsOnTv&&<button type="button" className="button small" disabled={!canReview||selectEventBattery.isPending||!operationBatteryId} onClick={putOperationBatteryOnTv}>{selectEventBattery.isPending?'Selecionando…':'Colocar na TV'}</button>}
                 <Link className="button small" href={eventBatteryMode?`/operacao?${new URLSearchParams({eventId:selectedEventId,batteryId:operationBatteryId||''})}`:`/admin/events/${encodeURIComponent(selectedEventId)}?${new URLSearchParams({tab:'results',proofId:legacyOperationBattery?.proofId||'',batteryOrder:String(operationBattery.order)})}`}>Resultados</Link>
-                 <button type="button" className={`button small ${canFinalizeActiveBattery?'primary':''}`} disabled={!canOpenFinalization||(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)||board.isError} onClick={()=>setFinalizeConfirmKey(activeBatteryConfirmKey)}>{(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)?'Publicando…':operationBattery.finalized&&operationBattery.finalizationCurrent?'Finalizada':eventBatteryMode?'Finalizar e publicar bateria':'Finalizar bateria'}</button>
+                  <button type="button" className={`button small ${canFinalizeActiveBattery?'primary':''}`} disabled={!canOpenFinalization||(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)||board.isError} onClick={()=>setFinalizeConfirmKey(activeBatteryConfirmKey)}>{(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)?eventBatteryMode?'Finalizando…':'Publicando…':eventBatteryMode&&operationBattery.operationalFinalized?'Finalizada':!eventBatteryMode&&operationBattery.finalized&&operationBattery.finalizationCurrent?'Finalizada':eventBatteryMode?'Finalizar Bateria':'Finalizar bateria'}</button>
                  <span className="field-help">{eventBatteryMode?`${readyResultCount} de ${operationBattery.expectedResultCount} resultados prontos.`:`${operationBattery.reviewedResultCount} de ${operationBattery.expectedResultCount} resultados revisados.`} A TV muda somente ao usar “Colocar na TV”; o cronômetro permanece independente.</span>
              </div>
-               {finalizeConfirmKey===activeBatteryConfirmKey&&Boolean(activeBatteryConfirmKey)&&<div role="alertdialog" aria-label="Finalizar e publicar bateria" className="panel panel-pad" style={{marginTop:10}}>
-                 <strong>{eventBatteryMode&&readinessIssues.length>0?'Pendências para finalizar':eventBatteryMode?'Confirmar finalização e publicação?':'Confirmar finalização da bateria?'}</strong>
-                 <p className="field-help">{events.data?.find(item=>item.id===selectedEventId)?.name||'Evento'} · {eventBatteryMode?operationBattery.name:`${legacyOperationBattery?.proofName} · ${operationBattery.name}`} · {eventBatteryMode?(operationBattery.proofs?.length??4):1} prova(s) · {operationBattery.registrations.length} inscrições · {eventBatteryMode?readyResultCount:operationBattery.reviewedResultCount} de {operationBattery.expectedResultCount} resultados prontos. A publicação atualiza a lista da bateria, o ranking e o pódio. A TV muda automaticamente somente se esta bateria estiver selecionada.</p>
-                 {eventBatteryMode&&readinessIssues.length>0?<div className="battery-readiness-panel" role="alert">
-                   <strong>A bateria permanece em apuração. Resolva cada item e confirme a publicação manualmente depois.</strong>
-                   <ul className="battery-readiness-list">{readinessIssues.map((issue,index)=><li className="battery-readiness-item" key={`${issue.registrationId}:${issue.proofId}:${index}`}>
-                     <span><b>{issue.laneLabel||'—'} · {issue.teamName}</b><small>{issue.category} · Prova {issue.proofOrder}: {issue.proofName} · {batteryIssueLabel(issue.kind)}</small></span>
-                     <a className="button small" href={batteryIssueHref(selectedEventId,operationBatteryId||'',issue)}>{batteryIssueActionLabel(issue.kind)}</a>
-                   </li>)}</ul>
-                 </div>:eventBatteryMode&&!activeProofConfigured?<p className="error-box" role="alert">Configure as quatro provas do evento antes de finalizar.</p>
-                   :activeBatteryHasUnresolvedTie?<p className="error-box" role="alert">Há empate sem regra oficial configurada; resolva o desempate antes de publicar.</p>
-                   :eventBatteryMode&&operationBattery.results.some(result=>result.status==='DNS'||result.status==='DNF')?<p className="error-box" role="alert">DNS/DNF ainda não tem regra oficial de pontuação configurada.</p>:null}
-                 <div className="toolbar">{(!eventBatteryMode||canFinalizeActiveBattery)&&<button type="button" className="button primary" disabled={!canFinalizeActiveBattery||(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)} onClick={finalizeActiveBattery}>Confirmar e publicar</button>}<button type="button" className="button" onClick={()=>setFinalizeConfirmKey(null)}>Fechar</button></div>
+                {finalizeConfirmKey===activeBatteryConfirmKey&&Boolean(activeBatteryConfirmKey)&&<div role="alertdialog" aria-label={eventBatteryMode?'Confirmar finalização operacional da bateria':'Confirmar finalização da bateria'} className="panel panel-pad" style={{marginTop:10}}>
+                  <strong>{eventBatteryMode?'Confirmar Finalizar Bateria?':'Confirmar finalização e publicação da bateria?'}</strong>
+                  <p className="field-help">{events.data?.find(item=>item.id===selectedEventId)?.name||'Evento'} · {eventBatteryMode?`${eventBatteryCode(operationBattery.order)} · ${operationBattery.name}`:`${legacyOperationBattery?.proofName} · ${operationBattery.name}`} · {eventBatteryMode?(operationBattery.proofs||[]).map(proof=>`${proof.order}. ${proof.name||'Prova sem nome'}`).join(' · '):'1 prova'} · {operationBattery.registrations.length} inscrições · {operationBattery.results.length} marcas registradas · {eventBatteryMode?readyResultCount:operationBattery.reviewedResultCount} de {operationBattery.expectedResultCount} resultados revisados.</p>
+                  {eventBatteryMode?<p className="field-help">A ação encerra apenas o cronômetro desta bateria e preserva o tempo. Não publica resultados, pontos, ranking ou pódio; “Publicar Ranking” permanece separado. A TV só troca de bateria se o operador usar “Colocar na TV”.</p>
+                    :<p className="field-help">A publicação atualiza a lista da bateria, o ranking e o pódio.</p>}
+                  {eventBatteryMode&&readinessIssues.length>0&&<div className="battery-readiness-panel" role="status">
+                    <strong>Há {readinessIssues.length} pendência(s); a bateria será finalizada mesmo assim.</strong>
+                    <span className="field-help">Resultados ausentes ou provisórios continuam pendentes e não recebem zero.</span>
+                  </div>}
+                  <div className="toolbar">{canFinalizeActiveBattery&&<button type="button" className="button primary" disabled={eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending} onClick={finalizeActiveBattery}>{eventBatteryMode?'Confirmar Finalizar Bateria':'Confirmar e publicar'}</button>}<button type="button" className="button" onClick={()=>setFinalizeConfirmKey(null)}>Cancelar</button></div>
                </div>}
             </>:operationBatteryNotFound?<p className="lede" role="alert">A bateria informada no link não pertence a este evento. Atualize a lista de baterias antes de continuar.</p>:operationBatteryLoading?<LoadingRows/>:<p className="lede">Escolha uma bateria em Baterias antes de lançar resultados ou controlar o cronômetro.</p>}
          </section>}

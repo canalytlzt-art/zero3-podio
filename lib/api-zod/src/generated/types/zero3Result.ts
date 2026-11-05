@@ -50,6 +50,11 @@ export interface Zero3Result {
   status: Zero3ResultStatus;
   capturedAt: Date;
   revision: number;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  publishedRevision?: number | null;
   names: string[];
   /** @nullable */
   teamName?: string | null;

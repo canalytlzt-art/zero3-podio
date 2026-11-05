@@ -4,6 +4,7 @@ import {
   Zero3ResultStatus,
   Zero3Role,
   getGetZero3PublicBoardQueryKey,
+  getGetZero3RankingPublicationQueryKey,
   getGetZero3MeQueryKey,
   getListZero3EventBatteriesQueryKey,
   getListZero3ProofsQueryKey,
@@ -11,13 +12,15 @@ import {
   useCaptureZero3Result,
   useGetZero3Me,
   useGetZero3PublicBoard,
+  useGetZero3RankingPublication,
   useListZero3EventBatteries,
   useListZero3Proofs,
   useListZero3Registrations,
   useUpdateZero3Result,
+  usePublishZero3Ranking,
 } from '@workspace/api-client-react';
 import type { Zero3EventBattery, Zero3Proof, Zero3Registration, Zero3Result } from '@workspace/api-client-react';
-import { ArrowLeft, Check, ChevronRight, CircleAlert, Clock3, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, CircleAlert, Clock3, RefreshCw, Upload } from 'lucide-react';
 import { formatEventResultValue, groupResultsQueue, summarizeRegistrationResults } from '@/lib/event-results-workspace';
 import { getHttpErrorStatus, pollingIntervalAfterError, shouldRefetchAfterError, shouldRetryZero3Query } from '@/lib/api-error-policy';
 import './EventResultsWorkspace.css';
@@ -118,14 +121,27 @@ export function EventResultsWorkspace({
       refetchOnReconnect: (query) => shouldRefetchAfterError(query.state.error),
     },
   });
+  const publicationQuery = useGetZero3RankingPublication(eventId, {
+    query: {
+      queryKey: getGetZero3RankingPublicationQueryKey(eventId),
+      retry: shouldRetryZero3Query,
+      refetchInterval: (query) => pollingIntervalAfterError(query.state.error, 10000),
+      refetchOnWindowFocus: (query) => shouldRefetchAfterError(query.state.error),
+      refetchOnReconnect: (query) => shouldRefetchAfterError(query.state.error),
+    },
+  });
   const capture = useCaptureZero3Result();
   const update = useUpdateZero3Result();
+  const publishRanking = usePublishZero3Ranking();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [publicationDialogOpen, setPublicationDialogOpen] = useState(false);
+  const [publicationError, setPublicationError] = useState('');
+  const [publicationNotice, setPublicationNotice] = useState('');
   const initialSelectionApplied = useRef(false);
   const initialProofFocused = useRef(false);
 
@@ -145,6 +161,7 @@ export function EventResultsWorkspace({
   }, [queueGroups, selectedId]);
 
   const reviewer = meQuery.data?.role === Zero3Role.ADMIN || meQuery.data?.role === Zero3Role.JUIZ_CHEFE;
+  const canPublishRanking = meQuery.data?.role === Zero3Role.ADMIN;
   const meFailureStatus = getHttpErrorStatus(meQuery.error);
   const meFailureTitle = meFailureStatus === 401
     ? 'Sessão ausente ou expirada'
@@ -189,6 +206,32 @@ export function EventResultsWorkspace({
     void queryClient.invalidateQueries({ queryKey: getListZero3EventBatteriesQueryKey(eventId) });
     void queryClient.invalidateQueries({ queryKey: getListZero3RegistrationsQueryKey(eventId) });
     void queryClient.invalidateQueries({ queryKey: getGetZero3PublicBoardQueryKey({ eventId }) });
+    void queryClient.invalidateQueries({ queryKey: getGetZero3RankingPublicationQueryKey(eventId) });
+  };
+  const confirmPublishRanking = () => {
+    const preview = publicationQuery.data;
+    if (!preview?.canPublish || !canPublishRanking) return;
+    setPublicationError('');
+    publishRanking.mutate({
+      eventId,
+      data: {
+        expectedFingerprint: preview.fingerprint,
+        expectedVersion: preview.version,
+      },
+    }, {
+      onSuccess: (published) => {
+        setPublicationDialogOpen(false);
+        setPublicationNotice(`Ranking publicado · revisão ${published.version} · ${published.resultCount} resultados.`);
+        setPublicationError('');
+        void queryClient.invalidateQueries({ queryKey: getGetZero3PublicBoardQueryKey({ eventId }) });
+        void queryClient.invalidateQueries({ queryKey: getGetZero3RankingPublicationQueryKey(eventId) });
+        void batteryQuery.refetch();
+      },
+      onError: (failure) => {
+        setPublicationError(`Não foi possível publicar o ranking: ${mutationMessage(failure)}`);
+        void publicationQuery.refetch();
+      },
+    });
   };
   const chooseRegistration = (id: string) => {
     setSelectedId(id);
@@ -376,14 +419,81 @@ export function EventResultsWorkspace({
   const selectedResults = selected
     ? proofs.map((proof) => resultFor(selected.registration.id, proof.id, selectedBattery))
     : [];
+  const publicationPreview = publicationQuery.data;
 
   return (
     <section className={`event-results-workspace${mobileDetail ? ' mobile-detail' : ''}`} aria-label="Resultados por bateria">
+      {publicationDialogOpen && publicationPreview && (
+        <div className="erw-publication-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !publishRanking.isPending) setPublicationDialogOpen(false);
+        }}>
+          <section className="erw-publication-dialog" role="alertdialog" aria-modal="true" aria-labelledby="erw-publish-title">
+            <span className="erw-kicker">CONFIRMAÇÃO ADMINISTRATIVA</span>
+            <h2 id="erw-publish-title">Publicar ranking de {eventName}?</h2>
+            <p>Esta publicação altera somente os resultados revisados deste evento. Inscrições parciais continuam fora da pontuação oficial.</p>
+            <dl className="erw-publication-counts">
+              <div><dt>Resultados revisados elegíveis</dt><dd>{publicationPreview.eligibleResultCount}</dd></div>
+              <div><dt>Parciais ou faltantes</dt><dd>{publicationPreview.partialResultCount}</dd></div>
+              <div><dt>Revisão atual</dt><dd>{publicationPreview.version}</dd></div>
+            </dl>
+            <div className="erw-publication-scope">
+              <strong>Provas e categorias afetadas</strong>
+              {publicationPreview.affected.length ? (
+                <ul>{publicationPreview.affected.map((scope) => (
+                  <li key={`${scope.proofId}:${scope.category}`}>{scope.proofName} · {scope.category} · {scope.resultCount} resultado(s)</li>
+                ))}</ul>
+              ) : <p>Nenhuma alteração revisada está elegível.</p>}
+            </div>
+            {publicationPreview.issues.length > 0 && (
+              <div className="erw-publication-issues" aria-label="Pendências da publicação">
+                <strong>Pendências e avisos</strong>
+                <ul>{publicationPreview.issues.map((issue, index) => (
+                  <li key={`${issue.code}-${issue.resultId ?? index}`} className={issue.blocking ? 'is-blocking' : ''}>
+                    {issue.blocking ? 'Bloqueio: ' : 'Aviso: '}{issue.message}
+                  </li>
+                ))}</ul>
+              </div>
+            )}
+            <footer>
+              <button className="button small" type="button" disabled={publishRanking.isPending} onClick={() => setPublicationDialogOpen(false)}>Cancelar</button>
+              <button className="button primary small" type="button" disabled={!publicationPreview.canPublish || publishRanking.isPending} onClick={confirmPublishRanking} data-testid="button-confirm-publish-ranking">
+                {publishRanking.isPending ? 'Publicando…' : 'Confirmar publicação'}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
       <aside className="erw-queue" aria-label="Fila de inscrições">
         <header className="erw-queue-head">
           <div><span className="erw-kicker">ZERO3 · OPERAÇÃO</span><h2>Resultados</h2><p>{eventName}</p></div>
           <span className="erw-count">{registrations.length}<small>inscrições</small></span>
         </header>
+        <div className="erw-publication-card" data-testid="ranking-publication-card">
+          <div>
+            <span className="erw-kicker">RANKING OFICIAL</span>
+            <strong>{publicationPreview?.eligibleResultCount ?? '—'} revisados para publicar</strong>
+            <small>{publicationPreview?.partialResultCount ?? 0} parciais ou faltantes · revisão {publicationPreview?.version ?? 0}</small>
+          </div>
+          {canPublishRanking && (
+            <button
+              className="button primary small"
+              type="button"
+              disabled={!publicationPreview?.canPublish || publicationQuery.isLoading || publishRanking.isPending}
+              onClick={() => { setPublicationError(''); setPublicationDialogOpen(true); }}
+              data-testid="button-publish-ranking"
+            >
+              <Upload size={14} /> PUBLICAR RANKING
+            </button>
+          )}
+          {publicationQuery.isError && <p className="erw-publication-error" role="alert">Falha ao carregar a prévia. A publicação está indisponível até atualizar os dados.</p>}
+          {publicationError && <p className="erw-publication-error" role="alert">{publicationError}</p>}
+          {publicationPreview?.issues.map((issue, index) => (
+            <p className={issue.blocking ? 'erw-publication-error' : 'erw-publication-note'} key={`${issue.code}-${issue.resultId ?? index}`}>
+              {issue.blocking ? 'Bloqueio: ' : 'Aviso: '}{issue.message}
+            </p>
+          ))}
+          {publicationNotice && <p className="erw-publication-note" role="status">{publicationNotice}</p>}
+        </div>
         <div className="erw-queue-list">
           {queueGroups.assigned.map(({ battery, registrations: entries }) => (
             <section className="erw-battery-group" key={battery.id} aria-label={`Bateria ${battery.name}`}>
@@ -441,17 +551,26 @@ export function EventResultsWorkspace({
               {proofsForDetail.map((proof) => {
                   const key = draftKey(selected.registration.id, proof.id);
                   const result = resultFor(selected.registration.id, proof.id, selectedBattery);
+                  const resultPublicationState = result
+                    ? publicationPreview?.resultStates.find((state) => state.resultId === result.id)
+                    : undefined;
+                  const resultIsUnassigned = !selectedBattery && Boolean(result);
+                  const resultPublicationLabel = resultIsUnassigned
+                    ? 'Parcial · vínculo pendente'
+                    : resultPublicationState?.state
+                      ?? (!result ? 'Faltando' : publicationQuery.isError
+                        ? 'Estado de publicação indisponível'
+                        : result.status === 'VALIDATED' ? 'Revisado' : 'Parcial');
                   const draft = getDraft(key, result);
                   const editing = editingKey === key;
-                  const resultIsUnassigned = !selectedBattery && Boolean(result);
                   return (
                     <article className={`erw-proof-card${!proof.configured ? ' is-unconfigured' : ''}`} id={`erw-proof-${proof.id}`} key={proof.id} data-testid={`card-proof-result-${proof.id}`}>
                       <header className="erw-proof-card-head">
                         <span className="erw-proof-order">{String(proof.order).padStart(2, '0')}</span>
                         <div className="erw-proof-name"><strong>{proof.name || `Prova ${proof.order}`}</strong><small>{proof.metricType === 'TIME' ? 'Tempo' : proof.metricType === 'REPETITIONS' ? 'Repetições' : proof.metricType === 'LOAD' ? 'Carga' : proof.metricType === 'CUSTOM' ? 'Marca' : 'Não configurada'}{proof.unit ? ` · ${proof.unit}` : ''}</small></div>
-                        <span className={`erw-proof-status ${result?.status === 'VALIDATED' && !resultIsUnassigned ? 'is-confirmed' : result ? 'is-provisional' : ''}`}>{resultIsUnassigned ? 'Parcial · vínculo pendente' : summarizeRegistrationResults([result])}</span>
+                         <span className={`erw-proof-status ${resultPublicationState?.state === 'PUBLICADO' ? 'is-confirmed' : result ? 'is-provisional' : ''}`}>{resultPublicationLabel}</span>
                       </header>
-                      <div className="erw-proof-value-line"><span>Marca atual</span><strong>{formatEventResultValue(result?.rawValue ?? null, proof)}</strong>{result && <small>Rev. {result.revision} · {result.status === 'VALIDATED' ? 'Confirmado' : 'Provisório'}</small>}</div>
+                      <div className="erw-proof-value-line"><span>Marca atual</span><strong>{formatEventResultValue(result?.rawValue ?? null, proof)}</strong>{result && <small>Rev. {result.revision} · {resultPublicationState?.state ?? (publicationQuery.isError ? 'publicação indisponível' : result.status === 'VALIDATED' ? 'Revisado' : 'Parcial')}{resultPublicationState?.previouslyPublished && resultPublicationState.state !== 'PUBLICADO' ? ' · publicação anterior mantida' : ''}</small>}</div>
                       {!proof.configured ? (
                         <div className="erw-unconfigured-note"><CircleAlert size={15} /><span>Marca desativada. Configure esta prova antes de lançar resultados.</span></div>
                       ) : resultIsUnassigned ? (

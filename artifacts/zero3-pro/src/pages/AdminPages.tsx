@@ -621,6 +621,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
   const me=useGetZero3Me();
  const qc=useQueryClient();
  const [error,setError]=useState('');
+ const [notice,setNotice]=useState('');
  const [timerCommandBatteryId,setTimerCommandBatteryId]=useState<string|null>(null);
  const [confirmId,setConfirmId]=useState<string|null>(null);
   const [editingBatteryId,setEditingBatteryId]=useState<string|null>(null);
@@ -706,19 +707,14 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
   setResultsBatteryId(batteryId);
   setResultsFocusIssue(issue);
  };
- const requestFinalization=(battery:Zero3EventBattery,issues:BatteryReadinessIssue[])=>{
-  const firstResultIssue=issues.find(issue=>Boolean(issue.registrationId));
-  if(firstResultIssue){
-   openResultsPanel(battery.id,firstResultIssue);
-   return;
-  }
+  const requestFinalization=(battery:Zero3EventBattery)=>{
   setConfirmId(battery.id);
  };
  const finalizeBattery=(battery:Zero3EventBattery)=>{
-  if(confirmId!==battery.id||battery.reviewedResultCount!==battery.expectedResultCount||
-    battery.expectedResultCount===0||!battery.finalizationFingerprint)return;
+   if(confirmId!==battery.id||battery.operationalFinalized||battery.registrations.length===0||
+     !battery.finalizationFingerprint)return;
   finalize.mutate({eventId,batteryId:battery.id,data:{expectedFingerprint:battery.finalizationFingerprint}},{
-   onSuccess:()=>{setConfirmId(null);setError('');refresh();},
+    onSuccess:saved=>{setConfirmId(null);setError('');setNotice(saved.alreadyFinalized?'Esta bateria já estava finalizada.':'Bateria finalizada; cronômetro encerrado sem publicar o ranking.');refresh();},
     onError:failure=>{setError(feedback(failure));refresh();},
   });
  };
@@ -733,33 +729,30 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
      const isActive=activeId===battery.id;
       const readinessIssues=getBatteryReadinessIssues(battery);
       const readyCount=batteryReadinessCount(battery);
-      const proofsConfigured=battery.proofs.length===4&&battery.proofs.every(proof=>proof.configured);
       const exceptionPending=readinessIssues.some(issue=>issue.kind==='EXCEPTION');
-      const canFinalize=battery.expectedResultCount>0&&readinessIssues.length===0&&proofsConfigured&&
-       !unresolved(battery)&&!exceptionPending&&Boolean(battery.finalizationFingerprint)&&
-      (!battery.finalized||!battery.finalizationCurrent);
-      const canOpenFinalize=battery.expectedResultCount>0&&Boolean(battery.finalizationFingerprint)&&
-       (!battery.finalized||!battery.finalizationCurrent);
+       const canFinalize=(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&
+        battery.registrations.length>0&&Boolean(battery.finalizationFingerprint)&&!battery.operationalFinalized;
+       const canOpenFinalize=canFinalize;
       const batteryTimer=batteryModel.batteryTimers?.find(item=>item.batteryId===battery.id);
       const timerState=batteryTimer?.state??battery.state;
        const deleteConfirmationPhrase=zero3EventBatteryDeleteConfirmation(battery.order,battery.name);
        const hasTimerData=battery.timerVersion>0||battery.state!=='IDLE';
-      const timerControl=eventBatteryTimerControl(timerState);
+       const timerControl=battery.operationalFinalized?null:eventBatteryTimerControl(timerState);
       const canControlTimer=me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE';
        const canEditBattery=(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&
         !['PREPARATION','RUNNING'].includes(battery.state);
-       const canEditComposition=battery.state==='IDLE'&&battery.results.length===0&&!battery.finalized;
+        const canEditComposition=battery.state==='IDLE'&&battery.results.length===0&&!battery.operationalFinalized;
        const compositionChanged=editingRegistrationIds.length!==battery.registrations.length||
         editingRegistrationIds.some(id=>!battery.registrations.some(registration=>registration.id===id));
        const orderOccupant=batteries.find(item=>item.id!==battery.id&&item.order===editingOrder);
       const isAdmin=me.data?.role==='ADMIN';
      return <article className="panel panel-pad" key={battery.id}>
-        <div className="op-section-head"><div><div className="eyebrow">Bateria {eventBatteryCode(battery.order)} · todas as provas</div><h3 className="panel-title">{battery.name}</h3></div><span className={`pill ${battery.finalized&&battery.finalizationCurrent?'':'warn'}`}>{battery.finalized?(battery.finalizationCurrent?'Finalizada':'Correção pendente'):canFinalize?'Pronta para finalizar':'Em apuração'}</span></div>
+        <div className="op-section-head"><div><div className="eyebrow">Bateria {eventBatteryCode(battery.order)} · todas as provas</div><h3 className="panel-title">{battery.name}</h3></div><span className={`pill ${battery.operationalFinalized?'neutral':readyCount===battery.expectedResultCount&&battery.expectedResultCount>0?'good':'warn'}`}>{battery.operationalFinalized?'Finalizada':readyCount===battery.expectedResultCount&&battery.expectedResultCount>0?'Pronta para finalizar':'Em apuração'}</span></div>
        <div className="toolbar"><span className="field-help">{battery.registrations.length} equipes · {battery.categories.join(' + ')||'sem categoria'} · {readyCount} de {battery.expectedResultCount} resultados prontos</span>
         {battery.state==='PAUSED'&&<span className="field-help">Cronômetro pausado; renomear ou reordenar preserva o tempo.</span>}
        <button className={`button small ${isActive?'primary':''}`} disabled={select.isPending||isActive} onClick={()=>selectBattery(battery.id)}>{isActive?'Na TV':'Colocar na TV'}</button>
-        <button className="button small" type="button" onClick={()=>openResultsPanel(battery.id)}>{resultsBatteryId===battery.id?'Resultados abertos':'Resultados'}</button>
-         <button className={`button small ${canFinalize?'primary':''}`} disabled={!canOpenFinalize||finalize.isPending} onClick={()=>requestFinalization(battery,readinessIssues)}>{battery.finalized&&battery.finalizationCurrent?'Finalizada':battery.finalized?'Publicar correção':'Finalizar e publicar bateria'}</button>
+        <button className="button small" type="button" onClick={()=>openResultsPanel(battery.id)}>{resultsBatteryId===battery.id?'Resultados abertos':'Gerenciar Resultados'}</button>
+          <button className={`button small ${canFinalize?'primary':''}`} disabled={!canOpenFinalize||finalize.isPending} onClick={()=>requestFinalization(battery)}>{battery.operationalFinalized?'Finalizada':finalize.isPending&&confirmId===battery.id?'Finalizando…':'Finalizar Bateria'}</button>
         {(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&<button className="button small" type="button" disabled={!canEditBattery||updateBattery.isPending} onClick={()=>beginBatteryEdit(battery)} aria-label={`Editar bateria ${eventBatteryCode(battery.order)}`}>Editar bateria</button>}
         {isAdmin&&<button className="button small" type="button" disabled={['PREPARATION','RUNNING'].includes(battery.state)||deleteBattery.isPending} onClick={()=>{setDeleteBatteryId(battery.id);setDeleteBatteryConfirmation('');setError('');}} aria-label={`Excluir bateria ${eventBatteryCode(battery.order)}`}><Trash2 size={13}/> Excluir bateria</button>}
       </div>
@@ -783,7 +776,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
        <span className="lane-tag">{reg.laneLabel||'—'}</span><div style={{minWidth:0,flex:1}}><div className="lane-name">{reg.teamName||reg.athleteNames.join(' / ')||reg.id}</div><div className="lane-meta">{reg.category} · {reg.athleteNames.join(' · ')}</div>
         <div className="lane-meta">{battery.proofs.slice().sort((a,b)=>a.order-b.order).map(proof=>{
           const result=battery.results.find(item=>item.registrationId===reg.id&&item.proofId===proof.id);
-          const state=!result?'Faltando':result.status==='PROVISIONAL'?'Provisório · revisar':result.status==='VALIDATED'?'Validado':result.status;
+           const state=!result?'Faltando':result.status==='PROVISIONAL'?'Provisório · revisar':result.status==='VALIDATED'?'Revisado · aguarda publicar ranking':result.status;
           return `${proof.order}. ${proof.name||'Prova pendente'}: ${result?.rawValue??state}${result?.status==='PROVISIONAL'?' · Provisório':''}`;
         }).join(' · ')}</div>
        </div></div>)}</div>
@@ -817,32 +810,28 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
          <div className="field"><label htmlFor={`delete-battery-confirm-${battery.id}`}>Digite {deleteConfirmationPhrase}</label><input id={`delete-battery-confirm-${battery.id}`} value={deleteBatteryConfirmation} onChange={event=>setDeleteBatteryConfirmation(event.target.value)} autoComplete="off" spellCheck={false} placeholder={deleteConfirmationPhrase}/></div>
         <div className="toolbar"><button type="button" className="button" onClick={()=>{setDeleteBatteryId(null);setDeleteBatteryConfirmation('');}} disabled={deleteBattery.isPending}>Cancelar</button><button type="button" className="button" style={{borderColor:'#a34238',color:'#a34238'}} disabled={deleteBatteryConfirmation!==deleteConfirmationPhrase||!battery.finalizationFingerprint||deleteBattery.isPending} onClick={()=>confirmBatteryDelete(battery)}>{deleteBattery.isPending?'Excluindo…':'Excluir bateria e dados dela'}</button></div>
        </section>}
-       {resultsBatteryId===battery.id&&<EventBatteryResultsPanel
+        {resultsBatteryId===battery.id&&<EventBatteryResultsPanel
         eventId={eventId}
+         eventName={batteryModel.event?.name||'Evento'}
         battery={battery}
         focusIssue={resultsFocusIssue}
         onClose={()=>{setResultsBatteryId(null);setResultsFocusIssue(null);}}
         onSaved={refresh}
        />}
-      {confirmId===battery.id&&<div role="alertdialog" aria-label="Confirmar finalização da bateria" className="panel panel-pad" style={{marginTop:12}}>
-        <strong>{canFinalize?'Confirmar finalização e publicação?':'Pendências para finalizar'}</strong>
-        <p className="field-help">{battery.name} · {battery.proofs.length} provas · {battery.registrations.length} inscrições · {readyCount} de {battery.expectedResultCount} resultados prontos. A publicação atualiza a TV e o ranking geral; selecionar a TV e controlar o cronômetro continuam sendo ações separadas.</p>
-        {readinessIssues.length>0?<div className="battery-readiness-panel" role="alert">
-         <strong>A bateria permanece em apuração até resolver todas as pendências.</strong>
-         <ul className="battery-readiness-list">{readinessIssues.map((issue,index)=><li className="battery-readiness-item" key={`${issue.registrationId}:${issue.proofId}:${index}`}>
-          <span><b>{issue.laneLabel||'—'} · {issue.teamName}</b><small>{issue.category} · Prova {issue.proofOrder}: {issue.proofName} · {batteryIssueLabel(issue.kind)}</small></span>
-          {issue.kind==='CONFIGURATION'
-           ?<Link className="button small" href={batteryIssueHref(eventId,battery.id,issue)}>{batteryIssueActionLabel(issue.kind)}</Link>
-           :<button type="button" className="button small" onClick={()=>openResultsPanel(battery.id,issue)}>{batteryIssueActionLabel(issue.kind)}</button>}
-         </li>)}</ul>
-        </div>:unresolved(battery)?<p className="error-box" role="alert">Há empate sem regra oficial configurada; resolva o desempate antes de publicar.</p>
-         :!proofsConfigured?<p className="error-box" role="alert">Configure as quatro provas do evento antes de finalizar.</p>
-         :exceptionPending?<p className="error-box" role="alert">DNS/DNF ainda não tem regra oficial de pontuação configurada.</p>:null}
-        <div className="toolbar">{canFinalize&&<button className="button primary" disabled={finalize.isPending} onClick={()=>finalizeBattery(battery)}>Confirmar e publicar</button>}<button className="button" onClick={()=>setConfirmId(null)}>Fechar</button></div>
-      </div>}
+       {confirmId===battery.id&&<div role="alertdialog" aria-label="Confirmar finalização operacional da bateria" className="panel panel-pad" style={{marginTop:12}}>
+         <strong>Confirmar Finalizar Bateria?</strong>
+         <p className="field-help">{batteryModel.event?.name||'Evento'} · {eventBatteryCode(battery.order)} · {battery.name} · {battery.proofs.map(proof=>`${proof.order}. ${proof.name||'Prova sem nome'}`).join(' · ')} · {battery.registrations.length} inscrições · {battery.results.length} marcas registradas · {readyCount} de {battery.expectedResultCount} revisadas.</p>
+         <p className="field-help">Esta ação encerra somente o cronômetro desta bateria e preserva o tempo decorrido. Não publica resultados, pontos, ranking nem pódio. A publicação oficial continua separada em “Publicar Ranking”.</p>
+         {readinessIssues.length>0&&<div className="battery-readiness-panel" role="status">
+          <strong>Há {readinessIssues.length} pendência(s). A bateria será finalizada mesmo assim.</strong>
+          <span className="field-help">Os resultados ausentes ou provisórios continuarão identificados como pendentes; não serão preenchidos com zero.</span>
+         </div>}
+         <div className="toolbar"><button className="button primary" disabled={!canFinalize||finalize.isPending} onClick={()=>finalizeBattery(battery)}>{finalize.isPending?'Finalizando…':'Confirmar Finalizar Bateria'}</button><button className="button" onClick={()=>setConfirmId(null)}>Cancelar</button></div>
+       </div>}
      </article>;
     })}</div>}
    {error&&<p role="alert" className="error-box">{error}</p>}
+   {notice&&<p role="status" className="notice">{notice}</p>}
   </section>
   <form className="panel panel-pad" onSubmit={createBattery}>
    <h2 className="panel-title">Criar bateria do evento</h2>

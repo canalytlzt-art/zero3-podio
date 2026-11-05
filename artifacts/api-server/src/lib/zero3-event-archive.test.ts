@@ -107,10 +107,10 @@ test("event backup validation rejects changed records and count mismatches", asy
   assert.equal((await validateZero3EventBackup(wrongCounts)).ok, false);
 });
 
-test("versions one through three remain restorable after adding event batteries",async()=>{
+test("legacy backup versions remain restorable after adding ranking publication history",async()=>{
   const data={event:{id:"old-event",name:"Legacy"},...emptyCollections} as unknown as Zero3EventBackupData;
   const current=await createZero3EventBackup(data.event,data);
-  for(const version of [1,2,3]){
+  for(const version of [1,2,3,4,5]){
     const legacy=structuredClone(current) as unknown as Record<string,any>;
     legacy.version=version;
     if(version<3){
@@ -121,9 +121,15 @@ test("versions one through three remain restorable after adding event batteries"
       delete legacy.data.heatRuns;
       delete legacy.counts.heatRuns;
     }
-    for(const collection of ["batteries","batteryEntries","activeBatteries","batteryRuns","batteryPublications"]){
-      delete legacy.data[collection];
-      delete legacy.counts[collection];
+    if(version<4){
+      for(const collection of ["batteries","batteryEntries","activeBatteries","batteryRuns","batteryPublications"]){
+        delete legacy.data[collection];
+        delete legacy.counts[collection];
+      }
+    }
+    if(version<5){
+      delete legacy.data.rankingPublications;
+      delete legacy.counts.rankingPublications;
     }
     const payload={
       format:legacy.format,version:legacy.version,eventId:legacy.eventId,eventName:legacy.eventName,
@@ -134,7 +140,7 @@ test("versions one through three remain restorable after adding event batteries"
     const checked=await validateZero3EventBackup(legacy);
     assert.equal(checked.ok,true);
     if(checked.ok){
-      assert.equal(checked.backup.version,4);
+      assert.equal(checked.backup.version,6);
       assert.deepEqual(checked.backup.data.heatRuns,[]);
       if(version<3) assert.deepEqual(checked.backup.data.heatPublications,[]);
       assert.deepEqual(checked.backup.data.batteries,[]);
@@ -142,6 +148,35 @@ test("versions one through three remain restorable after adding event batteries"
       assert.deepEqual(checked.backup.data.activeBatteries,[]);
       assert.deepEqual(checked.backup.data.batteryRuns,[]);
       assert.deepEqual(checked.backup.data.batteryPublications,[]);
+      assert.deepEqual(checked.backup.data.rankingPublications,[]);
     }
+  }
+});
+
+test("version 5 battery backups restore with nullable operational finalization fields",async()=>{
+  const data={
+    event:{id:"old-battery-event",name:"Bateria antiga"},
+    ...emptyCollections,
+    batteries:[{id:"battery-1",event_id:"old-battery-event",battery_order:1,name:"Bateria 01",created_at:"2026-01-01T00:00:00.000Z"}],
+  } as unknown as Zero3EventBackupData;
+  const current=await createZero3EventBackup(data.event,data);
+  const legacy=structuredClone(current) as unknown as Record<string,any>;
+  legacy.version=5;
+  for(const row of legacy.data.batteries) {
+    delete row.operational_finalized_at;
+    delete row.operational_finalized_by;
+  }
+  const payload={
+    format:legacy.format,version:legacy.version,eventId:legacy.eventId,eventName:legacy.eventName,
+    counts:legacy.counts,data:legacy.data,
+  };
+  const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(stableZero3Json(payload)));
+  legacy.digest=Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,"0")).join("");
+  const checked=await validateZero3EventBackup(legacy);
+  assert.equal(checked.ok,true);
+  if(checked.ok) {
+    assert.equal(checked.backup.version,6);
+    assert.equal(checked.backup.data.batteries[0].operational_finalized_at,null);
+    assert.equal(checked.backup.data.batteries[0].operational_finalized_by,null);
   }
 });

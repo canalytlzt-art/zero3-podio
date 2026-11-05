@@ -23,6 +23,7 @@ const coreTables = [
   "zero3_heat_entries",
   "zero3_active_heats",
   "zero3_results",
+  "zero3_ranking_publications",
   "zero3_result_revisions",
   "zero3_timers",
   "zero3_podium_versions",

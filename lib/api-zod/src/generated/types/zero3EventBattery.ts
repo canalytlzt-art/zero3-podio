@@ -60,6 +60,9 @@ export interface Zero3EventBattery {
   finalizationVersion: number | null;
   /** @nullable */
   finalizedAt: Date | null;
+  operationalFinalized?: boolean;
+  /** @nullable */
+  operationalFinalizedAt?: Date | null;
   /** @minimum 0 */
   timerVersion: number;
   updatedAt: Date;

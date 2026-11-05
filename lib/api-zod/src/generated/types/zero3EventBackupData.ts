@@ -22,6 +22,7 @@ import type { Zero3EventBackupDataImportPeopleItem } from './zero3EventBackupDat
 import type { Zero3EventBackupDataImportTeamsItem } from './zero3EventBackupDataImportTeamsItem';
 import type { Zero3EventBackupDataPodiumVersionsItem } from './zero3EventBackupDataPodiumVersionsItem';
 import type { Zero3EventBackupDataProofsItem } from './zero3EventBackupDataProofsItem';
+import type { Zero3EventBackupDataRankingPublicationsItem } from './zero3EventBackupDataRankingPublicationsItem';
 import type { Zero3EventBackupDataRegistrationAuditItem } from './zero3EventBackupDataRegistrationAuditItem';
 import type { Zero3EventBackupDataRegistrationMembersItem } from './zero3EventBackupDataRegistrationMembersItem';
 import type { Zero3EventBackupDataRegistrationsItem } from './zero3EventBackupDataRegistrationsItem';
@@ -43,6 +44,7 @@ export type Zero3EventBackupData = {
   heatEntries: Zero3EventBackupDataHeatEntriesItem[];
   activeHeats: Zero3EventBackupDataActiveHeatsItem[];
   results: Zero3EventBackupDataResultsItem[];
+  rankingPublications?: Zero3EventBackupDataRankingPublicationsItem[];
   resultRevisions: Zero3EventBackupDataResultRevisionsItem[];
   timers: Zero3EventBackupDataTimersItem[];
   podiumVersions: Zero3EventBackupDataPodiumVersionsItem[];
