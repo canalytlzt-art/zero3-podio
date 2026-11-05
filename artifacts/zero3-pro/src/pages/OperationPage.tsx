@@ -329,6 +329,7 @@ export function OperationPage() {
                 timer={eventBatteryTimer}
                 batteryTimers={board.data?.batteryTimers}
                 serverTime={board.data?.serverTime}
+                isActiveForTv={board.data?.activeBattery?.batteryId===operationBatteryId}
               />}
              {eventBatteryMode&&timerAtLimit&&<p className="error-box" role="alert">Limite acumulado de 2 horas atingido. Não é possível iniciar outra bateria.</p>}
                <div className="toolbar">{!eventBatteryMode&&<button type="button" className={`button ${timerAtLimit?'danger':timerButtonLabel==='Iniciar'?'primary':''}`} disabled={!canReview||!timer||timerCommand.isPending||board.isError||operationBatteryLoading||(timerAtLimit&&['IDLE','FINISHED','PAUSED'].includes(timer.state))} onClick={controlTimer}>{timerButtonLabel==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {timerCommand.isPending?'Aguardando confirmação…':timerButtonLabel}</button>}

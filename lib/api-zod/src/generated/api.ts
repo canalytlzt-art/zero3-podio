@@ -185,7 +185,8 @@ export const RestoreZero3EventBackupBody = zod.object({
   "batteryEntries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "activeBatteries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "batteryRuns": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryTimeCapAudit": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 }),
   "digest": zod.string().min(restoreZero3EventBackupBodyBackupDigestMin).max(restoreZero3EventBackupBodyBackupDigestMax)
 })
@@ -240,7 +241,8 @@ export const GetZero3EventDeletionBackupResponse = zod.object({
   "batteryEntries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "activeBatteries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "batteryRuns": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryTimeCapAudit": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 }),
   "digest": zod.string().min(getZero3EventDeletionBackupResponseDigestMin).max(getZero3EventDeletionBackupResponseDigestMax)
 })

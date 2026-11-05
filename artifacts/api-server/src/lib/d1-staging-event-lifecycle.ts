@@ -158,7 +158,7 @@ async function fetchD1EventBackupData(
 
   const [
     proofs, registrations, registrationMembers, registrationAudit, importBatches,
-    batteries, batteryEntries, activeBatteries, batteryRuns, batteryPublications,
+    batteries, batteryEntries, activeBatteries, batteryRuns, batteryPublications, batteryTimeCapAudit,
     heats, activeHeats, results, rankingPublications, timers, podiumVersions, heatRuns, heatPublications,
   ] = await Promise.all([
     readD1Rows(DB, tables, ["zero3_proofs"], "SELECT * FROM zero3_proofs WHERE event_id=?", [eventId]),
@@ -172,6 +172,7 @@ async function fetchD1EventBackupData(
     readD1Rows(DB, tables, ["zero3_active_batteries"], "SELECT * FROM zero3_active_batteries WHERE event_id=?", [eventId]),
     readD1Rows(DB, tables, ["zero3_battery_runs"], "SELECT * FROM zero3_battery_runs WHERE event_id=?", [eventId]),
     readD1Rows(DB, tables, ["zero3_battery_publications"], "SELECT * FROM zero3_battery_publications WHERE event_id=? ORDER BY battery_id,version", [eventId]),
+    readD1Rows(DB, tables, ["zero3_battery_time_cap_audit"], "SELECT * FROM zero3_battery_time_cap_audit WHERE event_id=? ORDER BY changed_at,id", [eventId]),
     readD1Rows(DB, tables, ["zero3_heats"], "SELECT * FROM zero3_heats WHERE event_id=?", [eventId]),
     readD1Rows(DB, tables, ["zero3_active_heats"], "SELECT * FROM zero3_active_heats WHERE event_id=?", [eventId]),
     readD1Rows(DB, tables, ["zero3_results"], "SELECT * FROM zero3_results WHERE event_id=?", [eventId]),
@@ -217,6 +218,7 @@ async function fetchD1EventBackupData(
     activeBatteries: activeBatteries.results,
     batteryRuns: batteryRuns.results,
     batteryPublications: batteryPublications.results,
+    batteryTimeCapAudit: batteryTimeCapAudit.results,
     heats: heats.results,
     heatEntries: heatEntries.results,
     activeHeats: activeHeats.results,

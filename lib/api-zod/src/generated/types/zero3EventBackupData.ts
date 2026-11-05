@@ -12,6 +12,7 @@ import type { Zero3EventBackupDataBatteriesItem } from './zero3EventBackupDataBa
 import type { Zero3EventBackupDataBatteryEntriesItem } from './zero3EventBackupDataBatteryEntriesItem';
 import type { Zero3EventBackupDataBatteryPublicationsItem } from './zero3EventBackupDataBatteryPublicationsItem';
 import type { Zero3EventBackupDataBatteryRunsItem } from './zero3EventBackupDataBatteryRunsItem';
+import type { Zero3EventBackupDataBatteryTimeCapAuditItem } from './zero3EventBackupDataBatteryTimeCapAuditItem';
 import type { Zero3EventBackupDataEvent } from './zero3EventBackupDataEvent';
 import type { Zero3EventBackupDataHeatEntriesItem } from './zero3EventBackupDataHeatEntriesItem';
 import type { Zero3EventBackupDataHeatPublicationsItem } from './zero3EventBackupDataHeatPublicationsItem';
@@ -55,4 +56,5 @@ export type Zero3EventBackupData = {
   activeBatteries?: Zero3EventBackupDataActiveBatteriesItem[];
   batteryRuns?: Zero3EventBackupDataBatteryRunsItem[];
   batteryPublications?: Zero3EventBackupDataBatteryPublicationsItem[];
+  batteryTimeCapAudit?: Zero3EventBackupDataBatteryTimeCapAuditItem[];
 };

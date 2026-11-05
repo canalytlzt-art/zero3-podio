@@ -33,12 +33,14 @@ export function EventBatteryTimerPanel({
   batteryTimers,
   serverTime,
   showTitle = false,
+  isActiveForTv = false,
 }: {
   battery: Zero3EventBattery;
   timer?: BatteryTimer;
   batteryTimers?: BatteryTimer[];
   serverTime?: string | Date;
   showTitle?: boolean;
+  isActiveForTv?: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [editingCap, setEditingCap] = useState(false);
@@ -101,6 +103,8 @@ export function EventBatteryTimerPanel({
 
   const runCommand = (action: ReturnType<typeof eventBatteryTimerActions>[number]["action"]) => {
     if (!canControl || command.isPending || battery.operationalFinalized) return;
+    if (action === "finish" &&
+        !window.confirm(`Parar o cronômetro ${eventBatteryCode(battery.order)} · ${battery.name}? O tempo será preservado; a bateria não será finalizada nem publicada.`)) return;
     if (eventLimitReached && (action === "prepare" || action === "resume")) {
       setError("O limite acumulado de 2 horas do evento foi atingido.");
       return;
@@ -184,11 +188,12 @@ export function EventBatteryTimerPanel({
         <header className="event-battery-timer-heading">
           <div>
             <div className="eyebrow">Cronômetro independente</div>
-            <h3>{eventBatteryCode(battery.order)} · {battery.name}</h3>
+          <h3>{eventBatteryCode(battery.order)} · {battery.name} · {battery.categories.join(" + ")}</h3>
           </div>
-          <span className={`pill ${state === "RUNNING" ? "warn" : capReached ? "good" : "neutral"}`}>
-            {stateText}
-          </span>
+          <div className="event-battery-timer-badges">
+            {isActiveForTv&&<span className="pill good">SELECIONADA PARA TV</span>}
+            <span className={`pill ${state === "RUNNING" ? "warn" : capReached ? "good" : "neutral"}`}>{stateText}</span>
+          </div>
         </header>
       )}
       <div className="event-battery-timer-metrics">

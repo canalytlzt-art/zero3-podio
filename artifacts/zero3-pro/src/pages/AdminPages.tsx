@@ -591,14 +591,26 @@ function Registrations({eventId}:{eventId:string}) {
     <div className="op-section-head"><div><div className="eyebrow">Central de cronômetros</div><h2 className="panel-title">Tempos por bateria</h2></div><span className={`pill ${batteries.some(item=>item.state==='RUNNING')?'warn':'good'}`}>{batteries.filter(item=>item.state==='RUNNING').length} em andamento</span></div>
     <p className="field-help">Cada bateria tem largada, preparação, pausa, retomada, parada e CAP independentes. O acumulado do evento permanece separado e não encerra outros cronômetros.</p>
     {batteriesQuery.isLoading?<LoadingRows/>:batteriesQuery.isError?<QueryError error={batteriesQuery.error} retry={()=>batteriesQuery.refetch()}/>:!batteries.length?<EmptyState title="Nenhuma bateria cadastrada" detail="Crie uma bateria em Operações → Baterias para iniciar um cronômetro independente."/>:
-     <div className="timer-center-list">{batteries.map(battery=><EventBatteryTimerPanel
-      key={battery.id}
-      battery={battery}
-      timer={board.data?.batteryTimers?.find(item=>item.batteryId===battery.id)}
-      batteryTimers={board.data?.batteryTimers}
-      serverTime={board.data?.serverTime}
-      showTitle
-     />)}</div>}
+     <div className="timer-center-list">{batteries.map(battery=>{
+      const batteryTimer=board.data?.batteryTimers?.find(item=>item.batteryId===battery.id);
+      const state=batteryTimer?.state??battery.state;
+      const elapsed=state==='PREPARATION'?batteryTimer?.preparationRemainingMs??battery.preparationRemainingMs:batteryTimer?.elapsedMs??battery.elapsedMs;
+      const capReached=battery.timeCapMs>0&&state==='FINISHED'&&elapsed>=battery.timeCapMs;
+      return <details className="timer-center-details" key={battery.id}>
+       <summary className="timer-center-summary">
+        <div className="timer-center-summary-name"><span className="lane-tag">{eventBatteryCode(battery.order)}</span><div><strong>{battery.name}</strong><small>{battery.categories.join(' + ')||'Sem categoria'}</small></div></div>
+        <div className="timer-center-summary-status"><span className={`pill ${state==='RUNNING'?'warn':capReached?'good':'neutral'}`}>{capReached?'CAP ATINGIDO':timerStateLabel(state)}</span><strong>{formatMs(elapsed)}</strong><small>CAP {formatMs(battery.timeCapMs)}</small></div>
+        {activeBattery?.batteryId===battery.id&&<span className="pill good">SELECIONADA PARA TV</span>}
+       </summary>
+       <EventBatteryTimerPanel
+        battery={battery}
+        timer={batteryTimer}
+        batteryTimers={board.data?.batteryTimers}
+        serverTime={board.data?.serverTime}
+        isActiveForTv={activeBattery?.batteryId===battery.id}
+       />
+      </details>;
+     })}</div>}
    </section>
    <section className="panel panel-pad">
     <h2 className="panel-title">Estado compartilhado</h2>
@@ -772,6 +784,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
         timer={batteryTimer}
         batteryTimers={batteryModel.batteryTimers}
         serverTime={batteryModel.serverTime}
+        isActiveForTv={batteryModel.activeBattery?.batteryId===battery.id}
        />
        {!canControlTimer&&<p className="field-help">Somente ADMIN ou JUIZ-CHEFE podem comandar cronômetros.</p>}
       {battery.expectedResultCount===0&&<p className="field-help">Adicione inscrições à bateria antes de finalizar.</p>}

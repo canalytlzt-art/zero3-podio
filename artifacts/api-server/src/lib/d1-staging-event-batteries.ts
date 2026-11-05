@@ -587,6 +587,10 @@ export async function handleD1StagingEventBatteries(
       const batteryTimer = await DB.prepare("SELECT time_cap_ms FROM zero3_batteries WHERE id=? AND event_id=?")
         .bind(batteryId, eventId).first<{ time_cap_ms: number }>();
       if (!batteryTimer) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
+      const capStop = computeBatteryCapStop({
+        state: run.state, elapsedMs: run.elapsed_ms, startedAt: run.started_at,
+        timeCapMs: batteryTimer.time_cap_ms, nowMs: now.getTime(),
+      });
       const allRuns = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE event_id=?")
         .bind(eventId).all<RunRow>();
       const eventElapsedMs = allRuns.results.reduce((sum, item) => sum + runElapsed(item, now), 0);
@@ -620,8 +624,11 @@ export async function handleD1StagingEventBatteries(
           break;
         case "pause":
           if (run.state !== "RUNNING") { res.status(400).json({ error: "O cronômetro não está em execução." }); return true; }
-          next = { state: "PAUSED", elapsed_ms: Math.min(liveElapsed, batteryTimer.time_cap_ms), started_at: null, preparation_ends_at: run.preparation_ends_at,
-            preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:nowIso };
+          next = capStop
+            ? { state: "FINISHED", elapsed_ms: capStop.elapsedMs, started_at: null, preparation_ends_at: run.preparation_ends_at,
+                preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:capStop.stoppedAt }
+            : { state: "PAUSED", elapsed_ms: Math.min(liveElapsed, batteryTimer.time_cap_ms), started_at: null, preparation_ends_at: run.preparation_ends_at,
+                preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:nowIso };
           break;
         case "resume":
           if (run.state !== "PAUSED") { res.status(400).json({ error: "O cronômetro não está pausado." }); return true; }
@@ -640,8 +647,11 @@ export async function handleD1StagingEventBatteries(
           if (!["RUNNING", "PAUSED"].includes(run.state)) {
             res.status(400).json({ error: "O cronômetro não está em execução ou pausado." }); return true;
           }
-          next = { state: "FINISHED", elapsed_ms: Math.min(liveElapsed, batteryTimer.time_cap_ms), started_at: null, preparation_ends_at: run.preparation_ends_at,
-            preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:nowIso };
+          next = capStop
+            ? { state: "FINISHED", elapsed_ms: capStop.elapsedMs, started_at: null, preparation_ends_at: run.preparation_ends_at,
+                preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:capStop.stoppedAt }
+            : { state: "FINISHED", elapsed_ms: Math.min(liveElapsed, batteryTimer.time_cap_ms), started_at: null, preparation_ends_at: run.preparation_ends_at,
+                preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:nowIso };
           break;
         case "reset":
           if (run.state !== "IDLE" && run.state !== "PREPARATION") {

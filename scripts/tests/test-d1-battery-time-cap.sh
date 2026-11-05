@@ -44,13 +44,13 @@ assert_eq() {
   fi
 }
 
-assert_eq "$(sqlite3 -batch -noheader "$DB" 'SELECT time_cap_ms FROM zero3_batteries WHERE battery_order=1;')" "7200000" "existing batteries receive the 2-hour default"
-assert_eq "$(sqlite3 -batch -noheader "$DB" 'SELECT COUNT(*) FROM zero3_battery_time_cap_audit WHERE event_id="10000000-0000-4000-8000-000000000001";')" "1" "CAP edit is auditable"
-assert_eq "$(sqlite3 -batch -noheader "$DB" 'SELECT elapsed_ms FROM zero3_battery_runs WHERE state="PAUSED";')" "12000" "existing timer duration is preserved"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT time_cap_ms FROM zero3_batteries WHERE battery_order=1;")" "7200000" "existing batteries receive the 2-hour default"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT COUNT(*) FROM zero3_battery_time_cap_audit WHERE event_id='10000000-0000-4000-8000-000000000001';")" "1" "CAP edit is auditable"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT elapsed_ms FROM zero3_battery_runs WHERE state='PAUSED';")" "12000" "existing timer duration is preserved"
 assert_eq "$(sqlite3 -batch -noheader "$DB" 'PRAGMA foreign_key_check;')" "" "foreign-key integrity before delete"
 
-sqlite3 -bail "$DB" "DELETE FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000001';"
-assert_eq "$(sqlite3 -batch -noheader "$DB" 'SELECT COUNT(*) FROM zero3_battery_time_cap_audit WHERE battery_id IS NULL AND battery_id_snapshot="20000000-0000-4000-8000-000000000001";')" "1" "audit survives battery deletion"
+sqlite3 -bail "$DB" "PRAGMA foreign_keys=ON; DELETE FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000001';"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT COUNT(*) FROM zero3_battery_time_cap_audit WHERE battery_id IS NULL AND battery_id_snapshot='20000000-0000-4000-8000-000000000001';")" "1" "audit survives battery deletion"
 assert_eq "$(sqlite3 -batch -noheader "$DB" 'PRAGMA foreign_key_check;')" "" "foreign-key integrity after delete"
 
 sqlite3 -bail "$DB" "INSERT INTO zero3_batteries(id,event_id,battery_order,name) VALUES('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001',2,'Cap validation');"

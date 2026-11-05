@@ -16,3 +16,9 @@ When a result has no legacy heat or battery link, preserve it as pending and do 
 **Why:** The user chose to leave two validated RX results without battery links and pause the staging release rather than risk attributing them to the wrong battery.
 
 **How to apply:** Migration diagnostics may report these rows, but must not create battery entries or change result links automatically. Pause publication until the mapping is explicitly resolved.
+
+Each battery has its own configurable runtime CAP (default 2 hours), excluding the preparation countdown. Reaching it freezes only that timer at the exact cap and does not operationally finalize the battery or publish results. Keep the separate event-aggregate limit. Before the first start, ADMIN/JUIZ_CHEFE may change the CAP; after a start, only ADMIN may change it while paused, with an audit record. Stop, finalization, and ranking publication remain distinct actions.
+
+**Why:** The user explicitly requested per-battery time limits while preserving independent timer state, the existing event limit, and the separation between timer stop, operational finalization, and official publication.
+
+**How to apply:** Store the limit by stable battery ID in D1. Enforce role, timer state, expected version, and audit requirements on the server; derive CAP ATINGIDO from the frozen run and keep every other running battery unchanged.

@@ -126,6 +126,7 @@ async function readEventBackup(
     activeBatteries: [],
     batteryRuns: [],
     batteryPublications: [],
+    batteryTimeCapAudit: [],
   };
   return createZero3EventBackup(event as unknown as EventBackupRow, data);
 }

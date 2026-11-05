@@ -31,3 +31,19 @@ test("does not freeze a running timer when its start timestamp is invalid", () =
     state: "RUNNING", elapsedMs: 0, startedAt: "not-a-date", timeCapMs: 60_000, nowMs: startMs + 90_000,
   }), null);
 });
+
+test("one of four simultaneous batteries reaches only its own CAP", () => {
+  const caps = [600_000, 720_000, 480_000, 900_000];
+  const transitions = caps.map((timeCapMs) => computeBatteryCapStop({
+    state: "RUNNING",
+    elapsedMs: 0,
+    startedAt,
+    timeCapMs,
+    nowMs: startMs + 500_000,
+  }));
+  assert.deepEqual(transitions.map(Boolean), [false, false, true, false]);
+  assert.deepEqual(transitions[2], {
+    elapsedMs: 480_000,
+    stoppedAt: "2026-11-05T12:08:00.000Z",
+  });
+});

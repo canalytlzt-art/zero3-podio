@@ -234,6 +234,8 @@ export type Zero3EventBackupDataBatteryRunsItem = { [key: string]: unknown };
 
 export type Zero3EventBackupDataBatteryPublicationsItem = { [key: string]: unknown };
 
+export type Zero3EventBackupDataBatteryTimeCapAuditItem = { [key: string]: unknown };
+
 export type Zero3EventBackupData = {
   event: Zero3EventBackupDataEvent;
   athletes: Zero3EventBackupDataAthletesItem[];
@@ -259,6 +261,7 @@ export type Zero3EventBackupData = {
   activeBatteries?: Zero3EventBackupDataActiveBatteriesItem[];
   batteryRuns?: Zero3EventBackupDataBatteryRunsItem[];
   batteryPublications?: Zero3EventBackupDataBatteryPublicationsItem[];
+  batteryTimeCapAudit?: Zero3EventBackupDataBatteryTimeCapAuditItem[];
 };
 
 export interface Zero3EventBackup {

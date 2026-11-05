@@ -145,9 +145,20 @@ tbody tr:last-child td { border-bottom:0; }
 .battery-timer-readout small { color:#858a82;font:9px var(--font-data);letter-spacing:.08em; }
 .battery-timer-readout strong { grid-column:2;grid-row:1 / span 2;color:#202321;font:700 19px var(--font-data);font-variant-numeric:tabular-nums; }
 .timer-center-list { display:grid;gap:12px;margin-top:14px; }
+.timer-center-details { border:1px solid #e3e1d9;border-radius:8px;background:#faf9f6; }
+.timer-center-summary { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;cursor:pointer;list-style:none; }
+.timer-center-summary::-webkit-details-marker { display:none; }
+.timer-center-summary-name { display:flex;align-items:center;gap:10px;min-width:0; }
+.timer-center-summary-name > div,.timer-center-summary-status { display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;min-width:0; }
+.timer-center-summary-name strong { overflow-wrap:anywhere; }
+.timer-center-summary-name small,.timer-center-summary-status small { color:#7b8078;font-size:10px; }
+.timer-center-summary-status strong { color:#202321;font:700 17px var(--font-data);font-variant-numeric:tabular-nums; }
+.timer-center-details[open] .timer-center-summary { border-bottom:1px solid #e3e1d9; }
+.timer-center-details > .event-battery-timer-panel { margin:0;border:0;background:transparent; }
 .event-battery-timer-panel { width:100%;margin:10px 0 12px;padding:12px;border:1px solid #e3e1d9;border-radius:8px;background:#f7f6f2; }
 .event-battery-timer-heading { display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px; }
 .event-battery-timer-heading h3 { margin:3px 0 0;font-size:14px;overflow-wrap:anywhere; }
+.event-battery-timer-badges { display:flex;align-items:center;gap:6px;flex-wrap:wrap; }
 .event-battery-timer-metrics { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px; }
 .event-battery-timer-metrics > div { min-width:0;display:flex;flex-direction:column;gap:4px;padding:9px;border:1px solid #e3e1d9;border-radius:6px;background:#fff; }
 .event-battery-timer-metrics small { color:#858a82;font:9px var(--font-data);letter-spacing:.08em; }
@@ -163,6 +174,8 @@ tbody tr:last-child td { border-bottom:0; }
  .event-battery-timer-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
  .event-battery-timer-metrics > div:last-child { grid-column:1 / -1; }
  .event-battery-timer-heading { align-items:flex-start;flex-direction:column; }
+ .timer-center-summary { align-items:flex-start;flex-direction:column; }
+ .timer-center-summary-status { width:100%; }
  .event-battery-cap-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
  .event-battery-cap-fields .field-help { grid-column:1 / -1; }
 }

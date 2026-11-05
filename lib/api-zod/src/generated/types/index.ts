@@ -34,6 +34,7 @@ export * from './zero3EventBackupDataBatteriesItem';
 export * from './zero3EventBackupDataBatteryEntriesItem';
 export * from './zero3EventBackupDataBatteryPublicationsItem';
 export * from './zero3EventBackupDataBatteryRunsItem';
+export * from './zero3EventBackupDataBatteryTimeCapAuditItem';
 export * from './zero3EventBackupDataEvent';
 export * from './zero3EventBackupDataHeatEntriesItem';
 export * from './zero3EventBackupDataHeatPublicationsItem';
