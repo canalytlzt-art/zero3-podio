@@ -9,6 +9,12 @@ The user intends to adopt `zero3-games-d1-staging` as the ZERO3 app they use and
 
 **How to apply:** Treat retirement as a gated cutover, not a cleanup step. Confirm Cloudflare Workers Builds configuration in the dashboard, complete D1 route and data validation, then switch user-facing links/QRs and only afterward retire the old Worker.
 
+The intended Cloudflare GitHub build target is repository `canalytlzt-art/zero3-podio`, branch `main`, Worker `zero3-games-d1-staging`; deployment must explicitly use `wrangler.d1-staging.toml`, not the legacy `wrangler.toml`.
+
+**Why:** The user specified the staging Worker and main branch as the publication path.
+
+**How to apply:** Before merging work that can trigger a build, verify the dashboard's build/deploy commands and build-time `VITE_CLERK_PUBLISHABLE_KEY`; do not infer those settings from a successful local dry-run.
+
 The remote D1 `zero3-podio-dev` already has the initial tables and the manually added Clerk-user link/index, but its `d1_migrations` ledger is empty. Do not run `wrangler d1 migrations apply` blindly against this database.
 
 **Why:** Applying the checked-in initial migrations to a database whose schema was created outside Wrangler can collide with existing tables or columns, despite the actual schema being present.
