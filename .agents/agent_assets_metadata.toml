@@ -14,3 +14,31 @@ mtime_ms = 1793846965857
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/a520e445-0de6-4f0a-ad39-7f06b800cf3c/8eb99286-d476-4996-82a3-f3455ea9e8dd"
 storage_version_token = "1793846972304044"
 content_type = "text/html"
+
+[[outputs]]
+id = "Vsl08L6fVzCXTtIAmRhCn"
+uri = "file://generated-artifacts/screenshots/tv-final-1920x1080.jpg"
+type = "image"
+title = "TV ZERO3 — Preview 1920 × 1080"
+description = "Captura do Preview após o ajuste visual da duração e do relógio de Brasília."
+logical_id = "a58343b4-aaa2-41ba-8fe3-366ff50b4f95"
+content_hash = "sha256:45f0e06c7d2f215cbcac58715838ae1af06d9e90311a2fdadea710fa9fce714c"
+size = 89024
+mtime_ms = 1793849838279
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/a58343b4-aaa2-41ba-8fe3-366ff50b4f95/ffa903e0-c196-4c78-860d-f5bb23c5c8e0"
+storage_version_token = "1793849914807628"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "u8Dqm4mZt69LY5w2pqqYk"
+uri = "file://generated-artifacts/screenshots/tv-final-390px.jpg"
+type = "image"
+title = "TV ZERO3 — Preview 390 px"
+description = "Captura móvel do Preview; cronômetro e cartão civil lado a lado."
+logical_id = "be7160bc-946c-4264-8499-e386c2363811"
+content_hash = "sha256:5e6c8f6b79839b188b7ae162931f3e04e18492bf6ffca6be1c0661f3bda470d1"
+size = 27197
+mtime_ms = 1793849848543
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/be7160bc-946c-4264-8499-e386c2363811/489550a1-bf22-441d-9224-ec995155f229"
+storage_version_token = "1793849915344749"
+content_type = "image/jpeg"

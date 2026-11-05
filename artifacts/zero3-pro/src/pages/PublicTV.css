@@ -1,3 +1,7 @@
+html:has(.tv-root),
+body:has(.tv-root) {
+  background: #15141d;
+}
 .tv-root {
   --tv-carbon: #15141d;
   --tv-lime: #e8ff00;
@@ -12,7 +16,12 @@
   font-variant-numeric: tabular-nums;
 }
 .tv-root * { box-sizing: border-box; }
-.tv-root .tv-board { width: min(100%, 1640px); margin-inline: auto; }
+.tv-root .tv-board {
+  width: min(100%, 1640px);
+  height: auto;
+  min-height: calc(100dvh - 36px);
+  margin-inline: auto;
+}
 .tv-root .tv-header {
   min-height: 66px;
   display: grid;
@@ -105,6 +114,7 @@
   grid-column: 1;
   grid-row: 1;
   align-self: center;
+  justify-self: center;
   width: max-content;
   max-width: 100%;
   padding: 0;
@@ -112,7 +122,7 @@
   border: 0;
   background: transparent;
   text-align: left;
-  transform: none;
+  transform: translateX(clamp(-28px, -1.5vw, -12px));
 }
 .tv-root .tv-timer-box small:first-child {
   display: block;
@@ -126,7 +136,7 @@
   align-items: baseline;
   gap: .025em;
   max-width: 100%;
-  font: 750 clamp(76px, 11.5vw, 174px)/.9 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
+  font: 750 clamp(66px, 10vw, 150px)/.9 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
   letter-spacing: -.075em;
   white-space: nowrap;
 }
@@ -174,7 +184,7 @@
 .tv-root .tv-clock {
   margin: 0;
   color: #f6f2fb;
-  font: 700 clamp(34px, 4vw, 57px)/1 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
+  font: 700 clamp(36px, 4.3vw, 62px)/1 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
   letter-spacing: -.045em;
   white-space: nowrap;
 }
@@ -363,38 +373,60 @@
 
 @media (max-width: 760px) {
   .tv-root { padding: 12px 14px 15px; }
+  .tv-root .tv-board { min-height: 0; }
   .tv-root .tv-header { min-height: 58px; grid-template-columns: 1fr auto; gap: 8px; }
   .tv-root .tv-logo { width: 112px; height: 39px; }
   .tv-root .tv-eventline { display: none; }
   .tv-root .tv-status-chip { max-width: 56vw; font-size: 8px; padding: 7px 8px; }
   .tv-root .tv-clock-section {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    gap: 19px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto;
+    align-items: center;
+    gap: 8px;
     min-height: 0;
-    padding: 23px 19px 39px;
+    padding: 20px 8px 39px;
   }
   .tv-root .tv-clock-section::before { background-position: center, center, 63% center; background-size: cover, cover, cover; }
-  .tv-root .tv-timer-box { grid-column: 1; grid-row: 1; }
-  .tv-root .tv-timer-box strong { font-size: clamp(70px, 15vw, 112px); }
-  .tv-root .tv-timer-box small:first-child { margin-bottom: 10px; font-size: 14px; }
-  .tv-root .tv-timer-box small:last-child { margin-top: 13px; font-size: 8px; }
-  .tv-root .tv-clock-block {
+  .tv-root .tv-timer-box {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 1;
     justify-self: start;
+    min-width: 0;
+    margin: 0;
+    transform: none;
+  }
+  .tv-root .tv-timer-box strong { font-size: clamp(60px, 13.5vw, 96px); }
+  .tv-root .tv-timer-box small:first-child { margin-bottom: 9px; font-size: 12px; }
+  .tv-root .tv-timer-box small:last-child { margin-top: 11px; font-size: 7px; }
+  .tv-root .tv-clock-block {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
     width: max-content;
     max-width: 100%;
-    grid-template-columns: auto auto;
+    grid-template-columns: minmax(0, 1fr);
     justify-items: start;
-    align-items: center;
-    gap: 6px 10px;
-    padding: 10px 12px;
+    align-items: start;
+    gap: 4px;
+    padding: 8px 9px;
+    border-radius: 4px;
   }
-  .tv-root .tv-clock-block .tv-clock-label:first-child { grid-column: 1 / -1; font-size: 8px; }
-  .tv-root .tv-clock { font-size: 33px; }
-  .tv-root .tv-clock-block .tv-clock-label:last-child { align-self: end; max-width: 90px; font-size: 7px; }
-  .tv-root .tv-event-status { bottom: 12px; left: 19px; font-size: 7px; }
+  .tv-root .tv-clock-block .tv-clock-label:first-child {
+    grid-column: 1;
+    max-width: 130px;
+    font-size: 7px;
+    line-height: 1.25;
+    white-space: normal;
+  }
+  .tv-root .tv-clock { font-size: clamp(24px, 6.2vw, 30px); }
+  .tv-root .tv-clock-block .tv-clock-label:last-child {
+    align-self: start;
+    max-width: 130px;
+    font-size: 6px;
+    line-height: 1.25;
+    white-space: normal;
+  }
+  .tv-root .tv-event-status { bottom: 12px; left: 12px; font-size: 7px; }
   .tv-root .tv-battery-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
   .tv-root .tv-battery-actions { width: 100%; justify-content: flex-start; }
   .tv-root .tv-battery-state { text-align: left; }
@@ -404,10 +436,23 @@
 }
 @media (max-width: 420px) {
   .tv-root { padding-inline: 10px; }
-  .tv-root .tv-clock-section { padding-inline: 14px; }
-  .tv-root .tv-timer-box strong { font-size: clamp(62px, 15vw, 78px); }
+  .tv-root .tv-clock-section { padding-inline: 8px; }
+  .tv-root .tv-timer-box strong { font-size: clamp(50px, 13.6vw, 53px); }
   .tv-root .tv-podium-list { gap: 5px; }
   .tv-root .tv-live-board-callout { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 360px) {
+  .tv-root .tv-clock-section {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 12px;
+    padding-inline: 12px;
+  }
+  .tv-root .tv-clock-block {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: end;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .tv-root *, .tv-root *::before, .tv-root *::after { scroll-behavior: auto !important; }
