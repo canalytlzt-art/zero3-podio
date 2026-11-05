@@ -1,5 +1,5 @@
-import { useEffect, useState, type CSSProperties } from 'react';
-import { Link, useSearch } from 'wouter';
+import { useEffect, useState, type AnchorHTMLAttributes, type CSSProperties } from 'react';
+import { useSearch } from 'wouter';
 import { getGetZero3PublicBoardQueryKey, useGetZero3PublicBoard } from '@workspace/api-client-react';
 import type { Zero3LeaderboardEntry, Zero3Proof, Zero3PublicBoard, Zero3PublicBattery } from '@workspace/api-client-react';
 import { RotateCw } from 'lucide-react';
@@ -7,6 +7,11 @@ import { liveBoardHrefForBattery, liveBoardHrefForEvent } from '@/lib/live-board
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
 import './PublicTV.css';
+
+// Keep target=_blank links native; Wouter's Link handler cancels their navigation.
+function Link(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
+  return <a {...props} />;
+}
 
 const publicBase = import.meta.env.BASE_URL;
 const tvAssetsStyle = { '--tv-photo': `url("${publicBase}zero3-games/zero3-foto.jpg")` } as CSSProperties;
