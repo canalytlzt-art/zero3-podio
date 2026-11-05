@@ -28,9 +28,10 @@ import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/
 import { AthletePicker } from '@/components/AthletePicker';
 import { BatteryRegistrationPicker } from '@/components/BatteryRegistrationPicker';
 import { EventBatteryResultsPanel } from '@/components/EventBatteryResultsPanel';
+import { EventResultsWorkspace } from '@/components/EventResultsWorkspace';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { liveBoardHrefForBattery } from '@/lib/live-board-navigation';
-import { pollingIntervalAfterError, shouldRefetchAfterError } from '@/lib/api-error-policy';
+import { pollingIntervalAfterError, shouldRefetchAfterError, shouldRetryZero3Query } from '@/lib/api-error-policy';
 import { normalizeTeamNameInput, teamNameInputError } from '@/lib/roster-management';
 import { describeAthleteReplacement, normalizeAthleteSearch } from '@/lib/athlete-search';
 import { primaryTimerAction, timerStateLabel } from '@/lib/zero3-timer-controls';
@@ -169,6 +170,7 @@ function Field({label,name,type='text',required=false,placeholder,defaultValue,m
   const searchParams=new URLSearchParams(search);
   const requestedProofId=searchParams.get('proofId')||undefined;
   const requestedBatteryOrder=Number(searchParams.get('batteryOrder'))||undefined;
+   const requestedRegistrationId=searchParams.get('registrationId')||undefined;
   useEffect(()=>{
    const requestedTab=searchParams.get('tab');
    if(requestedTab&&(['heats','registrations','timer','results','podium'] as const).includes(requestedTab as 'heats'|'registrations'|'timer'|'results'|'podium')){
@@ -180,7 +182,7 @@ function Field({label,name,type='text',required=false,placeholder,defaultValue,m
   {tab==='heats'&&<Heats eventId={eventId}/>}
   {tab==='registrations'&&<Registrations eventId={eventId}/>}
   {tab==='timer'&&<TimerControl eventId={eventId} event={event}/>}
-   {tab==='results'&&<Results eventId={eventId} proofId={requestedProofId} batteryOrder={requestedBatteryOrder}/>}
+    {tab==='results'&&<Results eventId={eventId} eventName={event?.name} proofId={requestedProofId} batteryOrder={requestedBatteryOrder} initialRegistrationId={requestedRegistrationId} initialProofId={requestedProofId}/>}
   {tab==='podium'&&<PodiumEditor eventId={eventId}/>}
  </AdminShell>;
 }
@@ -587,10 +589,22 @@ function Registrations({eventId}:{eventId:string}) {
    <section className="panel panel-pad"><h2 className="panel-title">Estado compartilhado</h2><div className="lane-list"><div className="lane-card"><span className="lane-tag">EVT</span><div><div className="lane-name">{event?.name||'Evento'}</div><div className="lane-meta">{event?.proofName||'Prova'}</div></div></div>{batteryMode&&<div className="lane-card"><span className="lane-tag">BAT</span><div><div className="lane-name">{activeBattery?`${eventBatteryCode(activeBattery.order)} · ${activeBattery.name}`:'Nenhuma selecionada'}</div><div className="lane-meta">{activeBattery?.categories.map(categoryName).join(' + ')||'Escolha em Operação → Baterias'}</div></div></div>}<div className="lane-card"><span className="lane-tag">SYNC</span><div><div className="lane-name">{connectionLabel}</div><div className="lane-meta">Estado recebido do servidor · atualização a cada 1,5 s</div></div></div></div><p className="notice" style={{marginTop:16}}>Iniciar aplica a preparação configurada e depois inicia a contagem. Parar cancela a preparação ou congela o tempo para apuração; finalizar a bateria é uma ação separada.</p></section></div>;
 }
 
- function Results(props:{eventId:string;proofId?:string;batteryOrder?:number}) {
+ function Results(props:{eventId:string;eventName?:string;proofId?:string;batteryOrder?:number;initialRegistrationId?:string;initialProofId?:string}) {
+   const board=useGetZero3PublicBoard({eventId:props.eventId},{query:{
+    queryKey:getGetZero3PublicBoardQueryKey({eventId:props.eventId}),
+    retry:shouldRetryZero3Query,
+    refetchInterval:query=>pollingIntervalAfterError(query.state.error,3000),
+    refetchOnWindowFocus:query=>shouldRefetchAfterError(query.state.error),
+    refetchOnReconnect:query=>shouldRefetchAfterError(query.state.error),
+   }});
   if(props.proofId&&props.batteryOrder!==undefined){
    return <BatteryResults eventId={props.eventId} proofId={props.proofId} batteryOrder={props.batteryOrder}/>;
   }
+   if(board.isLoading)return <section className="panel panel-pad"><LoadingRows/></section>;
+   if(board.isError)return <section className="panel panel-pad"><QueryError retry={()=>board.refetch()}/></section>;
+   if(board.data?.batteryOperationsEnabled===true){
+    return <EventResultsWorkspace eventId={props.eventId} eventName={props.eventName} initialRegistrationId={props.initialRegistrationId} initialProofId={props.initialProofId}/>;
+   }
   return <GeneralResults {...props}/>;
  }
 

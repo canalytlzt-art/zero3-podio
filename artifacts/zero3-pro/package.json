@@ -8,6 +8,7 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:results-workspace": "node --experimental-strip-types --test src/lib/event-results-workspace.test.ts",
     "test:battery-code": "node --experimental-strip-types --test src/lib/event-battery-code.test.ts",
     "test:battery-registration-picker": "node --experimental-strip-types --test src/lib/battery-registration-picker.test.ts",
     "test:battery-timer-controls": "node --experimental-strip-types --test src/lib/event-battery-timer-controls.test.ts",

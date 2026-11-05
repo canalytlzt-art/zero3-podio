@@ -1,7 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   Zero3ResultStatus,
+  Zero3Role,
+  getGetZero3MeQueryKey,
+  getListZero3EventBatteriesQueryKey,
   useCaptureZero3Result,
+  useGetZero3Me,
+  useListZero3EventBatteries,
   useUpdateZero3Result,
 } from '@workspace/api-client-react';
 import type { Zero3EventBattery, Zero3Proof } from '@workspace/api-client-react';
@@ -14,6 +19,12 @@ interface EventBatteryResultsPanelProps {
   focusIssue: BatteryReadinessIssue | null;
   onClose: () => void;
   onSaved: () => void;
+}
+
+interface PartialDraft {
+  value: string;
+  reason: string;
+  expectedRevision: number;
 }
 
 function mutationMessage(error: unknown) {
@@ -31,12 +42,12 @@ function formatValue(value: number | null, proof: Zero3Proof) {
 
 function resultState(battery: Zero3EventBattery, status?: string) {
   if (!status) return 'Faltando resultado';
-  if (status === 'PROVISIONAL') return 'Salvo · Provisório · aguardando revisão';
+  if (status === 'PROVISIONAL') return 'Provisório · ajuste aqui; confirme em Resultados';
   if (status === 'VALIDATED') {
-    if (battery.finalized && battery.finalizationCurrent) return 'Validado e publicado';
+    if (battery.finalized && battery.finalizationCurrent) return 'Confirmado · bateria publicada';
     return battery.finalized
-      ? 'Validado · correção aguardando publicação'
-      : 'Validado · aguardando publicação';
+      ? 'Confirmado · confira a correção em Resultados'
+      : 'Confirmado · confira em Resultados';
   }
   if (status === 'PUBLICATION_PENDING') return 'Correção aguardando publicação';
   if (status === 'DNS' || status === 'DNF') return `${status} · regra de exceção pendente`;
@@ -52,14 +63,36 @@ export function EventBatteryResultsPanel({
 }: EventBatteryResultsPanelProps) {
   const capture = useCaptureZero3Result();
   const update = useUpdateZero3Result();
+  const me = useGetZero3Me({ query: { queryKey: getGetZero3MeQueryKey(), retry: false } });
   const [editingResultId, setEditingResultId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [conflictResultId, setConflictResultId] = useState<string | null>(null);
+  const [partialDrafts, setPartialDrafts] = useState<Record<string, PartialDraft>>({});
+  const [captureKeys, setCaptureKeys] = useState<Record<string, string>>({});
+  const batteriesQuery = useListZero3EventBatteries(eventId, {
+    query: { queryKey: getListZero3EventBatteriesQueryKey(eventId), enabled: Boolean(conflictResultId) },
+  });
+  const canEditProvisional = me.data?.role === Zero3Role.ADMIN || me.data?.role === Zero3Role.JUIZ_CHEFE;
   const proofs = [...battery.proofs].sort((a, b) => a.order - b.order);
 
   useEffect(() => {
-    if (focusIssue?.resultId) setEditingResultId(focusIssue.resultId);
-  }, [focusIssue?.resultId]);
+    if (!focusIssue?.resultId) return;
+    const focusedResult = battery.results.find((result) => result.id === focusIssue.resultId);
+    if (focusedResult?.status === 'PROVISIONAL' && canEditProvisional) {
+      setPartialDrafts((previous) => {
+        if (previous[focusedResult.id]) return previous;
+        return { ...previous, [focusedResult.id]: {
+          value: focusedResult.rawValue === null ? '' : String(focusedResult.rawValue),
+          reason: '',
+          expectedRevision: focusedResult.revision,
+        } };
+      });
+      setEditingResultId(focusedResult.id);
+    } else {
+      setEditingResultId(null);
+    }
+  }, [battery.results, canEditProvisional, focusIssue?.resultId]);
 
   useEffect(() => {
     if (!focusIssue) return;
@@ -67,8 +100,13 @@ export function EventBatteryResultsPanel({
       const resultStillExists = focusIssue.resultId
         ? battery.results.some((result) => result.id === focusIssue.resultId)
         : false;
-      const targetId = resultStillExists
+      const focusedResult = focusIssue.resultId
+        ? battery.results.find((result) => result.id === focusIssue.resultId)
+        : null;
+      const targetId = resultStillExists && focusedResult?.status === 'PROVISIONAL' && canEditProvisional
         ? `event-battery-review-value-${focusIssue.resultId}`
+        : resultStillExists
+          ? `event-battery-results-link-${focusIssue.resultId}`
         : focusIssue.registrationId
           ? `event-battery-capture-value-${focusIssue.registrationId}-${focusIssue.proofId}`
           : `event-battery-proof-${focusIssue.proofId}`;
@@ -79,6 +117,8 @@ export function EventBatteryResultsPanel({
     return () => window.cancelAnimationFrame(frame);
   }, [
     battery.id,
+    battery.results,
+    canEditProvisional,
     editingResultId,
     focusIssue?.proofId,
     focusIssue?.registrationId,
@@ -92,6 +132,11 @@ export function EventBatteryResultsPanel({
   ) => {
     event.preventDefault();
     const rawValue = Number(new FormData(event.currentTarget).get('rawValue'));
+    const draftKey = `${registrationId}:${proof.id}`;
+    const idempotencyKey = captureKeys[draftKey] ?? crypto.randomUUID();
+    if (!captureKeys[draftKey]) {
+      setCaptureKeys((previous) => ({ ...previous, [draftKey]: idempotencyKey }));
+    }
     setError('');
     setNotice('');
     capture.mutate({
@@ -102,10 +147,11 @@ export function EventBatteryResultsPanel({
         batteryId: battery.id,
         rawValue,
         status: Zero3ResultStatus.PROVISIONAL,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey,
       },
     }, {
       onSuccess: () => {
+        setCaptureKeys((previous) => { const next = { ...previous }; delete next[draftKey]; return next; });
         setNotice('Resultado salvo como Provisório. Ele ainda precisa ser revisado antes da publicação oficial.');
         onSaved();
       },
@@ -113,20 +159,20 @@ export function EventBatteryResultsPanel({
     });
   };
 
-  const reviewResult = (
+  const saveProvisionalEdit = (
     event: FormEvent<HTMLFormElement>,
     resultId: string,
-    registrationId: string,
     proof: Zero3Proof,
-    revision: number,
-    rawValue: number | null,
   ) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const reason = String(form.get('reason') || '').trim();
-    const raw = String(form.get('rawValue') || '').trim();
+    const draft = partialDrafts[resultId];
+    if (!draft || !Number.isFinite(Number(draft.value)) || Number(draft.value) < 0) {
+      setError('Informe um valor numérico igual ou maior que zero.');
+      return;
+    }
+    const reason = draft.reason.trim();
     if (reason.length < 3) {
-      setError('Informe um motivo com pelo menos três caracteres para revisar o resultado.');
+      setError('Informe um motivo com pelo menos três caracteres para ajustar o resultado.');
       return;
     }
     setError('');
@@ -134,22 +180,71 @@ export function EventBatteryResultsPanel({
     update.mutate({
       resultId,
       data: {
-        status: Zero3ResultStatus.VALIDATED,
+        status: Zero3ResultStatus.PROVISIONAL,
         reason,
         expectedEventId: eventId,
         expectedProofId: proof.id,
         expectedBatteryId: battery.id,
-        expectedRevision: revision,
-        rawValue: raw ? Number(raw) : rawValue,
+        expectedRevision: draft.expectedRevision,
+        rawValue: Number(draft.value),
       },
     }, {
       onSuccess: () => {
         setEditingResultId(null);
-        setNotice('Revisão validada. Os pontos oficiais só mudam após confirmar a publicação da bateria.');
+        setConflictResultId(null);
+        setPartialDrafts((previous) => { const next = { ...previous }; delete next[resultId]; return next; });
+        setNotice('Ajuste salvo como Provisório no mesmo resultado. Confirme-o na aba Resultados.');
         onSaved();
       },
-      onError: (failure) => setError(`Falha ao salvar revisão: ${mutationMessage(failure)}`),
+      onError: (failure) => {
+        if (failure && typeof failure === 'object' && 'status' in failure && (failure as { status?: unknown }).status === 409) {
+          setConflictResultId(resultId);
+          setError('O resultado mudou no servidor. Seu rascunho foi preservado; atualize os dados antes de tentar novamente.');
+          return;
+        }
+        setError(`Falha ao salvar ajuste provisório: ${mutationMessage(failure)}`);
+      },
     });
+  };
+
+  const reloadConflictAndKeepDraft = async () => {
+    if (!conflictResultId) return;
+    const refreshed = await batteriesQuery.refetch();
+    if (refreshed.isError || !refreshed.data) {
+      setError('Não foi possível atualizar a bateria. Seu rascunho foi preservado; tente recarregar novamente.');
+      return;
+    }
+    const latest = refreshed.data
+      ?.find((candidate) => candidate.id === battery.id)
+      ?.results.find((result) => result.id === conflictResultId);
+    if (!latest) {
+      setError('O resultado não está mais nesta bateria. O rascunho foi preservado; confira a fila e abra a bateria atual.');
+      return;
+    }
+    setPartialDrafts((previous) => ({
+      ...previous,
+      [conflictResultId]: {
+        ...(previous[conflictResultId] ?? { value: String(latest.rawValue ?? ''), reason: '' }),
+        expectedRevision: latest.revision,
+      },
+    }));
+    setConflictResultId(null);
+    setError('');
+    setNotice('Dados atualizados. Seu rascunho foi mantido; confira a marca atual antes de salvar.');
+  };
+
+  const beginProvisionalEdit = (result: { id: string; rawValue: number | null; revision: number }) => {
+    setPartialDrafts((previous) => {
+      if (previous[result.id]) return previous;
+      return { ...previous, [result.id]: {
+        value: result.rawValue === null ? '' : String(result.rawValue),
+        reason: '',
+        expectedRevision: result.revision,
+      } };
+    });
+    setEditingResultId(result.id);
+    setError('');
+    setNotice('');
   };
 
   return (
@@ -157,14 +252,24 @@ export function EventBatteryResultsPanel({
       <header className="event-battery-results-header">
         <div>
           <div className="eyebrow">Resultados · {battery.name}</div>
-          <h4>{battery.registrations.length} inscrições · {battery.reviewedResultCount} de {battery.expectedResultCount} resultados revisados</h4>
-          <p>Provisórios não alteram o ranking ou o pódio oficiais até a publicação.</p>
+          <h4>{battery.registrations.length} inscrições · {battery.results.length} de {battery.expectedResultCount} marcas registradas</h4>
+          <p>Esta tela captura e ajusta marcas provisórias. Confirmação e correção oficial ficam na aba Resultados.</p>
         </div>
         <button type="button" className="button small" onClick={onClose}>Fechar resultados</button>
       </header>
 
-      {error && <p role="alert" className="error-box">{error}</p>}
+      {error && (
+        <div role="alert" className="error-box">
+          <p>{error}</p>
+          {conflictResultId && (
+            <button type="button" className="button small" onClick={() => void reloadConflictAndKeepDraft()} disabled={batteriesQuery.isFetching}>
+              {batteriesQuery.isFetching ? 'Atualizando…' : 'Atualizar e manter rascunho'}
+            </button>
+          )}
+        </div>
+      )}
       {notice && <p role="status" className="notice">{notice}</p>}
+      {me.isError && <p role="status" className="field-help">Não foi possível verificar sua função; o ajuste provisório fica indisponível até a verificação funcionar.</p>}
 
       <div className="event-battery-result-registrations">
         {battery.registrations.map((registration) => (
@@ -222,30 +327,71 @@ export function EventBatteryResultsPanel({
                           {capture.isPending ? 'Salvando…' : 'Salvar provisório'}
                         </button>
                       </form>
-                    ) : editingResultId === result.id ? (
-                      <form onSubmit={(event) => reviewResult(
-                        event, result.id, registration.id, proof, result.revision, result.rawValue,
-                      )}>
+                    ) : editingResultId === result.id && result.status === 'PROVISIONAL' && canEditProvisional ? (
+                      <form onSubmit={(event) => saveProvisionalEdit(event, result.id, proof)}>
                         <label htmlFor={valueId}>{proof.metricType === 'TIME' ? 'Tempo em segundos' : `Resultado${proof.unit ? ` · ${proof.unit}` : ''}`}</label>
-                        <input id={valueId} name="rawValue" type="number" min="0" step="any" required defaultValue={result.rawValue ?? ''} />
-                        <label htmlFor={`event-battery-review-reason-${result.id}`}>Motivo da revisão</label>
-                        <input id={`event-battery-review-reason-${result.id}`} name="reason" minLength={3} required placeholder="Ex.: conferido pela súmula" />
+                        <input
+                          id={valueId}
+                          name="rawValue"
+                          type="number"
+                          min="0"
+                          step="any"
+                          required
+                          value={partialDrafts[result.id]?.value ?? String(result.rawValue ?? '')}
+                          onChange={(event) => setPartialDrafts((previous) => ({
+                            ...previous,
+                            [result.id]: {
+                              value: event.target.value,
+                              reason: previous[result.id]?.reason ?? '',
+                              expectedRevision: previous[result.id]?.expectedRevision ?? result.revision,
+                            },
+                          }))}
+                        />
+                        <label htmlFor={`event-battery-review-reason-${result.id}`}>Motivo do ajuste</label>
+                        <input
+                          id={`event-battery-review-reason-${result.id}`}
+                          name="reason"
+                          minLength={3}
+                          required
+                          placeholder="Ex.: conferido pela súmula"
+                          value={partialDrafts[result.id]?.reason ?? ''}
+                          onChange={(event) => setPartialDrafts((previous) => ({
+                            ...previous,
+                            [result.id]: {
+                              value: previous[result.id]?.value ?? String(result.rawValue ?? ''),
+                              reason: event.target.value,
+                              expectedRevision: previous[result.id]?.expectedRevision ?? result.revision,
+                            },
+                          }))}
+                        />
                         <div className="toolbar">
                           <button className="button small primary" type="submit" disabled={update.isPending}>
-                            {update.isPending ? 'Revisando…' : 'Confirmar revisão'}
+                            {update.isPending ? 'Salvando…' : 'Salvar provisório'}
                           </button>
                           <button className="button small" type="button" onClick={() => setEditingResultId(null)}>Cancelar</button>
                         </div>
                       </form>
                     ) : (
-                      <button
-                        type="button"
-                        className="button small"
-                        onClick={() => setEditingResultId(result.id)}
-                        data-testid={`button-review-result-${result.id}`}
-                      >
-                        {result.status === 'PROVISIONAL' ? 'Revisar resultado' : 'Revisar / corrigir'}
-                      </button>
+                      <div className="toolbar">
+                        {result.status === 'PROVISIONAL' && canEditProvisional && (
+                          <button
+                            type="button"
+                            className="button small"
+                            onClick={() => beginProvisionalEdit(result)}
+                            data-testid={`button-edit-provisional-result-${result.id}`}
+                          >
+                            Ajustar provisório
+                          </button>
+                        )}
+                        <Link
+                          id={`event-battery-results-link-${result.id}`}
+                          className="button small"
+                          href={`/admin/events/${encodeURIComponent(eventId)}?tab=results&registrationId=${encodeURIComponent(registration.id)}&proofId=${encodeURIComponent(proof.id)}`}
+                          data-testid={`link-review-result-${result.id}`}
+                        >
+                          {result.status === 'VALIDATED' ? 'Corrigir em Resultados' : 'Confirmar em Resultados'}
+                        </Link>
+                      </div>
                     )}
                   </section>
                 );
