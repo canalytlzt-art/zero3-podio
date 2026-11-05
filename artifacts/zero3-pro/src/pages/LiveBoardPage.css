@@ -529,6 +529,62 @@ body:has(.live-board-page) {
   .live-board-page .lb-view-switch button { transition: none; }
 }
 
+/* Complete event-battery list and operational status. */
+.live-board-page .lb-event-battery-list { display: grid; gap: 16px; }
+.live-board-page .lb-event-battery.is-requested { border-color: #8c6bd3; box-shadow: 0 0 0 2px #583aab24; }
+.live-board-page .lb-event-battery-meta { display: grid; justify-items: end; gap: 8px; min-width: min(100%, 280px); }
+.live-board-page .lb-event-battery-times { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 16px; }
+.live-board-page .lb-event-battery-times > span { display: grid; gap: 2px; text-align: right; }
+.live-board-page .lb-event-battery-times small { color: #77727e; font: 700 8px/1.4 var(--font-data, Consolas, monospace); text-transform: uppercase; }
+.live-board-page .lb-event-battery-times strong { color: #393341; font: 600 10px/1.4 var(--font-data, Consolas, monospace); }
+.live-board-page .lb-operational-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 7px;
+  border: 1px solid #d7d2df;
+  border-radius: 3px;
+  color: #4c4654;
+  background: #f2f0f5;
+  font: 700 8px/1.35 var(--font-data, Consolas, monospace);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.live-board-page .lb-operational-status.is-running { color: #426b52; border-color: #c6ddcc; background: #e9f2eb; }
+.live-board-page .lb-operational-status.is-preparation { color: #70511d; border-color: #e6dcc8; background: #f5f0e5; }
+.live-board-page .lb-operational-status.is-paused,
+.live-board-page .lb-operational-status.is-under_review,
+.live-board-page .lb-operational-status.is-cap_reached { color: #80513e; border-color: #ecd9cf; background: #f7ebe4; }
+.live-board-page .lb-operational-status.is-finalized { color: #3f6251; border-color: #c6ddcc; background: #e5eee7; }
+.live-board-page .lb-event-battery-category-tag {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 5px;
+  padding: 3px 6px;
+  color: #4f326f;
+  border-radius: 3px;
+  background: #eee7f8;
+  font: 700 8px/1.2 var(--font-data, Consolas, monospace);
+}
+.live-board-page .lb-event-battery-team { min-width: 200px; }
+.live-board-page .lb-event-battery-table { min-width: 900px; table-layout: fixed; }
+.live-board-page .lb-event-battery-table th:first-child,
+.live-board-page .lb-event-battery-table td:first-child { width: 145px; }
+.live-board-page .lb-event-battery-table th:nth-child(2),
+.live-board-page .lb-event-battery-table td:nth-child(2) { width: 250px; }
+.live-board-page .lb-event-battery-table th > span,
+.live-board-page .lb-event-battery-table th > small { display: block; }
+.live-board-page .lb-event-battery-table th > small { margin-top: 4px; color: #77727e; font: 500 8px/1.35 var(--font-data, Consolas, monospace); text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
+.live-board-page .lb-event-battery-table td:first-child { vertical-align: middle; }
+
+@media (max-width: 600px) {
+  .live-board-page .lb-event-battery-meta { justify-items: start; min-width: 0; width: 100%; }
+  .live-board-page .lb-event-battery-times { justify-content: flex-start; }
+  .live-board-page .lb-event-battery-times > span { text-align: left; }
+  .live-board-page .lb-event-battery-table { min-width: 880px; }
+}
+
 /* ZERO3 Games public identity */
 .live-board-page {
   --lb-ink: #181720;
