@@ -18,6 +18,11 @@ import type {
 } from '@workspace/api-client-react';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { eventBatteryCode } from '@/lib/event-battery-code';
+import {
+  formatBrasiliaDateTime,
+  publicBatteryOperationalLabel,
+  publicBatteryOperationalState,
+} from '@/lib/public-battery-status';
 import './LiveBoardPage.css';
 
 type BoardView = 'battery' | 'overall';
@@ -187,6 +192,12 @@ type EventBatteryProjection = {
   id: string;
   order: number;
   name: string;
+  state: Zero3EventBattery['state'];
+  elapsedMs: number;
+  timeCapMs: number;
+  firstStartedAt: Date | string | null;
+  startedAt: Date | string | null;
+  operationalFinalized: boolean;
   categories: string[];
   registrations: Zero3EventBattery['registrations'];
   proofs: NonNullable<Zero3PublicBattery['proofs']>;
@@ -204,6 +215,12 @@ function eventBatteryProjection(battery: Zero3EventBattery | Zero3PublicBattery)
     id: 'id' in battery ? battery.id : battery.batteryId || '',
     order: battery.order,
     name: battery.name,
+    state: battery.state,
+    elapsedMs: battery.elapsedMs ?? 0,
+    timeCapMs: battery.timeCapMs ?? 0,
+    firstStartedAt: 'firstStartedAt' in battery ? battery.firstStartedAt ?? null : null,
+    startedAt: 'startedAt' in battery ? battery.startedAt ?? null : null,
+    operationalFinalized: battery.operationalFinalized === true,
     categories: battery.categories,
     registrations: battery.registrations,
     proofs: battery.proofs || [],
@@ -217,48 +234,75 @@ function eventBatteryProjection(battery: Zero3EventBattery | Zero3PublicBattery)
   };
 }
 
-function EventBatteryResultsView({ battery }: { battery: EventBatteryProjection }) {
+function EventBatteryResultsView({
+  battery,
+  highlighted = false,
+}: {
+  battery: EventBatteryProjection;
+  highlighted?: boolean;
+}) {
   const proofs = [...battery.proofs].sort((a, b) => a.order - b.order);
+  const operationalState = publicBatteryOperationalState({
+    state: battery.state,
+    operationalFinalized: battery.operationalFinalized,
+    elapsedMs: battery.elapsedMs,
+    timeCapMs: battery.timeCapMs,
+  });
+  const operationalLabel = publicBatteryOperationalLabel(operationalState);
   const official = battery.finalized && battery.finalizationCurrent;
   const publicationLabel = official
     ? 'PUBLICAÇÃO OFICIAL'
     : battery.finalized
       ? 'CORREÇÃO PENDENTE'
       : 'CLASSIFICAÇÃO PROVISÓRIA';
-  if (!battery.registrations.length) {
-    return <div className="lb-message lb-message-centered" data-testid="empty-event-battery-registrations">
-      <div className="lb-message-symbol"><Trophy size={19} aria-hidden="true" /></div>
-      <div><h2>Nenhuma inscrição nesta bateria</h2><p>A bateria selecionada não tem inscrições vinculadas.</p></div>
-    </div>;
-  }
   return (
-    <article className="lb-event-battery" data-testid={`card-event-battery-${battery.id}`}>
+    <article
+      className={`lb-event-battery ${highlighted ? 'is-requested' : ''}`}
+      data-testid={`card-event-battery-${battery.id}`}
+    >
       <header className="lb-event-battery-heading">
         <div><span>BATERIA {eventBatteryCode(battery.order)}</span><h3>{battery.name}</h3></div>
-        <div className={`lb-event-battery-publication ${official ? 'is-official' : battery.finalized ? 'is-pending' : 'is-provisional'}`}>
-          {publicationLabel}
-          {battery.finalizationVersion != null && <small>Versão {battery.finalizationVersion}</small>}
+        <div className="lb-event-battery-meta">
+          <span className={`lb-operational-status is-${operationalState.toLowerCase()}`}
+            data-testid={`status-operational-battery-${battery.id}`}>{operationalLabel}</span>
+          <div className="lb-event-battery-times">
+            <span><small>Horário previsto</small><strong>Não informado</strong></span>
+            <span><small>Início real · Brasília</small><strong>{formatBrasiliaDateTime(battery.firstStartedAt ?? battery.startedAt)}</strong></span>
+          </div>
+          <span className={`lb-event-battery-publication ${official ? 'is-official' : battery.finalized ? 'is-pending' : 'is-provisional'}`}>
+            {publicationLabel}
+            {battery.finalizationVersion != null && <small>Versão {battery.finalizationVersion}</small>}
+          </span>
         </div>
       </header>
       {!official && (
         <p className="lb-event-battery-note" role="status">
-          Resultados provisórios e revisados aparecem aqui. Eles não alteram os pontos oficiais até a publicação da bateria.
+          Resultados e revisões aparecem aqui. Eles não alteram os pontos oficiais até a publicação explícita do ranking do evento.
         </p>
       )}
-      {battery.categories.map((category) => {
+      {!battery.registrations.length ? (
+        <div className="lb-empty lb-empty-inline" data-testid={`empty-event-battery-registrations-${battery.id}`}>
+          <strong>Bateria sem inscrições</strong>
+          <span>{proofs.length ? `${proofs.length} provas configuradas; nenhuma equipe está vinculada a esta bateria.` : 'Nenhuma equipe está vinculada a esta bateria.'}</span>
+        </div>
+      ) : battery.categories.map((category) => {
         const registrations = battery.registrations.filter((item) => item.category === category);
         return (
           <section className="lb-event-battery-category" key={category} aria-label={`Resultados ${category}`}>
             <header><strong>{category}</strong><span>{registrations.length} inscrições</span></header>
             <div className="lb-event-battery-table-wrap">
               <table className="lb-event-battery-table">
-                <thead><tr><th>Raia</th><th>Equipe / atletas</th>{proofs.map((proof) =>
-                  <th key={proof.id}>{proof.name || `Prova ${proof.order}`}</th>,
+                <thead><tr><th>STATUS</th><th>EQUIPE / ATLETAS</th>{proofs.map((proof) =>
+                  <th key={proof.id}><span>PROVA {proof.order}</span><small>{proof.name || `Prova ${proof.order}`}</small></th>,
                 )}</tr></thead>
                 <tbody>{registrations.map((registration) => <tr key={registration.id}>
-                  <td>{registration.laneLabel || '—'}</td>
-                  <td><strong>{registration.teamName || registration.athleteNames.join(' / ') || registration.id}</strong>
-                    <small>{registration.athleteNames.join(' · ')}</small></td>
+                  <td><span className={`lb-operational-status is-${operationalState.toLowerCase()}`}
+                    data-testid={`status-operational-entry-${battery.id}-${registration.id}`}>{operationalLabel}</span></td>
+                  <td className="lb-event-battery-team">
+                    <strong>{registration.teamName || registration.athleteNames.join(' / ') || 'Equipe sem nome'}</strong>
+                    {registration.athleteNames.length > 0 && <small>{registration.athleteNames.join(' · ')}</small>}
+                    <span className="lb-event-battery-category-tag">{registration.category}</span>
+                  </td>
                   {proofs.map((proof) => {
                     const result = battery.results.find((item) =>
                       item.registrationId === registration.id && item.proofId === proof.id,
@@ -283,13 +327,14 @@ function EventBatteryResultsView({ battery }: { battery: EventBatteryProjection 
                         : formatSnapshotValue(result.rawValue, proof);
                     return <td key={proof.id} data-testid={`event-live-result-${registration.id}-${proof.id}`}>
                       <strong>{score?.placement != null ? `${score.placement}º · ` : ''}{value}</strong>
-                      <small className={result?.status === 'PROVISIONAL' ? 'is-provisional' : ''}>{status}</small>
+                      <small className={result?.status === 'PROVISIONAL' ? 'is-provisional' : ''}>
+                        {result ? status : proof.configured ? 'PENDENTE' : 'PROVA NÃO CONFIGURADA'}
+                      </small>
                     </td>;
-                  })}
-                </tr>)}</tbody>
+                  })}</tr>)}</tbody>
               </table>
             </div>
-            <footer>{official ? 'Classificação publicada' : 'Classificação provisória'} · {battery.pendingResultCount} pendência(s)</footer>
+            <footer>{official ? 'Publicação da bateria disponível' : 'Resultados provisórios'} · {battery.pendingResultCount} pendência(s)</footer>
           </section>
         );
       })}

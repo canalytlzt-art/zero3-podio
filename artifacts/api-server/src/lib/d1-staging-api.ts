@@ -182,7 +182,8 @@ async function publicBoard(DB: D1Database, eventId?: string) {
   if (!event) return GetZero3PublicBoardResponse.parse({
     serverTime: new Date(), results: [], proofs: [], registrations: [],
     leaderboards: [], podiums: [], activeHeats: [],
-    batteryOperationsEnabled: true, activeBattery: null, completedBatteries: [], batteryTimers: [],
+    batteryOperationsEnabled: true, activeBattery: null, completedBatteries: [],
+    completedEventBatteries: [], eventBatteries: [], batteryTimers: [],
   });
 
   const [proofResult, regResult, resultResult, athleteResult, podiumResult, activeResult, heatResult, heatEntryResult, heatRunResult, publicationResult] = await Promise.all([
@@ -542,6 +543,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     batteryOperationsEnabled:true,batteryModel:"EVENT",
     activeBattery:activeEventBattery,
     completedEventBatteries:eventBatteries.filter(item=>item.operationalFinalized||item.finalized),
+    eventBatteries,
     completedBatteries,
     batteryTimers:eventBatteries.map(eventBatteryTimer),
   });

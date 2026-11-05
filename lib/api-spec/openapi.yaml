@@ -2168,6 +2168,10 @@ components:
         completedEventBatteries:
           type: array
           items: { $ref: "#/components/schemas/Zero3EventBattery" }
+        eventBatteries:
+          type: array
+          description: Todas as baterias operacionais do evento, na ordem cadastrada.
+          items: { $ref: "#/components/schemas/Zero3EventBattery" }
         batteryTimers:
           type: array
           items: { $ref: "#/components/schemas/Zero3Timer" }
