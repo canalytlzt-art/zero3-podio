@@ -854,6 +854,7 @@ export async function handleD1StagingEventBatteries(
       });
       return true;
     }
+    let finalizationStage = "load_battery";
     try {
       const batteries = await listD1EventBatteries(DB, params.data.eventId);
       const battery = batteries?.find((item) => item.id === params.data.batteryId);
@@ -888,6 +889,7 @@ export async function handleD1StagingEventBatteries(
         d1ApiError(req, res, 409, "BATTERY_EMPTY", "Adicione ao menos uma inscrição antes de finalizar a bateria.");
         return true;
       }
+      finalizationStage = "load_timer";
       const existingRun = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE battery_id=? AND event_id=?")
         .bind(battery.id, battery.eventId).first<RunRow>();
       const stamp = d1IsoNow();
@@ -906,6 +908,7 @@ export async function handleD1StagingEventBatteries(
         stopped_at: null,
       };
       const nextRun = eventBatteryFinalizedRun(run, new Date(stamp));
+      finalizationStage = "commit_finalization";
       await DB.batch([
         DB.prepare(`INSERT OR IGNORE INTO zero3_battery_runs(battery_id,event_id)
           SELECT ?,? WHERE EXISTS(
@@ -934,6 +937,7 @@ export async function handleD1StagingEventBatteries(
           WHERE event_id=? AND battery_id=?`)
           .bind(stamp, battery.eventId, battery.id),
       ]);
+      finalizationStage = "verify_persisted_state";
       const refreshed = await listD1EventBatteries(DB, battery.eventId);
       const saved = refreshed?.find((item) => item.id === battery.id);
       if (!saved?.operationalFinalized) {
@@ -968,7 +972,7 @@ export async function handleD1StagingEventBatteries(
           requestId: (req as Request & { id?: string }).id,
           method: req.method,
           path: route,
-          stage: "battery_finalization",
+          stage: finalizationStage,
         }, "D1 battery finalization failed");
         d1ApiError(req, res, 503,
           isD1SchemaNotReady(cause) ? "D1_SCHEMA_NOT_READY" : "DATABASE_UNAVAILABLE",

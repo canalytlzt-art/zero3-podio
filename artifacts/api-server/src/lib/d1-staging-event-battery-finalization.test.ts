@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eventBatteryFinalizedRun } from "./d1-staging-event-batteries";
+import { isD1SchemaNotReady } from "./d1-staging-shared";
 
 function run(overrides: Record<string, unknown> = {}) {
   return {
@@ -60,4 +61,10 @@ test("finalizing a stopped battery does not change its saved duration", () => {
   assert.equal(result.elapsedMs, 91_234);
   assert.equal(result.state, "FINISHED");
   assert.equal(result.stoppedAt, now.toISOString());
+});
+
+test("missing D1 migration errors are classified separately from runtime failures", () => {
+  assert.equal(isD1SchemaNotReady(new Error("no such column: operational_finalized_at")), true);
+  assert.equal(isD1SchemaNotReady(new Error("no such table: zero3_ranking_publications")), true);
+  assert.equal(isD1SchemaNotReady(new Error("database is locked")), false);
 });

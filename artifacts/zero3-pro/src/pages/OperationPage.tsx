@@ -114,7 +114,9 @@ export function OperationPage() {
     :operationBatteryNotFound?'Bateria não encontrada'
      :!operationBattery?'Aguardando seleção'
      :eventBatteryMode&&operationBattery.operationalFinalized
-       ?'Finalizada'
+        ?operationBattery.pendingResultCount>0||readinessIssues.length>0
+          ?'Finalizada — resultados parciais'
+          :'Finalizada'
        :!eventBatteryMode&&operationBattery.finalized
        ?operationBattery.finalizationCurrent?'Finalizada':'Correção pendente de publicação'
       :eventBatteryMode&&readinessIssues.length>0?'Em apuração'

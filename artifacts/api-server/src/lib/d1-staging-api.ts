@@ -475,14 +475,14 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       };
     }).filter((item):item is NonNullable<typeof item>=>Boolean(item))
     .sort((a,b)=>a.proofOrder-b.proofOrder||a.order-b.order);
-  const timer = activeBattery ? (() => {
+   const timer = activeBattery ? (() => {
     const timer = activeRun ?? {
       event_id:event.id,proof_id:activeBattery.proofId,battery_order:activeBattery.order,
       state:"IDLE",elapsed_ms:0,started_at:null,preparation_ends_at:null,
       version:0,last_command_id:null,updated_at:now.toISOString(),
     };
     return d1TimerDto(timer,event.id,event.preparation_seconds,now);
-  })() : undefined;
+   })() : undefined;
   const activeSelection=await DB.prepare("SELECT battery_id FROM zero3_active_batteries WHERE event_id=?")
     .bind(event.id).first<{battery_id:string|null}>();
   const selectedEventBattery=activeSelection?.battery_id
@@ -532,13 +532,14 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     };
   });
   return GetZero3PublicBoardResponse.parse({
-    serverTime: now, event: eventDto(event), timer:activeEventTimer??timer,
+    serverTime: now, event: eventDto(event),
+    timer: activeEventBattery ? activeEventTimer : eventBatteries.length ? undefined : timer,
     results: resultDtos, proofs: proofs.map(proofDto),
     registrations: registrationsDto,
     leaderboards: scoring.leaderboards, podiums, activeHeats,
     batteryOperationsEnabled:true,batteryModel:"EVENT",
     activeBattery:activeEventBattery,
-    completedEventBatteries:eventBatteries.filter(item=>item.finalized),
+    completedEventBatteries:eventBatteries.filter(item=>item.operationalFinalized||item.finalized),
     completedBatteries,
     batteryTimers:eventBatteries.map(eventBatteryTimer),
   });
@@ -673,12 +674,16 @@ export function d1StagingApi(
           error(res, 400, "INVALID_REQUEST", params.error.message, req);
           return;
         }
+        let publicationFingerprint: string | null = null;
+        let publicationStage = "load_publication_state";
         try {
           const state = await loadD1RankingPublicationState(DB, params.data.eventId);
           if (!state) {
             error(res, 404, "EVENT_NOT_FOUND", "Evento não encontrado.", req);
             return;
           }
+          publicationFingerprint = state.plan.fingerprint;
+          publicationStage = req.method === "GET" ? "return_preview" : "validate_publication";
           if (req.method === "GET") {
             res.json(GetZero3RankingPublicationResponse.parse({
               eventId: params.data.eventId,
@@ -808,6 +813,7 @@ export function d1StagingApi(
                 SELECT 1 FROM zero3_ranking_publications
                 WHERE event_id=? AND version=? AND fingerprint=?
               )`).bind(candidateJson, params.data.eventId, nextVersion, state.plan.fingerprint);
+          publicationStage = "commit_publication";
           const [insertResult, updateResult] = await DB.batch([
             insert,
             update,
@@ -853,7 +859,7 @@ export function d1StagingApi(
           if (isD1SchemaNotReady(cause)) {
             workerLogger.error({
               error: cause, requestId: requestId(req), method: req.method,
-              path: route, stage: "ranking_publication_schema",
+              path: route, stage: publicationStage,
             }, "D1 ranking publication schema is not ready");
             error(res, 503, "D1_SCHEMA_NOT_READY",
               "O schema D1 está desatualizado e precisa das migrations de publicação do ranking.", req);
@@ -862,7 +868,7 @@ export function d1StagingApi(
           if (isD1ConstraintConflict(cause)) {
             const duplicate = await DB.prepare(`SELECT id,version,fingerprint,result_count,published_at,published_by
               FROM zero3_ranking_publications WHERE event_id=? AND fingerprint=? LIMIT 1`)
-              .bind(params.data.eventId, body.data.expectedFingerprint).first<{
+              .bind(params.data.eventId, publicationFingerprint).first<{
                 id:string;version:number;fingerprint:string;result_count:number;
                 published_at:string;published_by:string;
               }>().catch(() => null);

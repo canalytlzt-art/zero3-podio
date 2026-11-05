@@ -747,7 +747,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
        const orderOccupant=batteries.find(item=>item.id!==battery.id&&item.order===editingOrder);
       const isAdmin=me.data?.role==='ADMIN';
      return <article className="panel panel-pad" key={battery.id}>
-        <div className="op-section-head"><div><div className="eyebrow">Bateria {eventBatteryCode(battery.order)} · todas as provas</div><h3 className="panel-title">{battery.name}</h3></div><span className={`pill ${battery.operationalFinalized?'neutral':readyCount===battery.expectedResultCount&&battery.expectedResultCount>0?'good':'warn'}`}>{battery.operationalFinalized?'Finalizada':readyCount===battery.expectedResultCount&&battery.expectedResultCount>0?'Pronta para finalizar':'Em apuração'}</span></div>
+       <div className="op-section-head"><div><div className="eyebrow">Bateria {eventBatteryCode(battery.order)} · todas as provas</div><h3 className="panel-title">{battery.name}</h3></div><span className={`pill ${battery.operationalFinalized?'neutral':readyCount===battery.expectedResultCount&&battery.expectedResultCount>0?'good':'warn'}`}>{battery.operationalFinalized?battery.pendingResultCount>0?'Finalizada · resultados parciais':'Finalizada':readyCount===battery.expectedResultCount&&battery.expectedResultCount>0?'Pronta para finalizar':'Em apuração'}</span></div>
        <div className="toolbar"><span className="field-help">{battery.registrations.length} equipes · {battery.categories.join(' + ')||'sem categoria'} · {readyCount} de {battery.expectedResultCount} resultados prontos</span>
         {battery.state==='PAUSED'&&<span className="field-help">Cronômetro pausado; renomear ou reordenar preserva o tempo.</span>}
        <button className={`button small ${isActive?'primary':''}`} disabled={select.isPending||isActive} onClick={()=>selectBattery(battery.id)}>{isActive?'Na TV':'Colocar na TV'}</button>
@@ -771,7 +771,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
       </div>
       {battery.expectedResultCount===0&&<p className="field-help">Adicione inscrições à bateria antes de finalizar.</p>}
       {exceptionPending&&<p className="field-help">DNS/DNF requer regra oficial de exceção antes da publicação.</p>}
-      {unresolved(battery)&&<p className="field-help">Há empate sem regra oficial configurada; a finalização está bloqueada.</p>}
+       {unresolved(battery)&&<p className="field-help">Há empate sem regra oficial configurada; os pontos afetados permanecem pendentes no ranking até a regra ser resolvida.</p>}
       <div className="lane-list">{battery.registrations.map(reg=><div className="lane-card" key={reg.id}>
        <span className="lane-tag">{reg.laneLabel||'—'}</span><div style={{minWidth:0,flex:1}}><div className="lane-name">{reg.teamName||reg.athleteNames.join(' / ')||reg.id}</div><div className="lane-meta">{reg.category} · {reg.athleteNames.join(' · ')}</div>
         <div className="lane-meta">{battery.proofs.slice().sort((a,b)=>a.order-b.order).map(proof=>{

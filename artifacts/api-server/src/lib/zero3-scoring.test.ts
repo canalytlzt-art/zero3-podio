@@ -94,7 +94,7 @@ test("calculates placement points across four proofs, including a 15-point total
   assert.equal(rx?.entries[0]?.overallPlace, 1);
 });
 
-test("gives incomplete teams a provisional placement without treating a missing proof as zero", () => {
+test("gives incomplete teams a provisional placement based only on scored proofs", () => {
   const results = resultRows().filter((result) => result.id !== "rx-Delta-p4");
   const board = calculateCategoryLeaderboard({
     category: "RX",
@@ -106,11 +106,11 @@ test("gives incomplete teams a provisional placement without treating a missing 
   const delta = board.entries.find((entry) => entry.registrationId === "rx-Delta");
   assert.equal(delta?.completedProofs, 3);
   assert.equal(delta?.proofScores[3]?.status, "MISSING");
-  assert.equal(delta?.overallPlace, 4);
+  assert.equal(delta?.overallPlace, 3);
   assert.equal(delta?.status, "PARTIAL");
 });
 
-test("provisional results are visible as progress but do not earn points or a placement", () => {
+test("provisional proof results earn no points while existing official points can still rank partially", () => {
   const results = resultRows();
   const provisional = results.find((result) => result.id === "rx-Alfa-p1");
   assert.ok(provisional);
@@ -237,8 +237,18 @@ test("partial event rankings expose current overall places before event completi
 test("partial overall ties share a provisional place instead of an arbitrary order", () => {
   const results = resultRows().filter((result) =>
     result.registrationId.startsWith("rx-") &&
-    result.proofId !== "p4",
+    ["p1", "p2"].includes(result.proofId ?? ""),
   );
+  const p2Values: Record<string, number> = {
+    "rx-Alfa": 1.5,
+    "rx-Bravo": 2.5,
+    "rx-Charlie": 4.5,
+    "rx-Delta": 3.5,
+    "rx-Echo": 0.5,
+  };
+  for (const result of results) {
+    if (result.proofId === "p2") result.rawValue = p2Values[result.registrationId] ?? null;
+  }
   const board = calculateCategoryLeaderboard({
     category: "RX",
     eventStatus: "ACTIVE",
@@ -248,9 +258,9 @@ test("partial overall ties share a provisional place instead of an arbitrary ord
   });
   const alpha = board.entries.find((entry) => entry.registrationId === "rx-Alfa");
   const bravo = board.entries.find((entry) => entry.registrationId === "rx-Bravo");
-  assert.equal(alpha?.totalPoints, 3);
-  assert.equal(bravo?.totalPoints, 6);
-  assert.equal(alpha?.overallPlace, 1);
+  assert.equal(alpha?.totalPoints, 5);
+  assert.equal(bravo?.totalPoints, 5);
+  assert.equal(alpha?.overallPlace, 2);
   assert.equal(bravo?.overallPlace, 2);
 });
 
