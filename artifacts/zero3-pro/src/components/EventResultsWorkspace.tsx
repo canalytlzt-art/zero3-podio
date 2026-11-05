@@ -197,10 +197,10 @@ export function EventResultsWorkspace({
     setSuccess('');
   };
   const draftKey = (registrationId: string, proofId: string) => `${registrationId}:${proofId}`;
-  const setDraftValue = (key: string, field: keyof Draft, value: string) => {
+  const setDraftValue = (key: string, field: 'value' | 'reason', value: string) => {
     setDrafts((previous) => ({
       ...previous,
-      [key]: { value: previous[key]?.value ?? '', reason: previous[key]?.reason ?? '', ...previous[key], [field]: value },
+      [key]: { ...(previous[key] ?? { value: '', reason: '' }), [field]: value },
     }));
   };
   const getDraft = (key: string, result?: Zero3Result) => drafts[key] ?? {

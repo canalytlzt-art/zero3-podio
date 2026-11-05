@@ -11,6 +11,7 @@ import {
 } from '@workspace/api-client-react';
 import type { Zero3EventBattery, Zero3Proof } from '@workspace/api-client-react';
 import { batteryIssueHref, type BatteryReadinessIssue } from '@/lib/event-battery-readiness';
+import { getHttpErrorStatus } from '@/lib/api-error-policy';
 import { Link } from 'wouter';
 
 interface EventBatteryResultsPanelProps {
@@ -197,7 +198,7 @@ export function EventBatteryResultsPanel({
         onSaved();
       },
       onError: (failure) => {
-        if (failure && typeof failure === 'object' && 'status' in failure && (failure as { status?: unknown }).status === 409) {
+        if (getHttpErrorStatus(failure) === 409) {
           setConflictResultId(resultId);
           setError('O resultado mudou no servidor. Seu rascunho foi preservado; atualize os dados antes de tentar novamente.');
           return;
