@@ -13,6 +13,14 @@ const tvAssetsStyle = { '--tv-photo': `url("${publicBase}zero3-games/zero3-foto.
 
 const clockText=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(d);
 const duration=(ms?:number|null)=>ms==null?'—':`${String(Math.floor(ms/60000)).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(Math.floor(ms%1000/10)).padStart(2,'0')}`;
+function TimerDigits({value}:{value:string}){
+  const separator=value.lastIndexOf('.');
+  if(separator<0)return <span className="tv-timer-main" aria-hidden="true">{value}</span>;
+  return <>
+    <span className="tv-timer-main" aria-hidden="true">{value.slice(0,separator)}</span>
+    <span className="tv-timer-fraction" aria-hidden="true">{value.slice(separator)}</span>
+  </>;
+}
 function BatteryCategory({category,battery,proof}:{category:string;battery:Zero3PublicBattery;proof?:Zero3Proof}){
   const registrations=battery.registrations.filter(reg=>reg.category===category);
   const board=battery.leaderboards.find(item=>item.category===category);
@@ -174,6 +182,7 @@ function TimerReadout({timer,serverTime}:{timer:Zero3PublicBoard['timer'];server
  const prep=timer?.state==='PREPARATION'&&typeof timer.preparationEndsAt==='string'
   ?Math.max(0,Date.parse(timer.preparationEndsAt)-now)
   :Math.max(0,(timer?.preparationRemainingMs??0)-delta);
- return <div className="tv-timer-box"><small>{timer?.state==='PREPARATION'?'PREPARAÇÃO · BATERIA':'DURAÇÃO DA BATERIA'}</small><strong>{duration(timer?.state==='PREPARATION'?prep:elapsed)}</strong><small>{timerStateLabel(timer?.state)}</small></div>;
+ const formattedDuration=duration(timer?.state==='PREPARATION'?prep:elapsed);
+ return <div className="tv-timer-box"><small>{timer?.state==='PREPARATION'?'PREPARAÇÃO · BATERIA':'DURAÇÃO DA BATERIA'}</small><strong aria-label={formattedDuration}><TimerDigits value={formattedDuration}/></strong><small>{timerStateLabel(timer?.state)}</small></div>;
 }
 function ClockBlock(){const [now,setNow]=useState(()=>new Date());useEffect(()=>{const id=window.setInterval(()=>setNow(new Date()),1000);return()=>window.clearInterval(id);},[]);return <div className="tv-clock-block"><div className="tv-clock-label">HORÁRIO DE BRASÍLIA</div><div className="tv-clock">{clockText(now)}</div><div className="tv-clock-label">RELÓGIO CIVIL · UTC−03</div></div>}

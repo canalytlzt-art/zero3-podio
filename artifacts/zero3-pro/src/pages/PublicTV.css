@@ -25,14 +25,14 @@
 .tv-root .tv-eventline {
   justify-self: center;
   max-width: 100%;
-  overflow: hidden;
+  min-width: 0;
   color: #d8d2e4;
   font: 700 12px/1.4 var(--font-data, Consolas, monospace);
   letter-spacing: .11em;
   text-align: center;
-  text-overflow: ellipsis;
   text-transform: uppercase;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .tv-root .tv-eventline span { color: var(--tv-lime); }
 .tv-root .tv-status-chip {
@@ -50,6 +50,8 @@
   background: #e8ff000d;
   font: 700 10px/1.3 var(--font-data, Consolas, monospace);
   letter-spacing: .05em;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .tv-root .tv-status-chip i,
 .tv-root .tv-status-chip:not(:has(i))::before {
@@ -120,11 +122,17 @@
   letter-spacing: .015em;
 }
 .tv-root .tv-timer-box strong {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: .025em;
+  max-width: 100%;
   font: 750 clamp(76px, 11.5vw, 174px)/.9 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
   letter-spacing: -.075em;
   white-space: nowrap;
 }
+.tv-root .tv-timer-main,
+.tv-root .tv-timer-fraction { white-space: nowrap; }
+.tv-root .tv-timer-fraction { font-size: .43em; letter-spacing: -.045em; }
 .tv-root .tv-timer-box small:last-child {
   display: block;
   width: fit-content;
@@ -198,6 +206,7 @@
   color: #f6f2fb;
   font: 750 clamp(22px, 3vw, 34px)/1.1 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
   letter-spacing: -.025em;
+  overflow-wrap: anywhere;
 }
 .tv-root .tv-battery-heading p { margin: 0; color: #b8b1c4; font-size: 11px; }
 .tv-root .tv-battery-code { color: var(--tv-lime); }
@@ -207,6 +216,8 @@
   font: 700 9px var(--font-data, Consolas, monospace);
   letter-spacing: .06em;
   text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .tv-root .tv-battery-state.running { color: var(--tv-lime); }
 .tv-root .tv-live-board-link {
@@ -260,13 +271,13 @@
 .tv-root .tv-battery-category-count { color: #b3acbe; font: 700 8px var(--font-data, Consolas, monospace); letter-spacing: .08em; }
 .tv-root .tv-heat-podium { margin-top: 12px; padding: 10px; border: 1px solid #40384e; border-radius: 4px; background: #211d2a; }
 .tv-root .tv-podium-title { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 8px; color: #e2d9ef; border-bottom: 1px solid #40384e; font: 700 8px var(--font-data, Consolas, monospace); letter-spacing: .07em; }
-.tv-root .tv-podium-title span { color: #ada3bb; font-size: 7px; text-align: right; }
+.tv-root .tv-podium-title span { color: #c5bbd2; font-size: 9px; line-height: 1.35; text-align: right; overflow-wrap: anywhere; }
 .tv-root .tv-podium-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; padding-top: 10px; }
 .tv-root .tv-place { color: #d4baff; font: 700 8px var(--font-data, Consolas, monospace); letter-spacing: .035em; }
 .tv-root .tv-place.rx { color: var(--tv-lime); }
-.tv-root .tv-place-name { margin-top: 5px; color: #f7f4fb; font-size: 10px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
-.tv-root .tv-place-detail { margin-top: 3px; color: #b4adbe; font-size: 8px; line-height: 1.35; overflow-wrap: anywhere; }
-.tv-root .tv-podium-empty { padding-top: 9px; color: #b8b1c4; font-size: 9px; line-height: 1.5; }
+.tv-root .tv-place-name { margin-top: 5px; color: #f7f4fb; font-size: 11px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.tv-root .tv-place-detail { margin-top: 3px; color: #b4adbe; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.tv-root .tv-podium-empty { padding-top: 9px; color: #b8b1c4; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .tv-root .tv-event-result-table-wrap { margin: 0 -13px; overflow-x: auto; overscroll-behavior-inline: contain; }
 .tv-root .tv-event-result-table { width: 100%; min-width: 700px; border-collapse: collapse; text-align: left; }
 .tv-root .tv-event-result-table th {
@@ -277,12 +288,12 @@
   letter-spacing: .06em;
   text-transform: uppercase;
 }
-.tv-root .tv-event-result-table td { padding: 9px 10px; color: #f0ecf5; border-bottom: 1px solid #302b39; font-size: 9px; vertical-align: top; }
+.tv-root .tv-event-result-table td { padding: 9px 10px; color: #f0ecf5; border-bottom: 1px solid #302b39; font-size: 10px; vertical-align: top; overflow-wrap: anywhere; }
 .tv-root .tv-event-result-table td:first-child { color: var(--tv-lime); font: 700 10px var(--font-data, Consolas, monospace); }
 .tv-root .tv-event-result-table td strong,
 .tv-root .tv-event-result-table td small { display: block; }
 .tv-root .tv-event-result-table td strong { line-height: 1.35; overflow-wrap: anywhere; }
-.tv-root .tv-event-result-table td small { margin-top: 3px; color: #aaa2b5; font-size: 8px; line-height: 1.35; }
+.tv-root .tv-event-result-table td small { margin-top: 3px; color: #c0b8ca; font-size: 9px; line-height: 1.4; overflow-wrap: anywhere; }
 .tv-root .tv-event-result-table td small.provisional { color: #d1b9ff; }
 .tv-root .tv-battery-empty {
   display: grid;
@@ -307,6 +318,8 @@
   background: #1d1a25;
   color: #e1d9eb;
   font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .tv-root .tv-footer-note {
   margin-top: 19px;
@@ -353,7 +366,7 @@
   .tv-root .tv-header { min-height: 58px; grid-template-columns: 1fr auto; gap: 8px; }
   .tv-root .tv-logo { width: 112px; height: 39px; }
   .tv-root .tv-eventline { display: none; }
-  .tv-root .tv-status-chip { font-size: 8px; padding: 7px 8px; }
+  .tv-root .tv-status-chip { max-width: 56vw; font-size: 8px; padding: 7px 8px; }
   .tv-root .tv-clock-section {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto;

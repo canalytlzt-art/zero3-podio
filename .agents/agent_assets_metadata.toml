@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "4_wIDA6N85KzuF-IgBh87"
+uri = "file://generated-artifacts/zero3-public-visual-final/galeria.html"
+type = "html"
+title = "Capturas responsivas — ZERO3 PRO"
+description = "Galeria local de 10 capturas do Preview: TV em 1920×1080, 1024×576, 390 px e 320 px; ranking geral completo; e resultados da bateria no estado atual."
+logical_id = "a520e445-0de6-4f0a-ad39-7f06b800cf3c"
+content_hash = "sha256:6b09825076cfdd5ea6c1bd58db906787d6f16a633ab70997ca9f622e74dcb46e"
+size = 901848
+mtime_ms = 1793846965857
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/a520e445-0de6-4f0a-ad39-7f06b800cf3c/8eb99286-d476-4996-82a3-f3455ea9e8dd"
+storage_version_token = "1793846972304044"
+content_type = "text/html"
