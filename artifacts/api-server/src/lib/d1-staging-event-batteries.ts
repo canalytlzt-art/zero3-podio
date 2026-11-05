@@ -19,6 +19,7 @@ import {
   UpdateZero3EventBatteryBody,
   UpdateZero3EventBatteryParams,
   UpdateZero3EventBatteryResponse,
+  zero3EventBatteryDeleteConfirmation,
 } from "@workspace/api-zod";
 import { calculateCategoryLeaderboard } from "./zero3-scoring";
 import {
@@ -739,7 +740,7 @@ export async function handleD1StagingEventBatteries(
         d1ApiError(req, res, 409, "BATTERY_CHANGED", "A bateria mudou. Atualize e confira o impacto antes de excluir.");
         return true;
       }
-      const confirmation = `EXCLUIR BATERIA P${String(battery.order).padStart(2, "0")}: ${battery.name}`;
+      const confirmation = zero3EventBatteryDeleteConfirmation(battery.order, battery.name);
       if (body.data.confirmation !== confirmation) {
         d1ApiError(req, res, 409, "BATTERY_DELETE_CONFIRMATION_MISMATCH",
           `Digite exatamente ${confirmation} para confirmar.`);

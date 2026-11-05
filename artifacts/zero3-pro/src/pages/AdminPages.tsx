@@ -26,6 +26,7 @@ import {
 import type { Zero3Event, Zero3Podium, Zero3Registration, Zero3Result, Zero3Role as RoleType, Zero3RosterManagementEntry, Zero3Heat, Zero3EventBattery, Zero3PublicBoard } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
 import { AthletePicker } from '@/components/AthletePicker';
+import { BatteryRegistrationPicker } from '@/components/BatteryRegistrationPicker';
 import { EventBatteryResultsPanel } from '@/components/EventBatteryResultsPanel';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { liveBoardHrefForBattery } from '@/lib/live-board-navigation';
@@ -34,7 +35,7 @@ import { normalizeTeamNameInput, teamNameInputError } from '@/lib/roster-managem
 import { describeAthleteReplacement, normalizeAthleteSearch } from '@/lib/athlete-search';
 import { primaryTimerAction, timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryTimerControl } from '@/lib/event-battery-timer-controls';
-import { eventBatteryCode } from '@/lib/event-battery-code';
+import { eventBatteryCode, zero3EventBatteryDeleteConfirmation } from '@/lib/event-battery-code';
 import {
  batteryIssueActionLabel, batteryIssueHref, batteryIssueLabel,
  batteryReadinessCount, getBatteryReadinessIssues,
@@ -615,6 +616,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
    const [swapWithBatteryId,setSwapWithBatteryId]=useState<string|null>(null);
   const [deleteBatteryId,setDeleteBatteryId]=useState<string|null>(null);
   const [deleteBatteryConfirmation,setDeleteBatteryConfirmation]=useState('');
+  const [createRegistrationIds,setCreateRegistrationIds]=useState<string[]>([]);
  const [order,setOrder]=useState<number|undefined>(undefined);
  const [resultsBatteryId,setResultsBatteryId]=useState<string|null>(null);
  const [resultsFocusIssue,setResultsFocusIssue]=useState<BatteryReadinessIssue|null>(null);
@@ -661,9 +663,8 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const createBattery=(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget);
   const formElement=event.currentTarget;
-  const registrationIds=form.getAll('registrationIds').map(String);
-  create.mutate({eventId,data:{name:String(form.get('name')||'').trim(),order:Number(form.get('order')),registrationIds}},{
-   onSuccess:()=>{refresh();setError('');formElement.reset();setOrder(undefined);},
+   create.mutate({eventId,data:{name:String(form.get('name')||'').trim(),order:Number(form.get('order')),registrationIds:createRegistrationIds}},{
+    onSuccess:()=>{refresh();setError('');formElement.reset();setOrder(undefined);setCreateRegistrationIds([]);},
    onError:failure=>setError(feedback(failure)),
   });
  };
@@ -727,11 +728,15 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
        (!battery.finalized||!battery.finalizationCurrent);
       const batteryTimer=batteryModel.batteryTimers?.find(item=>item.batteryId===battery.id);
       const timerState=batteryTimer?.state??battery.state;
+       const deleteConfirmationPhrase=zero3EventBatteryDeleteConfirmation(battery.order,battery.name);
+       const hasTimerData=battery.timerVersion>0||battery.state!=='IDLE';
       const timerControl=eventBatteryTimerControl(timerState);
       const canControlTimer=me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE';
        const canEditBattery=(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&
         !['PREPARATION','RUNNING'].includes(battery.state);
        const canEditComposition=battery.state==='IDLE'&&battery.results.length===0&&!battery.finalized;
+       const compositionChanged=editingRegistrationIds.length!==battery.registrations.length||
+        editingRegistrationIds.some(id=>!battery.registrations.some(registration=>registration.id===id));
        const orderOccupant=batteries.find(item=>item.id!==battery.id&&item.order===editingOrder);
       const isAdmin=me.data?.role==='ADMIN';
      return <article className="panel panel-pad" key={battery.id}>
@@ -779,22 +784,24 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
            ?<p>Troca confirmada: {eventBatteryCode(battery.order)} ↔ {eventBatteryCode(orderOccupant.order)}. Salve para aplicar as duas posições de uma vez.</p>
            :<button type="button" className="button small" onClick={()=>setSwapWithBatteryId(orderOccupant.id)}>Trocar posições com {eventBatteryCode(orderOccupant.order)} · {orderOccupant.name}</button>}
          </div>}
-         <div className="field"><label htmlFor={`edit-battery-registrations-${battery.id}`}>Inscrições</label><select id={`edit-battery-registrations-${battery.id}`} multiple value={editingRegistrationIds} disabled={!canEditComposition} style={{minHeight:150}} onChange={event=>setEditingRegistrationIds(Array.from(event.currentTarget.selectedOptions,option=>option.value))}>
-          {(registrations.data||[]).map(reg=>{
-           const assignedElsewhere=batteries.some(other=>other.id!==battery.id&&other.registrations.some(item=>item.id===reg.id));
-           return <option key={reg.id} value={reg.id} disabled={assignedElsewhere}>{reg.category} · {reg.laneLabel||'sem raia'} · {reg.teamName||reg.athleteNames.join(' / ')}{assignedElsewhere?' · já vinculada':''}</option>;
-          })}
-          </select><small className="field-help">A inscrição permanece no evento e só pode pertencer a uma bateria.</small>
+          <div className="field"><span className="battery-picker-field-label">Inscrições</span><BatteryRegistrationPicker
+           registrations={registrations.data||[]}
+           batteries={batteries}
+           currentBatteryId={battery.id}
+           selectedIds={editingRegistrationIds}
+           onConfirm={setEditingRegistrationIds}
+           disabled={!canEditComposition}
+          />
           {!canEditComposition&&<small className="field-help">A composição está protegida por início, resultados ou publicação. Nome e número podem ser editados sem alterar esses dados.</small>}</div>
-         <div className="toolbar"><button type="button" className="button primary" disabled={!editingName.trim()||!Number.isInteger(editingOrder)||editingOrder<1||Boolean(orderOccupant&&swapWithBatteryId!==orderOccupant.id)||updateBattery.isPending} onClick={()=>saveBatteryEdit(battery)}>{updateBattery.isPending?'Salvando…':'Salvar bateria'}</button><button type="button" className="button" onClick={()=>{setEditingBatteryId(null);setSwapWithBatteryId(null);}} disabled={updateBattery.isPending}>Cancelar</button></div>
+          <div className="toolbar"><button type="button" className="button primary" disabled={!editingName.trim()||!Number.isInteger(editingOrder)||editingOrder<1||Boolean(orderOccupant&&swapWithBatteryId!==orderOccupant.id)||updateBattery.isPending} onClick={()=>saveBatteryEdit(battery)}>{updateBattery.isPending?'Salvando…':compositionChanged?'Salvar composição':'Salvar bateria'}</button><button type="button" className="button" onClick={()=>{setEditingBatteryId(null);setSwapWithBatteryId(null);}} disabled={updateBattery.isPending}>Cancelar</button></div>
         </>}
        </section>}
        {deleteBatteryId===battery.id&&<section className="panel panel-pad" role="alertdialog" aria-label={`Confirmar exclusão da bateria ${battery.order}`} style={{marginTop:12,borderColor:'#a34238'}}>
         <h4 className="panel-title">Excluir somente esta bateria?</h4>
-        <p className="field-help">Serão removidos {battery.results.length} resultado(s){battery.finalizationVersion?` e a publicação atual v${battery.finalizationVersion}`:''} desta bateria. As {battery.registrations.length} inscrições, atletas, provas e outras baterias permanecerão. {isActive?'A seleção da TV será limpa.':'A TV não está exibindo esta bateria.'} O ranking e o pódio serão recalculados sem esta publicação.</p>
-         <p className="field-help">A exclusão é bloqueada durante preparação ou cronômetro em execução. Um cronômetro pausado e seus dados serão removidos com a bateria.</p>
-        <div className="field"><label htmlFor={`delete-battery-confirm-${battery.id}`}>Digite EXCLUIR BATERIA {eventBatteryCode(battery.order)}: {battery.name}</label><input id={`delete-battery-confirm-${battery.id}`} value={deleteBatteryConfirmation} onChange={event=>setDeleteBatteryConfirmation(event.target.value)} autoComplete="off" spellCheck={false} placeholder={`EXCLUIR BATERIA ${eventBatteryCode(battery.order)}: ${battery.name}`}/></div>
-        <div className="toolbar"><button type="button" className="button" onClick={()=>{setDeleteBatteryId(null);setDeleteBatteryConfirmation('');}} disabled={deleteBattery.isPending}>Cancelar</button><button type="button" className="button" style={{borderColor:'#a34238',color:'#a34238'}} disabled={deleteBatteryConfirmation!==`EXCLUIR BATERIA ${eventBatteryCode(battery.order)}: ${battery.name}`||!battery.finalizationFingerprint||deleteBattery.isPending} onClick={()=>confirmBatteryDelete(battery)}>{deleteBattery.isPending?'Excluindo…':'Excluir bateria e dados dela'}</button></div>
+         <p className="field-help">Serão removidos {battery.results.length} resultado(s) e todas as publicações exclusivas desta bateria{battery.finalizationVersion?` (publicação vigente v${battery.finalizationVersion})`:''}. As {battery.registrations.length} inscrições, atletas, provas e outras baterias permanecerão. {hasTimerData?`O cronômetro está em estado ${timerStateLabel(battery.state)} e seus dados serão removidos.`:'Não há dados de cronômetro registrados nesta bateria.'} {isActive?'A seleção da TV será limpa.':'A TV não está exibindo esta bateria.'} O ranking e o pódio serão recalculados sem esta bateria.</p>
+          <p className="field-help">A exclusão é bloqueada durante preparação ou cronômetro em execução. Confirme o código e o nome atuais da bateria; após renomear ou reordenar, a frase muda junto com o registro.</p>
+         <div className="field"><label htmlFor={`delete-battery-confirm-${battery.id}`}>Digite {deleteConfirmationPhrase}</label><input id={`delete-battery-confirm-${battery.id}`} value={deleteBatteryConfirmation} onChange={event=>setDeleteBatteryConfirmation(event.target.value)} autoComplete="off" spellCheck={false} placeholder={deleteConfirmationPhrase}/></div>
+        <div className="toolbar"><button type="button" className="button" onClick={()=>{setDeleteBatteryId(null);setDeleteBatteryConfirmation('');}} disabled={deleteBattery.isPending}>Cancelar</button><button type="button" className="button" style={{borderColor:'#a34238',color:'#a34238'}} disabled={deleteBatteryConfirmation!==deleteConfirmationPhrase||!battery.finalizationFingerprint||deleteBattery.isPending} onClick={()=>confirmBatteryDelete(battery)}>{deleteBattery.isPending?'Excluindo…':'Excluir bateria e dados dela'}</button></div>
        </section>}
        {resultsBatteryId===battery.id&&<EventBatteryResultsPanel
         eventId={eventId}
@@ -828,7 +835,12 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
    <p className="field-help">Uma inscrição participa uma única vez no evento. A bateria inclui, em paralelo, todas as provas cadastradas.</p>
    <Field label="Nome da bateria" name="name" required placeholder="Bateria 01"/>
    <div className="field"><label htmlFor="event-battery-order">Número no evento</label><input id="event-battery-order" name="order" type="number" min="1" required value={order??nextOrder} onChange={event=>setOrder(Number(event.target.value))}/></div>
-   <div className="field"><label htmlFor="event-battery-registrations">Inscrições da bateria</label><select id="event-battery-registrations" name="registrationIds" multiple style={{minHeight:180}}>{registrations.data?.map(reg=><option key={reg.id} value={reg.id} disabled={batteries.some(battery=>battery.registrations.some(item=>item.id===reg.id))}>{reg.category} · {reg.laneLabel||'sem raia'} · {reg.teamName||reg.athleteNames.join(' / ')}</option>)}</select><span className="field-help">A categoria vem da inscrição; é possível misturar RX e SC/Scale.</span></div>
+    <div className="field"><span className="battery-picker-field-label">Inscrições da bateria</span><BatteryRegistrationPicker
+     registrations={registrations.data||[]}
+     batteries={batteries}
+     selectedIds={createRegistrationIds}
+     onConfirm={setCreateRegistrationIds}
+    /><span className="field-help">A categoria vem da inscrição; é possível misturar RX e Scale na mesma bateria.</span></div>
    <button className="button primary" disabled={create.isPending||!registrations.data?.length}><Plus size={14}/>{create.isPending?'Criando…':'Criar bateria'}</button>
    {proofs.data?.length!==4&&<p className="field-help">O evento precisa manter quatro provas cadastradas.</p>}
   </form>

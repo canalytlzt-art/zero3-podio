@@ -4,6 +4,7 @@ import {
   DeleteZero3EventBatteryBody,
   DeleteZero3EventBody,
   UpdateZero3EventBatteryBody,
+  zero3EventBatteryDeleteConfirmation,
 } from "@workspace/api-zod";
 import { hasUniqueIds } from "./d1-staging-event-batteries";
 import { validateD1EventTableSet } from "./d1-staging-event-lifecycle";
@@ -95,12 +96,17 @@ test("battery composition edits validate the current name and reject duplicate a
 });
 
 test("battery deletion requires a fresh fingerprint and explicit confirmation", () => {
+  const confirmation = zero3EventBatteryDeleteConfirmation(1, "Bateria teste");
   assert.equal(DeleteZero3EventBatteryBody.safeParse({
-    confirmation: "EXCLUIR BATERIA P01: Bateria teste",
+    confirmation,
     expectedFingerprint: "f".repeat(64),
   }).success, true);
   assert.equal(DeleteZero3EventBatteryBody.safeParse({
-    confirmation: "EXCLUIR BATERIA P01: Bateria teste",
+    confirmation: "EXCLUIR BATERIA 1: Bateria teste",
     expectedFingerprint: "stale",
   }).success, false);
+  assert.equal(
+    zero3EventBatteryDeleteConfirmation(2, "Bateria renomeada"),
+    "EXCLUIR BATERIA P02: Bateria renomeada",
+  );
 });

@@ -1,3 +1,4 @@
-export function eventBatteryCode(order: number): string {
-  return `P${String(order).padStart(2, "0")}`;
-}
+export {
+  zero3EventBatteryCode as eventBatteryCode,
+  zero3EventBatteryDeleteConfirmation,
+} from "@workspace/api-zod";

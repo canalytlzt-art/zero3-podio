@@ -9,6 +9,7 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:battery-code": "node --experimental-strip-types --test src/lib/event-battery-code.test.ts",
+    "test:battery-registration-picker": "node --experimental-strip-types --test src/lib/battery-registration-picker.test.ts",
     "test:battery-timer-controls": "node --experimental-strip-types --test src/lib/event-battery-timer-controls.test.ts",
     "test:auth-redirect": "node --experimental-strip-types --test src/lib/auth-redirect.test.ts",
     "test:auth-session-cache": "node --experimental-strip-types --test src/lib/session-query-cache.test.ts",
@@ -84,6 +85,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@clerk/shared": "4.43.1"
+    "@clerk/shared": "4.43.1",
+    "@workspace/api-zod": "workspace:*"
   }
 }
