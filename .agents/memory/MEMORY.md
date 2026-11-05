@@ -16,3 +16,4 @@
 - [ZERO3 new-tab navigation](zero3-new-tab-navigation.md) — Use native anchors for target-blank links on the TV; Wouter can cancel the click and prevent the new tab.
 - [Wrangler local Clerk config](wrangler-local-clerk-secrets.md) — Wrangler local does not inherit Replit Secrets; auth middleware can fail before route tests unless local runtime secrets are configured safely.
 - [D1 staging migration gate](zero3-d1-migration-gate.md) — Check the remote migration ledger and schema before staging Worker releases; a successful build does not apply D1 migrations.
+- [Cloudflare staging builds](zero3-cloudflare-builds.md) — Workers Builds needs a user-scoped API token; staging branches must be configured as production branches to avoid preview-only deploy failures.
