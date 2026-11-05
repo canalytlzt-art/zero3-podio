@@ -22,7 +22,11 @@ import './LiveBoardPage.css';
 
 type BoardView = 'battery' | 'overall';
 const publicBase = import.meta.env.BASE_URL;
-const boardAssetsStyle = { '--lb-photo': `url("${publicBase}zero3-games/zero3-foto.jpg")` } as CSSProperties;
+const publicPhotoUrl = `url("${publicBase}zero3-games/zero3-foto.jpg")`;
+const boardAssetsStyle = {
+  '--lb-photo': publicPhotoUrl,
+  '--zero3-public-photo': publicPhotoUrl,
+} as CSSProperties;
 
 const statusLabels: Record<string, string> = {
   PARTIAL: 'Parcial',

@@ -7,7 +7,6 @@ import { liveBoardHrefForBattery, liveBoardHrefForEvent } from '@/lib/live-board
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
 import { projectEventElapsedDelta } from '@/lib/battery-time-display';
-import './PublicTV.css';
 
 // Keep target=_blank links native; Wouter's Link handler cancels their navigation.
 function Link(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
@@ -200,10 +199,14 @@ function TimerReadout({timer,serverTime}:{timer:Zero3PublicBoard['timer'];server
   const rawElapsed=(timer?.elapsedMs??0)+(timer?.state==='RUNNING'?delta:0);
   const elapsed=timer?.timeCapMs?Math.min(rawElapsed,timer.timeCapMs):rawElapsed;
   const capReached=Boolean(timer?.timeCapMs&&rawElapsed>=timer.timeCapMs);
- const prep=timer?.state==='PREPARATION'&&typeof timer.preparationEndsAt==='string'
+  const prep=timer?.state==='PREPARATION'&&typeof timer.preparationEndsAt==='string'
   ?Math.max(0,Date.parse(timer.preparationEndsAt)-now)
   :Math.max(0,(timer?.preparationRemainingMs??0)-delta);
- const formattedDuration=duration(timer?.state==='PREPARATION'?prep:elapsed);
-  return <div className="tv-timer-box"><small>{timer?.state==='PREPARATION'?'PREPARAÇÃO · BATERIA':'DURAÇÃO DA BATERIA'}</small><strong aria-label={formattedDuration}><TimerDigits value={formattedDuration}/></strong><small>{capReached?'CAP ATINGIDO · CRONÔMETRO CONGELADO':timerStateLabel(timer?.state)}</small></div>;
+  const formattedDuration=duration(timer?.state==='PREPARATION'?prep:elapsed);
+  return <div className="tv-timer-box">
+    <small>{timer?.state==='PREPARATION'?'PREPARAÇÃO · BATERIA':'CRONÔMETRO DA BATERIA'}</small>
+    <strong aria-label={formattedDuration}><TimerDigits value={formattedDuration}/></strong>
+    <small className="tv-timer-state">{capReached?'CAP ATINGIDO · CRONÔMETRO CONGELADO':timerStateLabel(timer?.state)}</small>
+  </div>;
 }
 function ClockBlock(){const [now,setNow]=useState(()=>new Date());useEffect(()=>{const id=window.setInterval(()=>setNow(new Date()),1000);return()=>window.clearInterval(id);},[]);return <div className="tv-clock-block"><div className="tv-clock-label">HORÁRIO DE BRASÍLIA</div><div className="tv-clock">{clockText(now)}</div><div className="tv-clock-label">RELÓGIO CIVIL · UTC−03</div></div>}
