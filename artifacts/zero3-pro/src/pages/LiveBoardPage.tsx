@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useLocation, useSearch } from 'wouter';
 import { ArrowUpRight, ChevronDown, CircleHelp, Radio, RotateCw, Trophy } from 'lucide-react';
 import {
@@ -21,6 +21,8 @@ import { eventBatteryCode } from '@/lib/event-battery-code';
 import './LiveBoardPage.css';
 
 type BoardView = 'battery' | 'overall';
+const publicBase = import.meta.env.BASE_URL;
+const boardAssetsStyle = { '--lb-photo': `url("${publicBase}zero3-games/zero3-foto.jpg")` } as CSSProperties;
 
 const statusLabels: Record<string, string> = {
   PARTIAL: 'Parcial',
@@ -518,11 +520,11 @@ export function LiveBoardPage() {
     : !board.completedBatteries || board.completedBatteries.length === 0));
 
   return (
-    <main className="live-board-page" data-testid="page-live-board">
+    <main className="live-board-page" style={boardAssetsStyle} data-testid="page-live-board">
       <div className="lb-frame">
         <header className="lb-topbar">
           <Link href="/tv" className="lb-brand" aria-label="ZERO3 PRO TV pública" data-testid="link-zero3-home">
-            <img src="/logo.svg" alt="ZERO3 PRO" />
+            <img src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO" />
           </Link>
           <div className="lb-topbar-right">
             <span className={`lb-live-indicator ${board && !boardQuery.isError ? 'is-live' : ''}`}

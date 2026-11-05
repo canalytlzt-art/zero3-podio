@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, useSearch } from 'wouter';
 import { getGetZero3PublicBoardQueryKey, useGetZero3PublicBoard } from '@workspace/api-client-react';
 import type { Zero3LeaderboardEntry, Zero3Proof, Zero3PublicBoard, Zero3PublicBattery } from '@workspace/api-client-react';
@@ -6,6 +6,10 @@ import { RotateCw } from 'lucide-react';
 import { liveBoardHrefForBattery, liveBoardHrefForEvent } from '@/lib/live-board-navigation';
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
+import './PublicTV.css';
+
+const publicBase = import.meta.env.BASE_URL;
+const tvAssetsStyle = { '--tv-photo': `url("${publicBase}zero3-games/zero3-foto.jpg")` } as CSSProperties;
 
 const clockText=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(d);
 const duration=(ms?:number|null)=>ms==null?'—':`${String(Math.floor(ms/60000)).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(Math.floor(ms%1000/10)).padStart(2,'0')}`;
@@ -152,11 +156,11 @@ export function PublicTV(){
   const connectionLabel=boardQuery.isError
     ?boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO · DADOS CONFIRMADOS'
     :connected?'AO VIVO':'SINCRONIZANDO';
-  if(boardQuery.isLoading&&!board)return <main className="tv-root"><div className="tv-board"><header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/></header><ClockBlock/><div className="public-empty"><h1>Conectando à transmissão</h1><p>Carregando o placar oficial do evento.</p></div></div></main>;
-  if(boardQuery.isError&&!board)return <main className="tv-root"><div className="tv-board"><header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/><span className="tv-status-chip offline">{boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'}</span></header><ClockBlock/><div className="public-empty"><h1>Transmissão indisponível</h1><p>Não foi possível carregar dados oficiais.</p><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button></div></div></main>;
-  if(!board?.event)return <main className="tv-root"><div className="tv-board"><header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/><span className={`tv-status-chip ${connected?'':'offline'}`}>{connected?'CONECTADO':'DADOS ANTERIORES'}</span></header><ClockBlock/><div className="public-empty"><h1>Aguardando evento</h1><p>A transmissão será atualizada quando um evento estiver disponível.</p></div></div></main>;
-  return <main className="tv-root"><div className="tv-board">
-     <header className="tv-header"><img className="tv-logo" src="/logo.svg" alt="ZERO3 PRO"/><div className="tv-eventline">{board.event.name}<span> · </span>{board.event.proofName}</div><span className={`tv-status-chip ${connected?'':'offline'}`}><i/> {connectionLabel}</span></header>
+  if(boardQuery.isLoading&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><header className="tv-header"><img className="tv-logo" src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO"/></header><ClockBlock/><div className="public-empty"><h1>Conectando à transmissão</h1><p>Carregando o placar oficial do evento.</p></div></div></main>;
+  if(boardQuery.isError&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><header className="tv-header"><img className="tv-logo" src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO"/><span className="tv-status-chip offline">{boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'}</span></header><ClockBlock/><div className="public-empty"><h1>Transmissão indisponível</h1><p>Não foi possível carregar dados oficiais.</p><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button></div></div></main>;
+  if(!board?.event)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><header className="tv-header"><img className="tv-logo" src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO"/><span className={`tv-status-chip ${connected?'':'offline'}`}>{connected?'CONECTADO':'DADOS ANTERIORES'}</span></header><ClockBlock/><div className="public-empty"><h1>Aguardando evento</h1><p>A transmissão será atualizada quando um evento estiver disponível.</p></div></div></main>;
+  return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board">
+     <header className="tv-header"><img className="tv-logo" src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO"/><div className="tv-eventline">{board.event.name}<span> · </span>{board.event.proofName}</div><span className={`tv-status-chip ${connected?'':'offline'}`}><i/> {connectionLabel}</span></header>
         <section className="tv-clock-section"><TimerReadout timer={timer} serverTime={board.serverTime}/><ClockBlock/><div className="tv-event-status">{board.event.status==='ACTIVE'?'EVENTO EM ANDAMENTO':board.event.status==='FINISHED'?'EVENTO FINALIZADO':'EVENTO PREPARADO'}</div></section>
        {board.batteryOperationsEnabled?<BatteryBoard board={board}/>:<div className="tv-live-board-callout"><span>Listas completas e ranking geral do evento</span><Link href={liveBoardHrefForEvent(board.event.id)} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">Abrir Placar ao Vivo <span aria-hidden="true">↗</span></Link></div>}
     <div className="tv-footer-note">PLACAR OFICIAL · PONTUAÇÃO E CLASSIFICAÇÃO CALCULADAS NO SERVIDOR</div>
