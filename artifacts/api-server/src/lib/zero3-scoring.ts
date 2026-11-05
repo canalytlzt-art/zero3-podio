@@ -244,12 +244,21 @@ export function calculateCategoryLeaderboard(input: {
     for (const entry of entries) entry.status = "TIE_RULE_PENDING";
   }
 
-  if (allComplete && !overallTiePending) {
-    entries
+  if (!overallTiePending) {
+    const rankedEntries = entries
+      .filter((entry) => entry.totalPoints !== null)
       .slice()
-      .sort((a, b) => (a.totalPoints ?? Number.POSITIVE_INFINITY) - (b.totalPoints ?? Number.POSITIVE_INFINITY))
-      .forEach((entry, index) => {
-        entry.overallPlace = index + 1;
+      .sort((a, b) =>
+        (a.totalPoints ?? Number.POSITIVE_INFINITY) -
+          (b.totalPoints ?? Number.POSITIVE_INFINITY) ||
+        a.registrationId.localeCompare(b.registrationId),
+      );
+    let previousTotal: number | null = null;
+    let previousPlace = 0;
+    rankedEntries.forEach((entry, index) => {
+      if (entry.totalPoints !== previousTotal) previousPlace = index + 1;
+      entry.overallPlace = previousPlace;
+      previousTotal = entry.totalPoints;
       });
   }
 

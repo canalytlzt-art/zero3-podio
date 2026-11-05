@@ -21,6 +21,7 @@ import {
 } from "@workspace/api-zod";
 import { hasSignedInUserSession } from "./auth-session";
 import { workerLogger } from "./worker-logger";
+import { isD1SchemaNotReady } from "./d1-staging-shared";
 import { calculateAllResultPlacements } from "./zero3-scoring";
 import {
   buildBatteryLeaderboards,
@@ -100,6 +101,15 @@ const id = () => crypto.randomUUID();
 const requestId = (req: Request) => (req as Request & { id?: string }).id;
 const error = (res: Response, status: number, code: string, message: string, req: Request) =>
   res.status(status).json({ code, error: message, ...(requestId(req) ? { requestId: requestId(req) } : {}) });
+const d1PublicationChangedRowsGuard = (DB: D1Database, eventId: string, expected: number) =>
+  DB.prepare(`INSERT INTO zero3_batteries(id,event_id,battery_order,name)
+    SELECT ?,?,0,'__ZERO3_PUBLICATION_GUARD__' WHERE changes()<>?`)
+    .bind(id(), eventId, expected);
+
+function isD1ConstraintConflict(cause: unknown) {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /constraint failed|constraint violation|foreign key|unique constraint/i.test(message);
+}
 
 async function memberForRequest(req: Request, DB: D1Database): Promise<Member | null> {
   const auth = getAuth(req);
@@ -476,7 +486,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
   const activeSelection=await DB.prepare("SELECT battery_id FROM zero3_active_batteries WHERE event_id=?")
     .bind(event.id).first<{battery_id:string|null}>();
   const selectedEventBattery=activeSelection?.battery_id
-    ?eventBatteries.find(item=>item.id===activeSelection.battery_id)??null:null;
+    ?eventBatteries.find(item=>item.id===activeSelection.battery_id&&!item.operationalFinalized)??null:null;
   const eventBatteryToPublic=(battery:typeof eventBatteries[number])=>{
     const firstProof=battery.proofs[0];
     return {
@@ -798,7 +808,11 @@ export function d1StagingApi(
                 SELECT 1 FROM zero3_ranking_publications
                 WHERE event_id=? AND version=? AND fingerprint=?
               )`).bind(candidateJson, params.data.eventId, nextVersion, state.plan.fingerprint);
-          const [insertResult, updateResult] = await DB.batch([insert, update]);
+          const [insertResult, updateResult] = await DB.batch([
+            insert,
+            update,
+            d1PublicationChangedRowsGuard(DB, params.data.eventId, candidateRows.length),
+          ]);
           if ((insertResult.meta.changes ?? 0) !== 1) {
             const duplicate = await DB.prepare(`SELECT id,version,fingerprint,result_count,published_at,published_by
               FROM zero3_ranking_publications WHERE event_id=? AND fingerprint=? LIMIT 1`)
@@ -835,7 +849,46 @@ export function d1StagingApi(
             fingerprint: state.plan.fingerprint,
             alreadyPublished: false,
           }));
-        } catch {
+        } catch (cause) {
+          if (isD1SchemaNotReady(cause)) {
+            workerLogger.error({
+              error: cause, requestId: requestId(req), method: req.method,
+              path: route, stage: "ranking_publication_schema",
+            }, "D1 ranking publication schema is not ready");
+            error(res, 503, "D1_SCHEMA_NOT_READY",
+              "O schema D1 está desatualizado e precisa das migrations de publicação do ranking.", req);
+            return;
+          }
+          if (isD1ConstraintConflict(cause)) {
+            const duplicate = await DB.prepare(`SELECT id,version,fingerprint,result_count,published_at,published_by
+              FROM zero3_ranking_publications WHERE event_id=? AND fingerprint=? LIMIT 1`)
+              .bind(params.data.eventId, body.data.expectedFingerprint).first<{
+                id:string;version:number;fingerprint:string;result_count:number;
+                published_at:string;published_by:string;
+              }>().catch(() => null);
+            if (duplicate) {
+              res.json(PublishZero3RankingResponse.parse({
+                eventId: params.data.eventId,
+                version: duplicate.version,
+                resultCount: duplicate.result_count,
+                publishedAt: date(duplicate.published_at),
+                publishedBy: duplicate.published_by,
+                fingerprint: duplicate.fingerprint,
+                alreadyPublished: true,
+              }));
+              return;
+            }
+            res.status(409).json({
+              code: "RANKING_PUBLICATION_STALE",
+              error: "Os resultados mudaram durante a publicação. Nada foi publicado; atualize a prévia e tente novamente.",
+              ...(requestId(req) ? { requestId: requestId(req) } : {}),
+            });
+            return;
+          }
+          workerLogger.error({
+            error: cause, requestId: requestId(req), method: req.method,
+            path: route, stage: "ranking_publication",
+          }, "D1 ranking publication failed");
           error(res, 503, "DATABASE_UNAVAILABLE", "Não foi possível preparar ou publicar o ranking.", req);
         }
         return;

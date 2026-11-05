@@ -27,11 +27,13 @@ import {
   d1Date,
   d1IsoNow,
   d1JsonArray,
+  isD1SchemaNotReady,
   newD1Id,
   requireD1Member,
 } from "./d1-staging-shared";
 import { batteryTimerBlocksStructureChange, resolveBatteryOrderChange } from "./d1-staging-battery-order";
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
+import { workerLogger } from "./worker-logger";
 
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
 const ACCESS_ROLES = ["ADMIN", "JUIZ_CHEFE", "JUIZ"] as const;
@@ -355,7 +357,9 @@ export async function getD1ActiveEventBattery(DB: D1Database, eventId: string, n
     .bind(eventId).first<{ battery_id: string | null }>();
   if (!active?.battery_id) return null;
   const batteries = await listD1EventBatteries(DB, eventId, now);
-  return batteries?.find((battery) => battery.id === active.battery_id) ?? null;
+  return batteries?.find((battery) =>
+    battery.id === active.battery_id && !battery.operationalFinalized,
+  ) ?? null;
 }
 
 export async function handleD1StagingEventBatteries(
@@ -867,6 +871,12 @@ export async function handleD1StagingEventBatteries(
           alreadyFinalized,
         });
       if (battery.operationalFinalized) {
+        // Repair a stale TV selection on retries without changing the archived
+        // battery, its timer, registrations, results, or publication history.
+        await DB.prepare(`UPDATE zero3_active_batteries
+          SET battery_id=NULL,updated_at=?
+          WHERE event_id=? AND battery_id=?`)
+          .bind(d1IsoNow(), battery.eventId, battery.id).run();
         res.json(respondFinalized(battery, true));
         return true;
       }
@@ -878,17 +888,30 @@ export async function handleD1StagingEventBatteries(
         d1ApiError(req, res, 409, "BATTERY_EMPTY", "Adicione ao menos uma inscrição antes de finalizar a bateria.");
         return true;
       }
-      await DB.prepare("INSERT OR IGNORE INTO zero3_battery_runs(battery_id,event_id) VALUES(?,?)")
-        .bind(battery.id, battery.eventId).run();
-      const run = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE battery_id=? AND event_id=?")
+      const existingRun = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE battery_id=? AND event_id=?")
         .bind(battery.id, battery.eventId).first<RunRow>();
-      if (!run) {
-        d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível carregar o cronômetro desta bateria.");
-        return true;
-      }
       const stamp = d1IsoNow();
+      const run: RunRow = existingRun ?? {
+        battery_id: battery.id,
+        event_id: battery.eventId,
+        state: "IDLE",
+        elapsed_ms: 0,
+        started_at: null,
+        preparation_ends_at: null,
+        version: 0,
+        last_command_id: null,
+        updated_at: stamp,
+        preparation_started_at: null,
+        first_started_at: null,
+        stopped_at: null,
+      };
       const nextRun = eventBatteryFinalizedRun(run, new Date(stamp));
       await DB.batch([
+        DB.prepare(`INSERT OR IGNORE INTO zero3_battery_runs(battery_id,event_id)
+          SELECT ?,? WHERE EXISTS(
+            SELECT 1 FROM zero3_batteries
+            WHERE id=? AND event_id=? AND operational_finalized_at IS NULL
+          )`).bind(battery.id, battery.eventId, battery.id, battery.eventId),
         DB.prepare(`UPDATE zero3_battery_runs
           SET state=?,elapsed_ms=?,started_at=NULL,preparation_ends_at=NULL,
               stopped_at=?,version=version+1,updated_at=?
@@ -906,6 +929,10 @@ export async function handleD1StagingEventBatteries(
           .bind(stamp, member.clerk_user_id, battery.id, battery.eventId,
             battery.id, battery.eventId, run.version + 1),
         changedRowsGuard(DB, battery.eventId),
+        DB.prepare(`UPDATE zero3_active_batteries
+          SET battery_id=NULL,updated_at=?
+          WHERE event_id=? AND battery_id=?`)
+          .bind(stamp, battery.eventId, battery.id),
       ]);
       const refreshed = await listD1EventBatteries(DB, battery.eventId);
       const saved = refreshed?.find((item) => item.id === battery.id);
@@ -936,7 +963,18 @@ export async function handleD1StagingEventBatteries(
         d1ApiError(req, res, 409, "BATTERY_FINALIZATION_CONFLICT",
           "O cronômetro ou a bateria mudou durante a finalização. Nenhuma alteração parcial foi mantida; atualize e tente novamente.");
       } else {
-      d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível finalizar a bateria do evento.");
+        workerLogger.error({
+          error: cause,
+          requestId: (req as Request & { id?: string }).id,
+          method: req.method,
+          path: route,
+          stage: "battery_finalization",
+        }, "D1 battery finalization failed");
+        d1ApiError(req, res, 503,
+          isD1SchemaNotReady(cause) ? "D1_SCHEMA_NOT_READY" : "DATABASE_UNAVAILABLE",
+          isD1SchemaNotReady(cause)
+            ? "O schema D1 está desatualizado e precisa das migrations de finalização operacional."
+            : "Não foi possível finalizar a bateria do evento.");
       }
     }
     return true;
