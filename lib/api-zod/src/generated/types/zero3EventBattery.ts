@@ -24,6 +24,11 @@ export interface Zero3EventBattery {
   eventElapsedMs: number;
   /** @minimum 0 */
   eventLimitMs: number;
+  /**
+     * @minimum 1
+     * @maximum 7200000
+     */
+  timeCapMs: number;
   /** @nullable */
   preparationEndsAt: Date | null;
   /** @minimum 0 */

@@ -948,6 +948,11 @@ export interface Zero3EventBattery {
   eventElapsedMs: number;
   /** @minimum 0 */
   eventLimitMs: number;
+  /**
+     * @minimum 1
+     * @maximum 7200000
+     */
+  timeCapMs: number;
   /** @nullable */
   preparationEndsAt: string | null;
   /** @minimum 0 */
@@ -990,6 +995,23 @@ export interface Zero3EventBattery {
   /** @minimum 0 */
   timerVersion: number;
   updatedAt: string;
+}
+
+export interface Zero3BatteryTimeCapUpdateInput {
+  /**
+     * @minimum 1
+     * @maximum 7200000
+     */
+  timeCapMs: number;
+  /**
+     * @minimum 1
+     * @maximum 7200000
+     */
+  expectedTimeCapMs: number;
+  /** @minimum 0 */
+  expectedTimerVersion: number;
+  /** @minLength 1 */
+  commandId: string;
 }
 
 export interface Zero3HeatProofInput {
@@ -1036,6 +1058,11 @@ export interface Zero3Timer {
   eventElapsedMs?: number;
   /** @minimum 0 */
   eventLimitMs?: number;
+  /**
+     * @minimum 1
+     * @maximum 7200000
+     */
+  timeCapMs?: number;
 }
 
 export type Zero3TimerCommandAction = typeof Zero3TimerCommandAction[keyof typeof Zero3TimerCommandAction];
@@ -1316,6 +1343,11 @@ export interface Zero3PublicBattery {
   eventElapsedMs?: number;
   /** @minimum 0 */
   eventLimitMs?: number;
+  /**
+     * @minimum 1
+     * @maximum 7200000
+     */
+  timeCapMs?: number;
   /** @nullable */
   preparationEndsAt?: string | null;
 }

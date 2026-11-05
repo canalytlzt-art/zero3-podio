@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { eventBatteryTimerControl } from "./event-battery-timer-controls.ts";
+import { eventBatteryTimerActions, eventBatteryTimerControl } from "./event-battery-timer-controls.ts";
 
 test("starts an idle battery through its preparation countdown", () => {
   assert.deepEqual(eventBatteryTimerControl("IDLE"), {
@@ -30,4 +30,23 @@ test("allows a paused timer to resume and leaves a finished time frozen", () => 
   });
   assert.equal(eventBatteryTimerControl("FINISHED"), null);
   assert.equal(eventBatteryTimerControl("UNKNOWN"), null);
+});
+
+test("exposes pause and stop as separate commands while running", () => {
+  assert.deepEqual(eventBatteryTimerActions("RUNNING"), [
+    { action: "pause", label: "Pausar" },
+    { action: "finish", label: "Parar" },
+  ]);
+});
+
+test("exposes resume and stop separately after a pause", () => {
+  assert.deepEqual(eventBatteryTimerActions("PAUSED"), [
+    { action: "resume", label: "Retomar" },
+    { action: "finish", label: "Parar" },
+  ]);
+});
+
+test("does not offer timer commands after finish or operational finalization", () => {
+  assert.deepEqual(eventBatteryTimerActions("FINISHED"), []);
+  assert.deepEqual(eventBatteryTimerActions("UNKNOWN"), []);
 });

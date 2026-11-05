@@ -17,6 +17,7 @@ export * from './zero3Athlete';
 export * from './zero3AthleteDeleteResult';
 export * from './zero3AthleteInput';
 export * from './zero3BatteryEntry';
+export * from './zero3BatteryTimeCapUpdateInput';
 export * from './zero3Category';
 export * from './zero3CategoryLeaderboard';
 export * from './zero3CategoryLeaderboardStatus';

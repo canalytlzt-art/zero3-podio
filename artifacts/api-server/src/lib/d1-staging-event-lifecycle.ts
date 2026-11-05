@@ -39,7 +39,8 @@ const RESTORE_DEFINITIONS = [
   { collection: "importBatches", table: "zero3_import_batches", columns: ["id", "event_id", "dataset_key", "source_file", "source_sheet", "source_notes", "content_hash", "source_team_count", "source_people_count", "applied_by", "applied_at"] },
   { collection: "importPeople", table: "zero3_import_people", columns: ["id", "batch_id", "source_key", "source_name", "source_cell", "athlete_id", "created_at"] },
   { collection: "importTeams", table: "zero3_import_teams", columns: ["id", "batch_id", "source_code", "source_category", "source_row", "source_cells", "source_athlete_names", "target_category", "registration_id", "created_at"] },
-  { collection: "batteries", table: "zero3_batteries", columns: ["id", "event_id", "battery_order", "name", "created_at", "operational_finalized_at", "operational_finalized_by"] },
+  { collection: "batteries", table: "zero3_batteries", columns: ["id", "event_id", "battery_order", "name", "created_at", "operational_finalized_at", "operational_finalized_by", "time_cap_ms"] },
+  { collection: "batteryTimeCapAudit", table: "zero3_battery_time_cap_audit", columns: ["id", "event_id", "battery_id", "battery_id_snapshot", "command_id", "clerk_user_id", "role", "old_time_cap_ms", "new_time_cap_ms", "changed_at"] },
   { collection: "batteryEntries", table: "zero3_battery_entries", columns: ["battery_id", "registration_id", "lane_label", "assigned_at"] },
   { collection: "activeBatteries", table: "zero3_active_batteries", columns: ["event_id", "battery_id", "updated_at"] },
   { collection: "batteryRuns", table: "zero3_battery_runs", columns: ["battery_id", "event_id", "state", "elapsed_ms", "started_at", "preparation_ends_at", "version", "last_command_id", "updated_at", "preparation_started_at", "first_started_at", "stopped_at"] },
@@ -62,6 +63,7 @@ const OPTIONAL_BATTERY_TABLES = [
   "zero3_active_batteries",
   "zero3_battery_runs",
   "zero3_battery_publications",
+  "zero3_battery_time_cap_audit",
 ] as const;
 
 const REQUIRED_EVENT_TABLES = [
@@ -100,6 +102,7 @@ const COUNT_GUARDS: Array<{ key: string; tables: string[]; query: string }> = [
   { key: "activeBatteries", tables: ["zero3_active_batteries"], query: "SELECT COUNT(*) FROM zero3_active_batteries WHERE event_id=?" },
   { key: "batteryRuns", tables: ["zero3_battery_runs"], query: "SELECT COUNT(*) FROM zero3_battery_runs WHERE event_id=?" },
   { key: "batteryPublications", tables: ["zero3_battery_publications"], query: "SELECT COUNT(*) FROM zero3_battery_publications WHERE event_id=?" },
+  { key: "batteryTimeCapAudit", tables: ["zero3_battery_time_cap_audit"], query: "SELECT COUNT(*) FROM zero3_battery_time_cap_audit WHERE event_id=?" },
   { key: "heats", tables: ["zero3_heats"], query: "SELECT COUNT(*) FROM zero3_heats WHERE event_id=?" },
   { key: "heatEntries", tables: ["zero3_heat_entries", "zero3_heats"], query: "SELECT COUNT(DISTINCT h.heat_id || ':' || h.registration_id) FROM zero3_heat_entries h JOIN zero3_heats x ON x.id=h.heat_id WHERE x.event_id=?" },
   { key: "activeHeats", tables: ["zero3_active_heats"], query: "SELECT COUNT(*) FROM zero3_active_heats WHERE event_id=?" },

@@ -505,6 +505,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       finalizationFingerprint:battery.finalizationFingerprint,
       proofs:battery.proofs,proofLeaderboards:battery.proofLeaderboards,
       eventElapsedMs:battery.eventElapsedMs,eventLimitMs:battery.eventLimitMs,
+       timeCapMs:battery.timeCapMs,
       preparationEndsAt:battery.preparationEndsAt,
       preparationStartedAt:battery.preparationStartedAt,
       firstStartedAt:battery.firstStartedAt,stoppedAt:battery.stoppedAt,
@@ -520,6 +521,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     firstStartedAt:battery.firstStartedAt,stoppedAt:battery.stoppedAt,
     updatedAt:battery.updatedAt,proofId:null,batteryOrder:battery.order,
     batteryId:battery.id,eventElapsedMs:battery.eventElapsedMs,eventLimitMs:battery.eventLimitMs,
+     timeCapMs:battery.timeCapMs,
   });
   const activeEventTimer=selectedEventBattery?eventBatteryTimer(selectedEventBattery):undefined;
   const activeHeats = jsonArray(event.categories).map((category) => {

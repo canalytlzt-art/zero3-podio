@@ -12,9 +12,11 @@ import {
 } from '@workspace/api-client-react';
 import type { Zero3Proof, Zero3Registration, Zero3Result, Zero3PublicBoard, Zero3EventBattery, Zero3PublicBattery } from '@workspace/api-client-react';
 import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/components/AdminShell';
+import { EventBatteryTimerPanel } from '@/components/EventBatteryTimerPanel';
 import { ArrowUpRight, Check, Play, Radio, Save, Square } from 'lucide-react';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { eventBatteryCode } from '@/lib/event-battery-code';
+import { projectEventElapsedDelta } from '@/lib/battery-time-display';
 import { primaryTimerAction, timerStateLabel } from '@/lib/zero3-timer-controls';
 import {
   batteryIssueActionLabel, batteryIssueHref, batteryIssueLabel, batteryReadinessCount,
@@ -217,7 +219,7 @@ export function OperationPage() {
   const serverTime=typeof board.data?.serverTime==='string'?Date.parse(board.data.serverTime):clockNow;
   const serverDelta=Math.max(0,clockNow-serverTime);
   const liveEventElapsed=(timer?.eventElapsedMs??operationBattery?.eventElapsedMs??0)+
-    (timer?.state==='RUNNING'?serverDelta:0);
+    projectEventElapsedDelta(board.data?.batteryTimers,serverDelta,timer??undefined);
   const timerAtLimit=Boolean(timer?.eventLimitMs&&liveEventElapsed>=timer.eventLimitMs);
   const timerButtonLabel=eventBatteryMode&&operationBattery?.operationalFinalized
     ?'Finalizada'
@@ -235,16 +237,11 @@ export function OperationPage() {
     });
   };
   const controlTimer=()=>{
-    if(!canReview||!timer||!operationBattery||(eventBatteryMode&&operationBattery.operationalFinalized)||board.isError||timerCommand.isPending)return;
-    const action=eventBatteryMode
-      ?timer.state==='PREPARATION'?'reset':['IDLE','FINISHED'].includes(timer.state)?'prepare':timerAction.action
-      :timerAction.action;
-    if(eventBatteryMode&&timer.state==='RUNNING'&&
-      !window.confirm('Confirmar parada do cronômetro desta bateria? A duração fica salva e não publica resultados.'))return;
+    if(!canReview||!timer||!operationBattery||eventBatteryMode||board.isError||timerCommand.isPending)return;
     setError('');setNotice('');
     timerCommand.mutate({eventId:selectedEventId,data:{
-      action,expectedVersion:timer.version,commandId:crypto.randomUUID(),
-      ...(eventBatteryMode?{expectedBatteryId:operationBatteryId??undefined}:{expectedProofId:legacyOperationBattery?.proofId??'',expectedBatteryOrder:operationBattery.order}),
+      action:timerAction.action,expectedVersion:timer.version,commandId:crypto.randomUUID(),
+      expectedProofId:legacyOperationBattery?.proofId??'',expectedBatteryOrder:operationBattery.order,
     }},{onSuccess:()=>{invalidate();setNotice(`Comando ${timerButtonLabel.toLocaleLowerCase('pt-BR')} confirmado pelo servidor.`);},onError:err=>setError(message(err))});
   };
    const finalizeActiveBattery=()=>{
@@ -326,9 +323,15 @@ export function OperationPage() {
         </section>
            {batteryMode&&<section id="operation-battery-card" className="panel panel-pad" style={{marginBottom:16}}>
             <div className="op-section-head"><div><div className="eyebrow">{eventBatteryMode?'Bateria da operação':'Bateria selecionada para a TV'}</div><h2 className="panel-title">{operationBattery?(eventBatteryMode?operationBattery.name:`${legacyOperationBattery?.proofName} · ${operationBattery.name}`):'Nenhuma bateria selecionada'}</h2></div><span className={`pill ${timer?.state==='RUNNING'?'warn':'neutral'}`}>{activeBatteryStatus}</span></div>
-            {operationBattery?<><p className="lede">{operationBattery.registrations.length} inscrições · {operationBattery.categories.map(value=>value==='SC'?'SC / Scale':value).join(' + ')||'sem equipes'} · {timerStateLabel(timer?.state)} · <OperationTimerReadout timer={timer} serverTime={typeof board.data?.serverTime==='string'?board.data.serverTime:new Date().toISOString()} eventElapsedBase={timer?.eventElapsedMs??operationBattery.eventElapsedMs??0} eventBatteryMode={eventBatteryMode}/> · <Link href={`/admin/events/${encodeURIComponent(selectedEventId)}?tab=heats`}>Selecionar bateria</Link></p>
+             {operationBattery?<><p className="lede">{operationBattery.registrations.length} inscrições · {operationBattery.categories.map(value=>value==='SC'?'SC / Scale':value).join(' + ')||'sem equipes'} · {timerStateLabel(timer?.state)} · {!eventBatteryMode&&<OperationTimerReadout timer={timer} serverTime={typeof board.data?.serverTime==='string'?board.data.serverTime:new Date().toISOString()} eventElapsedBase={timer?.eventElapsedMs??operationBattery.eventElapsedMs??0} eventBatteryMode={false}/>} · <Link href={`/admin/events/${encodeURIComponent(selectedEventId)}?tab=heats`}>Selecionar bateria</Link></p>
+              {eventBatteryMode&&<EventBatteryTimerPanel
+                battery={operationBattery as Zero3EventBattery}
+                timer={eventBatteryTimer}
+                batteryTimers={board.data?.batteryTimers}
+                serverTime={board.data?.serverTime}
+              />}
              {eventBatteryMode&&timerAtLimit&&<p className="error-box" role="alert">Limite acumulado de 2 horas atingido. Não é possível iniciar outra bateria.</p>}
-              <div className="toolbar"><button type="button" className={`button ${timerAtLimit?'danger':timerButtonLabel==='Iniciar'?'primary':''}`} disabled={!canReview||!timer||timerCommand.isPending||board.isError||operationBatteryLoading||(eventBatteryMode&&Boolean(operationBattery?.operationalFinalized))||(timerAtLimit&&['IDLE','FINISHED','PAUSED'].includes(timer.state))} onClick={controlTimer}>{timerButtonLabel==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {timerCommand.isPending?'Aguardando confirmação…':timerButtonLabel}</button>
+               <div className="toolbar">{!eventBatteryMode&&<button type="button" className={`button ${timerAtLimit?'danger':timerButtonLabel==='Iniciar'?'primary':''}`} disabled={!canReview||!timer||timerCommand.isPending||board.isError||operationBatteryLoading||(timerAtLimit&&['IDLE','FINISHED','PAUSED'].includes(timer.state))} onClick={controlTimer}>{timerButtonLabel==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {timerCommand.isPending?'Aguardando confirmação…':timerButtonLabel}</button>}
                 {eventBatteryMode&&!operationBatteryIsOnTv&&<button type="button" className="button small" disabled={!canReview||selectEventBattery.isPending||!operationBatteryId} onClick={putOperationBatteryOnTv}>{selectEventBattery.isPending?'Selecionando…':'Colocar na TV'}</button>}
                 <Link className="button small" href={eventBatteryMode?`/operacao?${new URLSearchParams({eventId:selectedEventId,batteryId:operationBatteryId||''})}`:`/admin/events/${encodeURIComponent(selectedEventId)}?${new URLSearchParams({tab:'results',proofId:legacyOperationBattery?.proofId||'',batteryOrder:String(operationBattery.order)})}`}>Resultados</Link>
                   <button type="button" className={`button small ${canFinalizeActiveBattery?'primary':''}`} disabled={!canOpenFinalization||(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)||board.isError} onClick={()=>setFinalizeConfirmKey(activeBatteryConfirmKey)}>{(eventBatteryMode?finalizeEventBattery.isPending:finalizeBattery.isPending)?eventBatteryMode?'Finalizando…':'Publicando…':eventBatteryMode&&operationBattery.operationalFinalized?'Finalizada':!eventBatteryMode&&operationBattery.finalized&&operationBattery.finalizationCurrent?'Finalizada':eventBatteryMode?'Finalizar Bateria':'Finalizar bateria'}</button>

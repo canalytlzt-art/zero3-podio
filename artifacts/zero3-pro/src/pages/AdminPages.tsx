@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useSearch } from 'wouter';
-import { ArrowLeft, Plus, Radio, RotateCw, Save, Trophy, Users, Play, Square, Pencil, Trash2, X, Clock3 } from 'lucide-react';
+import { ArrowLeft, Plus, Radio, RotateCw, Save, Trophy, Users, Play, Square, Pencil, Trash2, X } from 'lucide-react';
 import {
   Zero3EventStatus, Zero3ResultStatus, Zero3Role,
   Zero3RegistrationConfirmationStatus, Zero3RegistrationPaymentStatus,
@@ -28,6 +28,7 @@ import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/
 import { AthletePicker } from '@/components/AthletePicker';
 import { BatteryRegistrationPicker } from '@/components/BatteryRegistrationPicker';
 import { EventBatteryResultsPanel } from '@/components/EventBatteryResultsPanel';
+import { EventBatteryTimerPanel } from '@/components/EventBatteryTimerPanel';
 import { EventResultsWorkspace } from '@/components/EventResultsWorkspace';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { liveBoardHrefForBattery } from '@/lib/live-board-navigation';
@@ -35,7 +36,6 @@ import { pollingIntervalAfterError, shouldRefetchAfterError, shouldRetryZero3Que
 import { normalizeTeamNameInput, teamNameInputError } from '@/lib/roster-management';
 import { describeAthleteReplacement, normalizeAthleteSearch } from '@/lib/athlete-search';
 import { primaryTimerAction, timerStateLabel } from '@/lib/zero3-timer-controls';
-import { eventBatteryTimerControl } from '@/lib/event-battery-timer-controls';
 import { eventBatteryCode, zero3EventBatteryDeleteConfirmation } from '@/lib/event-battery-code';
 import {
  batteryIssueActionLabel, batteryIssueHref, batteryIssueLabel,
@@ -575,18 +575,49 @@ function Registrations({eventId}:{eventId:string}) {
 }
 
  function TimerControl({eventId,event}:{eventId:string;event?:Zero3Event}) {
- const board=useGetZero3PublicBoard({eventId},{query:{refetchInterval:1500,queryKey:getGetZero3PublicBoardQueryKey({eventId})}});const command=useControlZero3Timer();const qc=useQueryClient();const timer=board.data?.timer;
+ const board=useGetZero3PublicBoard({eventId},{query:{refetchInterval:1500,queryKey:getGetZero3PublicBoardQueryKey({eventId})}});
+ const command=useControlZero3Timer();const qc=useQueryClient();const timer=board.data?.timer;
+ const batteryMode=board.data?.batteryOperationsEnabled===true;
+ const batteriesQuery=useListZero3EventBatteries(eventId,{query:{
+  queryKey:getListZero3EventBatteriesQueryKey(eventId),enabled:batteryMode,refetchInterval:1500,
+ }});
   const activeBattery=board.data?.activeBattery;
-  const batteryMode=board.data?.batteryOperationsEnabled===true;
   const timerAction=primaryTimerAction(timer?.state);
   const timerValue=timer?.state==='PREPARATION'?timer.preparationRemainingMs:timer?.elapsedMs;
+ if(batteryMode){
+  const batteries=batteriesQuery.data??[];
+  return <div className="detail-layout">
+   <section className="panel panel-pad">
+    <div className="op-section-head"><div><div className="eyebrow">Central de cronômetros</div><h2 className="panel-title">Tempos por bateria</h2></div><span className={`pill ${batteries.some(item=>item.state==='RUNNING')?'warn':'good'}`}>{batteries.filter(item=>item.state==='RUNNING').length} em andamento</span></div>
+    <p className="field-help">Cada bateria tem largada, preparação, pausa, retomada, parada e CAP independentes. O acumulado do evento permanece separado e não encerra outros cronômetros.</p>
+    {batteriesQuery.isLoading?<LoadingRows/>:batteriesQuery.isError?<QueryError error={batteriesQuery.error} retry={()=>batteriesQuery.refetch()}/>:!batteries.length?<EmptyState title="Nenhuma bateria cadastrada" detail="Crie uma bateria em Operações → Baterias para iniciar um cronômetro independente."/>:
+     <div className="timer-center-list">{batteries.map(battery=><EventBatteryTimerPanel
+      key={battery.id}
+      battery={battery}
+      timer={board.data?.batteryTimers?.find(item=>item.batteryId===battery.id)}
+      batteryTimers={board.data?.batteryTimers}
+      serverTime={board.data?.serverTime}
+      showTitle
+     />)}</div>}
+   </section>
+   <section className="panel panel-pad">
+    <h2 className="panel-title">Estado compartilhado</h2>
+    <div className="lane-list">
+     <div className="lane-card"><span className="lane-tag">EVT</span><div><div className="lane-name">{event?.name||'Evento'}</div><div className="lane-meta">{event?.proofName||'Provas do evento'}</div></div></div>
+     <div className="lane-card"><span className="lane-tag">TV</span><div><div className="lane-name">{activeBattery?`${eventBatteryCode(activeBattery.order)} · ${activeBattery.name}`:'Nenhuma bateria selecionada'}</div><div className="lane-meta">Selecionar para a TV não inicia nem pausa cronômetros.</div></div></div>
+     <div className="lane-card"><span className="lane-tag">SYNC</span><div><div className="lane-name">{board.isError?(board.isFetching?'Reconectando':'Sem conexão'):board.isFetching?'Sincronizando':'Ao vivo'}</div><div className="lane-meta">O servidor mantém estado, versão e tempos oficiais; telas atualizam a cada 1,5 s.</div></div></div>
+    </div>
+    <p className="notice" style={{marginTop:16}}>A preparação configurada pelo evento não consome o CAP. Atingir o CAP congela somente aquele cronômetro; a bateria continua em apuração até uma ação separada de finalização.</p>
+   </section>
+  </div>;
+ }
+ if(board.isLoading&&!board.data)return <section className="panel panel-pad"><LoadingRows/></section>;
   const doAction=()=>timer&&command.mutate({eventId,data:{
    action:timerAction.action,expectedVersion:timer.version,commandId:crypto.randomUUID(),
-   ...(batteryMode&&activeBattery?{expectedProofId:activeBattery.proofId,expectedBatteryOrder:activeBattery.order}:{}),
   }},{onSuccess:()=>qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})})});
   const connectionLabel=board.isError?(board.isFetching?'Reconectando':'Sem conexão'):board.isFetching?'Sincronizando':'Ao vivo';
-   return <div className="detail-layout"><section className="panel panel-pad"><div className="timer-display"><div className="timer-state">{timerStateLabel(timer?.state)} · V{timer?.version??'—'}</div><div className="timer-time">{formatMs(timerValue)}</div><div className="lede">{batteryMode?activeBattery?`Bateria ${eventBatteryCode(activeBattery.order)} · ${activeBattery.name}`:'Selecione uma bateria em Baterias antes de iniciar o cronômetro.':timer?.state==='PREPARATION'?`Preparação · ${Math.ceil((timer.preparationRemainingMs||0)/1000)}s restantes`:timer?`Preparação configurada: ${timer.preparationSeconds}s`:'Aguardando sincronização do cronômetro'}</div></div><div className="timer-actions"><button className={`button ${timerAction.label==='Iniciar'?'primary':''}`} disabled={!timer||command.isPending||board.isError||batteryMode&&!activeBattery} onClick={doAction}>{timerAction.label==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {command.isPending?'Aguardando confirmação…':timerAction.label}</button></div>{command.isError&&<div className="error-box" style={{marginTop:15}}>Falha no comando · {feedback(command.error)}<button className="button small" onClick={()=>board.refetch()}><RotateCw size={13}/> Atualizar</button></div>}</section>
-   <section className="panel panel-pad"><h2 className="panel-title">Estado compartilhado</h2><div className="lane-list"><div className="lane-card"><span className="lane-tag">EVT</span><div><div className="lane-name">{event?.name||'Evento'}</div><div className="lane-meta">{event?.proofName||'Prova'}</div></div></div>{batteryMode&&<div className="lane-card"><span className="lane-tag">BAT</span><div><div className="lane-name">{activeBattery?`${eventBatteryCode(activeBattery.order)} · ${activeBattery.name}`:'Nenhuma selecionada'}</div><div className="lane-meta">{activeBattery?.categories.map(categoryName).join(' + ')||'Escolha em Operação → Baterias'}</div></div></div>}<div className="lane-card"><span className="lane-tag">SYNC</span><div><div className="lane-name">{connectionLabel}</div><div className="lane-meta">Estado recebido do servidor · atualização a cada 1,5 s</div></div></div></div><p className="notice" style={{marginTop:16}}>Iniciar aplica a preparação configurada e depois inicia a contagem. Parar cancela a preparação ou congela o tempo para apuração; finalizar a bateria é uma ação separada.</p></section></div>;
+    return <div className="detail-layout"><section className="panel panel-pad"><div className="timer-display"><div className="timer-state">{timerStateLabel(timer?.state)} · V{timer?.version??'—'}</div><div className="timer-time">{formatMs(timerValue)}</div><div className="lede">{timer?.state==='PREPARATION'?`Preparação · ${Math.ceil((timer.preparationRemainingMs||0)/1000)}s restantes`:timer?`Preparação configurada: ${timer.preparationSeconds}s`:'Aguardando sincronização do cronômetro'}</div></div><div className="timer-actions"><button className={`button ${timerAction.label==='Iniciar'?'primary':''}`} disabled={!timer||command.isPending||board.isError} onClick={doAction}>{timerAction.label==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {command.isPending?'Aguardando confirmação…':timerAction.label}</button></div>{command.isError&&<div className="error-box" style={{marginTop:15}}>Falha no comando · {feedback(command.error)}<button className="button small" onClick={()=>board.refetch()}><RotateCw size={13}/> Atualizar</button></div>}</section>
+    <section className="panel panel-pad"><h2 className="panel-title">Estado compartilhado</h2><div className="lane-list"><div className="lane-card"><span className="lane-tag">EVT</span><div><div className="lane-name">{event?.name||'Evento'}</div><div className="lane-meta">{event?.proofName||'Prova'}</div></div></div><div className="lane-card"><span className="lane-tag">SYNC</span><div><div className="lane-name">{connectionLabel}</div><div className="lane-meta">Estado recebido do servidor · atualização a cada 1,5 s</div></div></div></div><p className="notice" style={{marginTop:16}}>Iniciar aplica a preparação configurada e depois inicia a contagem. Parar congela o tempo para apuração; finalizar a bateria é uma ação separada.</p></section></div>;
 }
 
  function Results(props:{eventId:string;eventName?:string;proofId?:string;batteryOrder?:number;initialRegistrationId?:string;initialProofId?:string}) {
@@ -613,7 +644,6 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId),refetchInterval:10000}});
  const proofs=useListZero3Proofs(eventId,{query:{queryKey:getListZero3ProofsQueryKey(eventId),refetchInterval:10000}});
  const select=useSetZero3ActiveEventBattery();
- const timerCommand=useControlZero3Timer();
  const create=useCreateZero3EventBattery();
  const finalize=useFinalizeZero3EventBattery();
   const updateBattery=useUpdateZero3EventBattery();
@@ -622,7 +652,6 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const qc=useQueryClient();
  const [error,setError]=useState('');
  const [notice,setNotice]=useState('');
- const [timerCommandBatteryId,setTimerCommandBatteryId]=useState<string|null>(null);
  const [confirmId,setConfirmId]=useState<string|null>(null);
   const [editingBatteryId,setEditingBatteryId]=useState<string|null>(null);
   const [editingName,setEditingName]=useState('');
@@ -686,22 +715,6 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const selectBattery=(batteryId:string|null)=>select.mutate({eventId,data:{batteryId}},{
   onSuccess:()=>{setError('');refresh();},onError:failure=>setError(feedback(failure)),
  });
- const controlBatteryTimer=(battery:Zero3EventBattery)=>{
-  const timer=batteryModel.batteryTimers?.find(item=>item.batteryId===battery.id);
-  const state=timer?.state??battery.state;
-  const control=eventBatteryTimerControl(state);
-  if(!control||timerCommand.isPending)return;
-  setTimerCommandBatteryId(battery.id);
-  timerCommand.mutate({eventId,data:{
-   action:control.action,
-   expectedVersion:timer?.version??battery.timerVersion,
-   commandId:crypto.randomUUID(),
-   expectedBatteryId:battery.id,
-  }},{
-   onSuccess:()=>{setTimerCommandBatteryId(null);setError('');refresh();},
-   onError:failure=>{setTimerCommandBatteryId(null);setError(feedback(failure));refresh();},
-  });
- };
  const openResultsPanel=(batteryId:string,issue:BatteryReadinessIssue|null=null)=>{
   setConfirmId(null);
   setResultsBatteryId(batteryId);
@@ -734,10 +747,8 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
         battery.registrations.length>0&&Boolean(battery.finalizationFingerprint)&&!battery.operationalFinalized;
        const canOpenFinalize=canFinalize;
       const batteryTimer=batteryModel.batteryTimers?.find(item=>item.batteryId===battery.id);
-      const timerState=batteryTimer?.state??battery.state;
        const deleteConfirmationPhrase=zero3EventBatteryDeleteConfirmation(battery.order,battery.name);
        const hasTimerData=battery.timerVersion>0||battery.state!=='IDLE';
-       const timerControl=battery.operationalFinalized?null:eventBatteryTimerControl(timerState);
       const canControlTimer=me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE';
        const canEditBattery=(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&
         !['PREPARATION','RUNNING'].includes(battery.state);
@@ -756,19 +767,13 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
         {(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&<button className="button small" type="button" disabled={!canEditBattery||updateBattery.isPending} onClick={()=>beginBatteryEdit(battery)} aria-label={`Editar bateria ${eventBatteryCode(battery.order)}`}>Editar bateria</button>}
         {isAdmin&&<button className="button small" type="button" disabled={['PREPARATION','RUNNING'].includes(battery.state)||deleteBattery.isPending} onClick={()=>{setDeleteBatteryId(battery.id);setDeleteBatteryConfirmation('');setError('');}} aria-label={`Excluir bateria ${eventBatteryCode(battery.order)}`}><Trash2 size={13}/> Excluir bateria</button>}
       </div>
-      <div className="battery-timer-tools">
-       <BatteryTimerReadout battery={battery} timer={batteryTimer} serverTime={batteryModel.serverTime}/>
-       {canControlTimer&&timerControl&&<button
-        className={`button small ${timerControl.action==='prepare'?'primary':''}`}
-        type="button"
-        data-testid={`battery-timer-action-${battery.id}`}
-        disabled={timerCommand.isPending}
-        onClick={()=>controlBatteryTimer(battery)}
-       >
-        {timerControl.action==='finish'?<Square size={13}/>:timerControl.action==='reset'?<X size={13}/>:timerControl.action==='resume'?<RotateCw size={13}/>:<Play size={13}/>}
-        {timerCommandBatteryId===battery.id?'Salvando…':timerControl.label}
-       </button>}
-      </div>
+       <EventBatteryTimerPanel
+        battery={battery}
+        timer={batteryTimer}
+        batteryTimers={batteryModel.batteryTimers}
+        serverTime={batteryModel.serverTime}
+       />
+       {!canControlTimer&&<p className="field-help">Somente ADMIN ou JUIZ-CHEFE podem comandar cronômetros.</p>}
       {battery.expectedResultCount===0&&<p className="field-help">Adicione inscrições à bateria antes de finalizar.</p>}
       {exceptionPending&&<p className="field-help">DNS/DNF requer regra oficial de exceção antes da publicação.</p>}
        {unresolved(battery)&&<p className="field-help">Há empate sem regra oficial configurada; os pontos afetados permanecem pendentes no ranking até a regra ser resolvida.</p>}
@@ -847,37 +852,6 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
    <button className="button primary" disabled={create.isPending||!registrations.data?.length}><Plus size={14}/>{create.isPending?'Criando…':'Criar bateria'}</button>
    {proofs.data?.length!==4&&<p className="field-help">O evento precisa manter quatro provas cadastradas.</p>}
   </form>
- </div>;
-}
-
-type EventBatteryTimerSnapshot = NonNullable<Zero3PublicBoard['batteryTimers']>[number];
-
-function timestampMs(value?:string|Date|null){
- if(value instanceof Date)return value.getTime();
- if(typeof value==='string'){
-  const parsed=Date.parse(value);
-  return Number.isFinite(parsed)?parsed:undefined;
- }
- return undefined;
-}
-
-function BatteryTimerReadout({battery,timer,serverTime}:{battery:Zero3EventBattery;timer?:EventBatteryTimerSnapshot;serverTime?:string|Date}){
- const [now,setNow]=useState(()=>Date.now());
- useEffect(()=>{const id=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(id);},[]);
- const state=timer?.state??battery.state;
- const serverNow=timestampMs(serverTime);
- const delta=serverNow===undefined?0:Math.max(0,now-serverNow);
- const elapsed=(timer?.elapsedMs??battery.elapsedMs)+(state==='RUNNING'?delta:0);
- const prepEnd=timestampMs(timer?.preparationEndsAt);
- const preparation=state==='PREPARATION'
-  ?prepEnd===undefined?Math.max(0,(timer?.preparationRemainingMs??battery.preparationRemainingMs)-delta):Math.max(0,prepEnd-now)
-  :0;
- return <div className="battery-timer-readout" data-testid={`battery-timer-${battery.id}`}>
-  <Clock3 size={17} aria-hidden="true"/>
-  <div><small>{state==='PREPARATION'?'PREPARAÇÃO':state==='RUNNING'?'DURAÇÃO DA BATERIA':'CRONÔMETRO DA BATERIA'}</small>
-   <strong>{formatMs(state==='PREPARATION'?preparation:elapsed)}</strong>
-   <small>{state==='FINISHED'?'Parado · tempo congelado':timerStateLabel(state)}</small>
-  </div>
  </div>;
 }
 

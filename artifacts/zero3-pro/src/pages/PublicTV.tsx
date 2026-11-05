@@ -6,6 +6,7 @@ import { RotateCw } from 'lucide-react';
 import { liveBoardHrefForBattery, liveBoardHrefForEvent } from '@/lib/live-board-navigation';
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
+import { projectEventElapsedDelta } from '@/lib/battery-time-display';
 import './PublicTV.css';
 
 // Keep target=_blank links native; Wouter's Link handler cancels their navigation.
@@ -92,7 +93,7 @@ function EventBatteryBoard({board}:{board:Zero3PublicBoard}){
           <div className="tv-battery-kicker" style={{textAlign:'right',marginTop:6}}>{battery.operationalFinalized?'BATERIA FINALIZADA':'BATERIA ABERTA'}</div>
           <div className="tv-battery-kicker" style={{textAlign:'right',marginTop:4}}>{battery.results.some(result=>result.publishedRevision===result.revision)?'RANKING OFICIAL PARCIAL':'RESULTADOS PROVISÓRIOS'}</div>
         </div>
-        <EventBatteryElapsed battery={battery} timer={board.timer} serverTime={board.serverTime}/>
+        <EventBatteryElapsed battery={battery} timer={board.timer} batteryTimers={board.batteryTimers} serverTime={board.serverTime}/>
         <Link className="tv-live-board-link" href={liveBoardHrefForEvent(board.event?.id)} target="_blank" rel="noopener noreferrer">Placar ao vivo ↗</Link>
       </div>
     </header>
@@ -154,15 +155,21 @@ function EventBatteryBoard({board}:{board:Zero3PublicBoard}){
   </section>;
 }
 
-function EventBatteryElapsed({battery,timer,serverTime}:{battery:NonNullable<Zero3PublicBoard['activeBattery']>;timer:Zero3PublicBoard['timer'];serverTime:string}){
+function EventBatteryElapsed({battery,timer,batteryTimers,serverTime}:{battery:NonNullable<Zero3PublicBoard['activeBattery']>;timer:Zero3PublicBoard['timer'];batteryTimers:Zero3PublicBoard['batteryTimers'];serverTime:string}){
   const [now,setNow]=useState(()=>Date.now());
   useEffect(()=>{const id=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(id);},[]);
   const delta=Math.max(0,now-Date.parse(serverTime));
-  const batteryElapsed=timer&&timer.batteryId===battery.batteryId
-    ?timer.elapsedMs+(timer.state==='RUNNING'?delta:0)
+  const activeTimer=timer&&timer.batteryId===battery.batteryId?timer:undefined;
+  const capMs=activeTimer?.timeCapMs??battery.timeCapMs;
+  const rawBatteryElapsed=activeTimer
+    ?activeTimer.elapsedMs+(activeTimer.state==='RUNNING'?delta:0)
     :battery.elapsedMs??0;
-  const eventElapsed=(battery.eventElapsedMs??0)+(battery.state==='RUNNING'?delta:0);
-  return <span className="tv-event-elapsed">BATERIA {duration(batteryElapsed)} · EVENTO {duration(eventElapsed)} / 120:00</span>;
+  const batteryElapsed=capMs?Math.min(rawBatteryElapsed,capMs):rawBatteryElapsed;
+  const eventElapsed=(battery.eventElapsedMs??0)+projectEventElapsedDelta(
+    batteryTimers,delta,{state:activeTimer?.state??battery.state,elapsedMs:activeTimer?.elapsedMs??battery.elapsedMs,timeCapMs:capMs},
+  );
+  const capReached=Boolean(capMs&&rawBatteryElapsed>=capMs);
+  return <span className="tv-event-elapsed">BATERIA {duration(batteryElapsed)}{capReached?' · CAP ATINGIDO':''} · EVENTO {duration(eventElapsed)} / 120:00</span>;
 }
 export function PublicTV(){
   const search=useSearch();
@@ -190,11 +197,13 @@ function TimerReadout({timer,serverTime}:{timer:Zero3PublicBoard['timer'];server
  const [now,setNow]=useState(()=>Date.now());
  useEffect(()=>{const id=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(id);},[]);
  const delta=Math.max(0,now-Date.parse(serverTime));
- const elapsed=(timer?.elapsedMs??0)+(timer?.state==='RUNNING'?delta:0);
+  const rawElapsed=(timer?.elapsedMs??0)+(timer?.state==='RUNNING'?delta:0);
+  const elapsed=timer?.timeCapMs?Math.min(rawElapsed,timer.timeCapMs):rawElapsed;
+  const capReached=Boolean(timer?.timeCapMs&&rawElapsed>=timer.timeCapMs);
  const prep=timer?.state==='PREPARATION'&&typeof timer.preparationEndsAt==='string'
   ?Math.max(0,Date.parse(timer.preparationEndsAt)-now)
   :Math.max(0,(timer?.preparationRemainingMs??0)-delta);
  const formattedDuration=duration(timer?.state==='PREPARATION'?prep:elapsed);
- return <div className="tv-timer-box"><small>{timer?.state==='PREPARATION'?'PREPARAÇÃO · BATERIA':'DURAÇÃO DA BATERIA'}</small><strong aria-label={formattedDuration}><TimerDigits value={formattedDuration}/></strong><small>{timerStateLabel(timer?.state)}</small></div>;
+  return <div className="tv-timer-box"><small>{timer?.state==='PREPARATION'?'PREPARAÇÃO · BATERIA':'DURAÇÃO DA BATERIA'}</small><strong aria-label={formattedDuration}><TimerDigits value={formattedDuration}/></strong><small>{capReached?'CAP ATINGIDO · CRONÔMETRO CONGELADO':timerStateLabel(timer?.state)}</small></div>;
 }
 function ClockBlock(){const [now,setNow]=useState(()=>new Date());useEffect(()=>{const id=window.setInterval(()=>setNow(new Date()),1000);return()=>window.clearInterval(id);},[]);return <div className="tv-clock-block"><div className="tv-clock-label">HORÁRIO DE BRASÍLIA</div><div className="tv-clock">{clockText(now)}</div><div className="tv-clock-label">RELÓGIO CIVIL · UTC−03</div></div>}

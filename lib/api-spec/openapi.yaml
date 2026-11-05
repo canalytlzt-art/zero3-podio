@@ -436,6 +436,41 @@ paths:
           description: Battery not found
         "409":
           description: Battery changed or is currently running
+  /zero3/events/{eventId}/batteries/{batteryId}/time-cap:
+    patch:
+      operationId: updateZero3EventBatteryTimeCap
+      tags: [zero3]
+      summary: Update an event battery time cap with concurrency checks and an audit record
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: batteryId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3BatteryTimeCapUpdateInput" }
+      responses:
+        "200":
+          description: Updated event battery and timer cap
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3EventBattery" }
+        "400":
+          description: Invalid cap
+        "401":
+          description: Authentication required
+        "403":
+          description: ADMIN or JUIZ_CHEFE role required before first start; ADMIN required afterward
+        "404":
+          description: Battery not found
+        "409":
+          description: Timer changed, battery is not paused after start, or cap conflicts with elapsed time
   /zero3/events/{eventId}/active-event-battery:
     patch:
       operationId: setZero3ActiveEventBattery
@@ -1347,6 +1382,7 @@ components:
             activeBatteries: { type: array, items: { type: object, additionalProperties: true } }
             batteryRuns: { type: array, items: { type: object, additionalProperties: true } }
             batteryPublications: { type: array, items: { type: object, additionalProperties: true } }
+            batteryTimeCapAudit: { type: array, items: { type: object, additionalProperties: true } }
         digest: { type: string, minLength: 64, maxLength: 64 }
     Zero3EventDeleteInput:
       type: object
@@ -1815,6 +1851,7 @@ components:
         elapsedMs: { type: integer, minimum: 0 }
         eventElapsedMs: { type: integer, minimum: 0 }
         eventLimitMs: { type: integer, minimum: 0 }
+        timeCapMs: { type: integer, minimum: 1, maximum: 7200000 }
         preparationEndsAt: { type: ["string", "null"], format: date-time }
         preparationRemainingMs: { type: integer, minimum: 0 }
         preparationSeconds: { type: integer, minimum: 0 }
@@ -1841,7 +1878,15 @@ components:
         operationalFinalizedAt: { type: ["string", "null"], format: date-time }
         timerVersion: { type: integer, minimum: 0 }
         updatedAt: { type: string, format: date-time }
-      required: [id, eventId, order, name, state, elapsedMs, eventElapsedMs, eventLimitMs, preparationEndsAt, preparationRemainingMs, preparationSeconds, startedAt, preparationStartedAt, firstStartedAt, stoppedAt, registrations, proofs, proofLeaderboards, results, categories, pendingResultCount, reviewedResultCount, expectedResultCount, finalizationCurrent, finalized, finalizationFingerprint, finalizationVersion, finalizedAt, timerVersion, updatedAt]
+      required: [id, eventId, order, name, state, elapsedMs, eventElapsedMs, eventLimitMs, timeCapMs, preparationEndsAt, preparationRemainingMs, preparationSeconds, startedAt, preparationStartedAt, firstStartedAt, stoppedAt, registrations, proofs, proofLeaderboards, results, categories, pendingResultCount, reviewedResultCount, expectedResultCount, finalizationCurrent, finalized, finalizationFingerprint, finalizationVersion, finalizedAt, timerVersion, updatedAt]
+    Zero3BatteryTimeCapUpdateInput:
+      type: object
+      properties:
+        timeCapMs: { type: integer, minimum: 1, maximum: 7200000 }
+        expectedTimeCapMs: { type: integer, minimum: 1, maximum: 7200000 }
+        expectedTimerVersion: { type: integer, minimum: 0 }
+        commandId: { type: string, minLength: 1 }
+      required: [timeCapMs, expectedTimeCapMs, expectedTimerVersion, commandId]
     Zero3ProofLeaderboards:
       type: object
       properties:
@@ -1886,6 +1931,7 @@ components:
         preparationEndsAt: { type: ["string", "null"], format: date-time }
         eventElapsedMs: { type: integer, minimum: 0 }
         eventLimitMs: { type: integer, minimum: 0 }
+        timeCapMs: { type: integer, minimum: 1, maximum: 7200000 }
       required: [eventId, state, elapsedMs, preparationRemainingMs, preparationSeconds, version, updatedAt]
     Zero3TimerCommand:
       type: object
@@ -2190,6 +2236,7 @@ components:
           items: { $ref: "#/components/schemas/Zero3ProofLeaderboards" }
         eventElapsedMs: { type: integer, minimum: 0 }
         eventLimitMs: { type: integer, minimum: 0 }
+        timeCapMs: { type: integer, minimum: 1, maximum: 7200000 }
         preparationEndsAt: { type: ["string", "null"], format: date-time }
       required: [eventId, proofId, proofOrder, proofName, order, name, heatIds, categories, registrations, results, leaderboards, state, pendingResultCount, reviewedResultCount, expectedResultCount, finalized, finalizationCurrent, finalizationVersion, finalizedAt, finalizationFingerprint]
     Zero3CompletedBattery:
