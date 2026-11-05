@@ -244,15 +244,14 @@ function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serve
         <span>{resultsStatus}</span>
       </div>
     </header>
-    {registrations.length ? (
-      <>
+    <>
         <div className="tv-event-result-table-wrap">
           <table className="tv-event-result-table tv-event-battery-results-table">
             <thead><tr>
               <th>INÍCIO / TEMPO</th><th>EQUIPE / ATLETAS</th>
               {proofs.map(proof=><th key={proof.id}><span>PROVA {proof.order}</span><small>{proof.name||`Prova ${proof.order}`}</small></th>)}
             </tr></thead>
-            <tbody>{registrations.map((reg,index)=><tr key={reg.id}>
+            <tbody>{registrations.length ? registrations.map((reg,index)=><tr key={reg.id}>
               {index===0&&<td rowSpan={registrations.length} className="tv-event-battery-clock-cell">{batteryClock()}</td>}
               <td className="tv-event-battery-team-cell">
                 <strong>{reg.teamName||reg.athleteNames.join(' / ')||'Equipe sem nome'}</strong>
@@ -277,10 +276,16 @@ function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serve
                 return <td key={proof.id}><strong>{placement?`${placement}º · `:''}{value}</strong>
                   <small className={provisional?'provisional':''}>{label}</small></td>;
               })}
-            </tr>)}</tbody>
+            </tr>) : <tr>
+              <td className="tv-event-battery-clock-cell">{batteryClock()}</td>
+              <td className="tv-event-battery-empty-cell" colSpan={proofs.length+1}>
+                <strong>Bateria sem equipes vinculadas</strong>
+                <span>As provas ficam disponíveis quando inscrições forem associadas.</span>
+              </td>
+            </tr>}</tbody>
           </table>
         </div>
-        <div className="tv-event-battery-podiums">
+        {categoriesWithTeams.length>0&&<div className="tv-event-battery-podiums">
           {categoriesWithTeams.map(category=>{
             const categoryRegs=registrations.filter(reg=>reg.category===category);
             const style=category==='RX'?'rx':category==='SC'?'sc':'custom';
@@ -306,14 +311,8 @@ function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serve
               </footer>
             </section>;
           })}
-        </div>
-      </>
-    ) : (
-      <div className="tv-event-battery-empty">
-        {batteryClock()}
-        <div><strong>Bateria sem equipes vinculadas</strong><span>As provas ficam disponíveis quando inscrições forem associadas.</span></div>
-      </div>
-    )}
+        </div>}
+    </>
   </article>;
 }
 export function PublicTV(){

@@ -42,3 +42,87 @@ mtime_ms = 1793849848543
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/be7160bc-946c-4264-8499-e386c2363811/489550a1-bf22-441d-9224-ec995155f229"
 storage_version_token = "1793849915344749"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "oatAZRuwoMGPuwXk5N6Vl"
+uri = "file://generated-artifacts/zero3-tv-preview-1920x1080.jpg"
+type = "image"
+title = "TV Preview · 1920×1080"
+description = "Cabeçalho sem cronômetro global; mostra a hora civil de Brasília. O Preview atual não trouxe baterias para exibir os tempos individuais."
+logical_id = "a10e7b6a-7592-4899-9001-40741d0dddbf"
+content_hash = "sha256:47b7b17b6de18cb0d175a7d9c2f7d0d06c537f59b8fe8f1f759322ba6a9a80ed"
+size = 40037
+mtime_ms = 1793922469145
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/a10e7b6a-7592-4899-9001-40741d0dddbf/7b416914-0856-49a0-a46b-4b408036d7b9"
+storage_version_token = "1793922494976183"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "mhl_iAW5Frcg-WdX5kvKq"
+uri = "file://generated-artifacts/zero3-tv-preview-1024x576.jpg"
+type = "image"
+title = "TV Preview · 1024×576"
+description = "Captura em tela compacta do Preview; o evento de demonstração está sem operações de bateria nessa API."
+logical_id = "7b31290f-7647-4f1e-95a5-467060ef1200"
+content_hash = "sha256:f1c5c8b3a0b61a9f569c4b24847435cd9deb4a0fd4f86450bffe551b4f662c78"
+size = 25096
+mtime_ms = 1793922423113
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/7b31290f-7647-4f1e-95a5-467060ef1200/ecdfc318-14f1-4167-ab5a-65681025f87a"
+storage_version_token = "1793922495508923"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "yM901m1NK9oN-W5-GuaD3"
+uri = "file://generated-artifacts/zero3-tv-preview-390x844.jpg"
+type = "image"
+title = "TV Preview · celular 390 px"
+description = "Hora de Brasília centralizada e legível, sem mostrador esportivo no topo."
+logical_id = "b4fb9e0f-7473-415a-8336-b98888abb3e8"
+content_hash = "sha256:deed730e20b495cb4daba45f78c0eb33901b7233a9450582f2219d5811d12536"
+size = 17897
+mtime_ms = 1793922464845
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/b4fb9e0f-7473-415a-8336-b98888abb3e8/3ccc18b4-d863-467c-bcdf-ebbc3d4f35bb"
+storage_version_token = "1793922496038839"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "m2O2kELFzXevZ0HGfaTTq"
+uri = "file://generated-artifacts/zero3-tv-preview-320x800.jpg"
+type = "image"
+title = "TV Preview · celular 320 px"
+description = "Hora de Brasília centralizada; o nome longo do evento quebra linha sem cortar o relógio."
+logical_id = "46bde0d6-fc2f-453b-a46b-cd3dca7e868b"
+content_hash = "sha256:798c454dd127a1270ef60a5b7cb035a1feebf3b90730259b7b1c13e548b8c62a"
+size = 17258
+mtime_ms = 1793922466749
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/46bde0d6-fc2f-453b-a46b-cd3dca7e868b/4196a457-b438-4a13-b33f-12f38dbd0c1e"
+storage_version_token = "1793922496557197"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "roD1-zV6TVMMbM0LaicYZ"
+uri = "file://generated-artifacts/zero3-live-board-results-preview.jpg"
+type = "image"
+title = "Placar ao vivo · Resultados da bateria"
+description = "Captura do Preview com dados fictícios disponíveis."
+logical_id = "e7a1ce75-5685-441f-bd1c-befea1c4722c"
+content_hash = "sha256:8b42d6b77ba580afd52052c1e6c8541f99198f7e90c2ecbf5d87048bc66f6a0c"
+size = 64178
+mtime_ms = 1793922242093
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/e7a1ce75-5685-441f-bd1c-befea1c4722c/7d08b7f4-df57-4f92-a940-7d0d9a127299"
+storage_version_token = "1793922497073613"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "vv7opTtR0xir13HulcfNY"
+uri = "file://generated-artifacts/zero3-live-board-ranking-preview.jpg"
+type = "image"
+title = "Placar ao vivo · Ranking geral"
+description = "Captura do Preview com dados fictícios disponíveis."
+logical_id = "326684d8-4bc8-4458-b5f7-23774c4c81fe"
+content_hash = "sha256:01cc93c6ca088feb711422acb33895325eb6368d89c3f37afddc3b677ef0d868"
+size = 120157
+mtime_ms = 1793922244933
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/326684d8-4bc8-4458-b5f7-23774c4c81fe/84b47d3a-cf6e-4305-97cd-5bdc86ed83de"
+storage_version_token = "1793922497646078"
+content_type = "image/jpeg"
