@@ -1183,3 +1183,82 @@ body:has(.live-board-page) {
   .live-board-page .lb-event-battery-unified-table .lb-event-battery-team small,
   .live-board-page .lb-event-battery-unified-table td > small { font-size: 11px; }
 }
+
+.live-board-page .lb-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.live-board-page .lb-fullscreen-toggle {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  padding: 0;
+  color: #f8f6fb;
+  border: 1px solid #615471;
+  border-radius: 5px;
+  background: #201d29;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color .16s, background .16s, border-color .16s;
+}
+.live-board-page .lb-fullscreen-toggle:hover {
+  color: var(--lb-lime);
+  border-color: #8a7a9f;
+  background: #30283e;
+}
+.live-board-page .lb-fullscreen-toggle:focus-visible {
+  outline: 3px solid var(--lb-lime);
+  outline-offset: 3px;
+}
+.live-board-page:fullscreen,
+.live-board-page:-webkit-full-screen,
+.live-board-page.is-fullscreen-fallback {
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0 clamp(12px, 3vw, 48px) 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #15141d;
+}
+.live-board-page.is-fullscreen-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+}
+.live-board-page:fullscreen .lb-frame,
+.live-board-page:-webkit-full-screen .lb-frame,
+.live-board-page.is-fullscreen-fallback .lb-frame {
+  width: 100%;
+  max-width: none;
+  min-height: 100%;
+  margin-inline: auto;
+}
+.live-board-page:fullscreen .lb-topbar,
+.live-board-page:-webkit-full-screen .lb-topbar,
+.live-board-page.is-fullscreen-fallback .lb-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+.live-board-page:fullscreen .lb-titlebar,
+.live-board-page:-webkit-full-screen .lb-titlebar,
+.live-board-page.is-fullscreen-fallback .lb-titlebar {
+  margin-top: 12px;
+}
+.live-board-page:fullscreen .lb-fullscreen-toggle,
+.live-board-page:-webkit-full-screen .lb-fullscreen-toggle,
+.live-board-page.is-fullscreen-fallback .lb-fullscreen-toggle {
+  color: var(--lb-lime);
+  border-color: #83759a;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-board-page .lb-fullscreen-toggle { transition: none; }
+}

@@ -498,40 +498,42 @@ export function EventResultsWorkspace({
           if (event.target === event.currentTarget && !publishRanking.isPending) setPublicationDialogOpen(false);
         }}>
           <section className="erw-publication-dialog" role="alertdialog" aria-modal="true" aria-labelledby="erw-publish-title">
-            <span className="erw-kicker">CONFIRMAÇÃO ADMINISTRATIVA</span>
-            <h2 id="erw-publish-title">Publicar ranking de {eventName}?</h2>
-            <p>Esta publicação altera somente os resultados revisados deste evento. Inscrições parciais continuam fora da pontuação oficial.</p>
-            <dl className="erw-publication-counts">
-              <div><dt>Resultados revisados elegíveis</dt><dd>{publicationPreview.eligibleResultCount}</dd></div>
-              <div><dt>Parciais ou faltantes</dt><dd>{publicationPreview.partialResultCount}</dd></div>
-              <div><dt>Revisão atual</dt><dd>{publicationPreview.version}</dd></div>
-            </dl>
-            <div className="erw-publication-scope">
-              <strong>Provas e categorias afetadas</strong>
-              {publicationPreview.affected.length ? (
-                <ul>{publicationPreview.affected.map((scope) => (
-                  <li key={`${scope.proofId}:${scope.category}`}>{scope.proofName} · {scope.category} · {scope.resultCount} resultado(s)</li>
-                ))}</ul>
-              ) : <p>Nenhuma alteração revisada está elegível.</p>}
-            </div>
-            {publicationPreview.ties.length > 0 && (
-              <p className="erw-tie-dialog-note" role="status">
-                Há empate(s) exato(s). Sem decisão manual, os participantes compartilham colocação e pontos; isso não impede a publicação.
-              </p>
-            )}
-            {publicationPreview.issues.some((issue) => !issue.code.startsWith('TIE_')) && (
-              <div className="erw-publication-issues" aria-label="Pendências da publicação">
-                <strong>Pendências e avisos</strong>
-                <ul>{publicationPreview.issues.filter((issue) => !issue.code.startsWith('TIE_')).map((issue, index) => (
-                  <li key={`${issue.code}-${issue.resultId ?? index}`} className={issue.blocking ? 'is-blocking' : ''}>
-                    {issue.blocking ? 'Bloqueio: ' : 'Aviso: '}{issue.message}
-                  </li>
-                ))}</ul>
+            <div className="erw-publication-dialog-content">
+              <span className="erw-kicker">CONFIRMAÇÃO ADMINISTRATIVA</span>
+              <h2 id="erw-publish-title">Publicar ranking de {eventName}?</h2>
+              <p>Esta publicação altera somente os resultados revisados deste evento. Inscrições parciais continuam fora da pontuação oficial.</p>
+              <dl className="erw-publication-counts">
+                <div><dt>Resultados revisados elegíveis</dt><dd>{publicationPreview.eligibleResultCount}</dd></div>
+                <div><dt>Parciais ou faltantes</dt><dd>{publicationPreview.partialResultCount}</dd></div>
+                <div><dt>Revisão atual</dt><dd>{publicationPreview.version}</dd></div>
+              </dl>
+              <div className="erw-publication-scope">
+                <strong>Provas e categorias afetadas</strong>
+                {publicationPreview.affected.length ? (
+                  <ul>{publicationPreview.affected.map((scope) => (
+                    <li key={`${scope.proofId}:${scope.category}`}>{scope.proofName} · {scope.category} · {scope.resultCount} resultado(s)</li>
+                  ))}</ul>
+                ) : <p>Nenhuma alteração revisada está elegível.</p>}
               </div>
-            )}
-            {incompleteTieBreak && (
-              <p className="erw-tie-dialog-note" role="alert">Complete todas as posições da decisão manual ou escolha manter a colocação compartilhada.</p>
-            )}
+              {publicationPreview.ties.length > 0 && (
+                <p className="erw-tie-dialog-note" role="status">
+                  Há empate(s) exato(s). Sem decisão manual, os participantes compartilham colocação e pontos; isso não impede a publicação.
+                </p>
+              )}
+              {publicationPreview.issues.some((issue) => !issue.code.startsWith('TIE_')) && (
+                <div className="erw-publication-issues" aria-label="Pendências da publicação">
+                  <strong>Pendências e avisos</strong>
+                  <ul>{publicationPreview.issues.filter((issue) => !issue.code.startsWith('TIE_')).map((issue, index) => (
+                    <li key={`${issue.code}-${issue.resultId ?? index}`} className={issue.blocking ? 'is-blocking' : ''}>
+                      {issue.blocking ? 'Bloqueio: ' : 'Aviso: '}{issue.message}
+                    </li>
+                  ))}</ul>
+                </div>
+              )}
+              {incompleteTieBreak && (
+                <p className="erw-tie-dialog-note" role="alert">Complete todas as posições da decisão manual ou escolha manter a colocação compartilhada.</p>
+              )}
+            </div>
             <footer>
               <button className="button small" type="button" disabled={publishRanking.isPending} onClick={() => setPublicationDialogOpen(false)}>Cancelar</button>
               <button className="button primary small" type="button" disabled={!publicationPreview.canPublish || incompleteTieBreak || publishRanking.isPending} onClick={confirmPublishRanking} data-testid="button-confirm-publish-ranking">

@@ -224,3 +224,115 @@ mtime_ms = 1793962524581
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/5e40232e-42a2-4568-a5cc-65f7a79a07b3/da204451-1e98-4d5a-b51b-f650f867c13c"
 storage_version_token = "1793962889272535"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "mXEMNajjwPbW_z6OX76Ey"
+uri = "file://generated-artifacts/zero3-ranking-headings.jpg"
+type = "image"
+title = "Ranking geral — ZERO3 GAMES 2026"
+description = "Captura local da tela de ranking com os rótulos Carga, Rep, For Time e Condition. Renderizada com uma resposta pública do staging em cache; sem gravações."
+logical_id = "1a50cd2e-53f7-4ac9-aa78-133463f0b3b6"
+content_hash = "sha256:68655db7270f0ef6f4e2aa223e571af3c0cb0f2d958edf3c8c62aa8d7487c333"
+size = 331151
+mtime_ms = 1793967099329
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/1a50cd2e-53f7-4ac9-aa78-133463f0b3b6/33678133-ad3c-4696-b547-e893e7bfa98f"
+storage_version_token = "1793967306923247"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "ki-DvIn79cLzM7tDwuJQB"
+uri = "file://generated-artifacts/publication-confirmation-desktop.jpg"
+type = "image"
+title = "Confirmação de publicação — desktop"
+description = "Captura da prévia visual local com fundo claro opaco e overlay escurecido. Conteúdo ilustrativo; nenhuma publicação foi confirmada."
+logical_id = "8b3a1dfa-5ae4-4a7e-8192-d9f4d5e229a3"
+content_hash = "sha256:5355db9047df72f336719b19e3c515e568656754695f7f0c91e888085a694e15"
+size = 62999
+mtime_ms = 1793968098677
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/8b3a1dfa-5ae4-4a7e-8192-d9f4d5e229a3/392470ce-2edf-472e-b956-65457dd94e2f"
+storage_version_token = "1793968188069967"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "i5_SV1J-moxdxd1nVVGGl"
+uri = "file://generated-artifacts/publication-confirmation-mobile.jpg"
+type = "image"
+title = "Confirmação de publicação — 390 px"
+description = "Prévia em celular: conteúdo rolável em painel próprio, botões visíveis sem sobrepor os avisos. Dados fictícios; nenhuma publicação foi confirmada."
+logical_id = "8a4fddd2-bfa1-48ff-8e9e-080b76bb9477"
+content_hash = "sha256:f434259696667f5f23d8bcac0439e6e6804f77e2c63a69f98dee941316c11473"
+size = 41105
+mtime_ms = 1793968100207
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/8a4fddd2-bfa1-48ff-8e9e-080b76bb9477/a055c64a-628d-4e60-bb5c-d3787055fb7b"
+storage_version_token = "1793968188619544"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "NSj1G0jwqyiCpeE51fGLn"
+uri = "file://generated-artifacts/publication-confirmation-compact.jpg"
+type = "image"
+title = "Confirmação de publicação — 320 px"
+description = "Prévia compacta mostrando os botões persistentes e conteúdo acima rolável, sem sobreposição. Conteúdo ilustrativo; nenhuma publicação foi confirmada."
+logical_id = "98259844-7422-4909-aa45-8d9c718d8d30"
+content_hash = "sha256:187f45a55aa21bb07adbae772244faed3d1f1e585767e7cfa5f386daa2606917"
+size = 25297
+mtime_ms = 1793968101585
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/98259844-7422-4909-aa45-8d9c718d8d30/ec1ab01a-5879-4043-b6db-fc6f19110900"
+storage_version_token = "1793968189146330"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "6MsZdz1k4zRfeXTouRqMb"
+uri = "file://generated-artifacts/leaderboard-normal.jpg"
+type = "image"
+title = "Placar ao vivo — tela normal"
+description = "Captura do Preview em desktop; o ambiente local não possui evento disponível atualmente."
+logical_id = "fb7d6e6f-b0a3-44bd-bbd3-8d3a514b650f"
+content_hash = "sha256:eec77a144e50f87f53eec36fe4b94f3d792b468d520681471bbcca24b3f3dcb8"
+size = 58082
+mtime_ms = 1793968406006
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/fb7d6e6f-b0a3-44bd-bbd3-8d3a514b650f/76d0f8bd-eb9e-41ba-bf06-02cd2b9d1190"
+storage_version_token = "1793968671144516"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "2tVk35QSuskkvziZrEiih"
+uri = "file://generated-artifacts/leaderboard-fullscreen.jpg"
+type = "image"
+title = "Placar ao vivo — modo expandido"
+description = "Captura do Preview em desktop com o estado visual de expansão; sem evento disponível no ambiente local."
+logical_id = "cc54daa2-a172-475f-b1af-7788f8fb0327"
+content_hash = "sha256:e16df3cbce5eeb0ef1b13dde36622481569310fe289780c07a06812b554e6c34"
+size = 54456
+mtime_ms = 1793968460182
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/cc54daa2-a172-475f-b1af-7788f8fb0327/ce524bbe-124f-4301-96e6-2c467a6c7948"
+storage_version_token = "1793968671652382"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "3tX3vhMWelud0RVb1Cw3j"
+uri = "file://generated-artifacts/leaderboard-mobile-normal.jpg"
+type = "image"
+title = "Placar ao vivo — celular normal"
+description = "Captura do Preview com largura de 390 px no estado sem evento."
+logical_id = "e71d4560-0fd0-4556-bc48-0abeb327a0b2"
+content_hash = "sha256:3a75bf3224edd402b9bfaae06c4a63e6acf3499308d2ccac29ee2a5e60378191"
+size = 26824
+mtime_ms = 1793968408006
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/e71d4560-0fd0-4556-bc48-0abeb327a0b2/2d320186-8b8c-4402-afa4-5fc06a7b3e97"
+storage_version_token = "1793968672198635"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "4uOxl___BMpAz7lPmbQMc"
+uri = "file://generated-artifacts/leaderboard-mobile-fullscreen.jpg"
+type = "image"
+title = "Placar ao vivo — celular expandido"
+description = "Captura do Preview com largura de 390 px no estado visual expandido, sem evento disponível."
+logical_id = "e4a90e67-4611-484a-ba5a-f78ec888d027"
+content_hash = "sha256:4631f095e18845c4375c9ab4512bbc76f4c19c323ed6f5392cb3fb82105ccc78"
+size = 27102
+mtime_ms = 1793968467226
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/e4a90e67-4611-484a-ba5a-f78ec888d027/19237e41-5f96-4f9c-af47-ed5a2a349763"
+storage_version_token = "1793968672708714"
+content_type = "image/jpeg"

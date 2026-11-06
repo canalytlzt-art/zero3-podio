@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useLocation, useSearch } from 'wouter';
-import { ArrowUpRight, ChevronDown, CircleHelp, Radio, RotateCw, Trophy } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, CircleHelp, Expand, Minimize2, Radio, RotateCw, Trophy } from 'lucide-react';
 import {
   getGetZero3PublicBoardQueryKey,
   useGetZero3PublicBoard,
@@ -53,6 +53,20 @@ const rankingProofHeadings: Record<number, string> = {
   3: 'For Time',
   4: 'Condition',
 };
+
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
+function currentFullscreenElement() {
+  const fullscreenDocument = document as FullscreenDocument;
+  return document.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement ?? null;
+}
 
 function statusLabel(status?: string | null) {
   return status ? statusLabels[status] || status.replaceAll('_', ' ').toLocaleLowerCase('pt-BR') : 'Aguardando';
@@ -521,6 +535,12 @@ function ProofPoints({ proof, score, registrationId }: {
 export function LiveBoardPage() {
   const search = useSearch();
   const [location, setLocation] = useLocation();
+  const boardPageRef = useRef<HTMLElement | null>(null);
+  const fallbackScrollPosition = useRef(0);
+  const nativeFullscreenWasActive = useRef(false);
+  const [nativeFullscreenActive, setNativeFullscreenActive] = useState(false);
+  const [fallbackFullscreenActive, setFallbackFullscreenActive] = useState(false);
+  const fullscreenActive = nativeFullscreenActive || fallbackFullscreenActive;
   const query = useMemo(() => new URLSearchParams(search), [search]);
   const eventId = query.get('eventId') || undefined;
   const requestedProofId = query.get('proofId');
@@ -563,6 +583,102 @@ export function LiveBoardPage() {
   const [freshBatteryKey, setFreshBatteryKey] = useState<string | null>(null);
   const previousPublications = useRef<{ eventId: string | null; versions: Map<string, number> } | null>(null);
   const highlightTimer = useRef<number | null>(null);
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      const page = boardPageRef.current;
+      const active = currentFullscreenElement() === page;
+      if (page && active && !nativeFullscreenWasActive.current) {
+        page.scrollTop = fallbackScrollPosition.current;
+      }
+      if (page && active) fallbackScrollPosition.current = page.scrollTop;
+      if (page && !active && nativeFullscreenWasActive.current) {
+        const currentPosition = page.scrollTop;
+        if (currentPosition > 0 || fallbackScrollPosition.current === 0) {
+          fallbackScrollPosition.current = currentPosition;
+        }
+        window.requestAnimationFrame(() => window.scrollTo(0, fallbackScrollPosition.current));
+      }
+      nativeFullscreenWasActive.current = active;
+      setNativeFullscreenActive(active);
+    };
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    document.addEventListener('webkitfullscreenchange', syncFullscreenState);
+    syncFullscreenState();
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState);
+      document.removeEventListener('webkitfullscreenchange', syncFullscreenState);
+    };
+  }, []);
+  useEffect(() => {
+    if (!fallbackFullscreenActive) return;
+    const page = boardPageRef.current;
+    if (page) page.scrollTop = fallbackScrollPosition.current;
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+    const exitFallbackOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (page) fallbackScrollPosition.current = page.scrollTop;
+      setFallbackFullscreenActive(false);
+    };
+    window.addEventListener('keydown', exitFallbackOnEscape);
+    return () => {
+      window.removeEventListener('keydown', exitFallbackOnEscape);
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscroll;
+      window.scrollTo(0, fallbackScrollPosition.current);
+    };
+  }, [fallbackFullscreenActive]);
+  useEffect(() => {
+    if (!nativeFullscreenActive) return;
+    const page = boardPageRef.current;
+    if (!page) return;
+    const rememberNativeScroll = () => {
+      fallbackScrollPosition.current = page.scrollTop;
+    };
+    page.addEventListener('scroll', rememberNativeScroll, { passive: true });
+    return () => page.removeEventListener('scroll', rememberNativeScroll);
+  }, [nativeFullscreenActive]);
+  const toggleFullscreen = async () => {
+    const page = boardPageRef.current as FullscreenElement | null;
+    if (!page) return;
+    if (fallbackFullscreenActive) {
+      fallbackScrollPosition.current = page.scrollTop;
+      setFallbackFullscreenActive(false);
+      return;
+    }
+    if (currentFullscreenElement() === page) {
+      fallbackScrollPosition.current = page.scrollTop;
+      const fullscreenDocument = document as FullscreenDocument;
+      const exitFullscreen = document.exitFullscreen?.bind(document)
+        ?? fullscreenDocument.webkitExitFullscreen?.bind(document);
+      if (exitFullscreen) {
+        try {
+          await exitFullscreen();
+          return;
+        } catch {
+          setNativeFullscreenActive(currentFullscreenElement() === page);
+          return;
+        }
+      }
+      setNativeFullscreenActive(currentFullscreenElement() === page);
+      return;
+    }
+    fallbackScrollPosition.current = window.scrollY;
+    const requestFullscreen = page.requestFullscreen?.bind(page)
+      ?? page.webkitRequestFullscreen?.bind(page);
+    if (requestFullscreen) {
+      try {
+        await requestFullscreen();
+        return;
+      } catch {
+        // Browsers can deny native fullscreen; the same control then uses the in-page fallback.
+      }
+    }
+    setFallbackFullscreenActive(true);
+  };
   useEffect(() => {
     if (!board) return;
     const eventId = board.event?.id || null;
@@ -612,12 +728,33 @@ export function LiveBoardPage() {
     : !board.completedBatteries || board.completedBatteries.length === 0));
 
   return (
-    <main className="live-board-page" style={boardAssetsStyle} data-testid="page-live-board">
+    <main
+      ref={boardPageRef}
+      className={`live-board-page${fallbackFullscreenActive ? ' is-fullscreen-fallback' : ''}`}
+      style={boardAssetsStyle}
+      data-fullscreen-active={fullscreenActive ? 'true' : 'false'}
+      data-testid="page-live-board"
+    >
       <div className="lb-frame">
         <header className="lb-topbar">
-          <Link href="/tv" className="lb-brand" aria-label="ZERO3 PRO TV pública" data-testid="link-zero3-home">
-            <img src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO" />
-          </Link>
+          <div className="lb-topbar-left">
+            <Link href="/tv" className="lb-brand" aria-label="ZERO3 PRO TV pública" data-testid="link-zero3-home">
+              <img src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO" />
+            </Link>
+            <button
+              className="lb-fullscreen-toggle"
+              type="button"
+              aria-label={fullscreenActive ? 'Sair da tela cheia' : 'Entrar em tela cheia'}
+              aria-pressed={fullscreenActive}
+              title={fullscreenActive ? 'Sair da tela cheia' : 'Entrar em tela cheia'}
+              onClick={() => { void toggleFullscreen(); }}
+              data-testid="button-toggle-live-board-fullscreen"
+            >
+              {fullscreenActive
+                ? <Minimize2 size={18} aria-hidden="true" />
+                : <Expand size={18} aria-hidden="true" />}
+            </button>
+          </div>
           <div className="lb-topbar-right">
             <span className={`lb-live-indicator ${board && !boardQuery.isError ? 'is-live' : ''}`}
               data-testid="status-live-board">
