@@ -160,11 +160,18 @@ function EventBatteryBoard({board,now}:{board:Zero3PublicBoard;now:Date}){
         }
         return [...byId.values()].sort((a, b) => a.order - b.order);
       })();
+  const proofMap = new Map<string, Zero3Proof>(board.proofs.map(proof => [proof.id, proof]));
+  for (const battery of eventBatteries) {
+    for (const proof of battery.proofs) {
+      if (!proofMap.has(proof.id)) proofMap.set(proof.id, proof);
+    }
+  }
+  const proofs = [...proofMap.values()].sort((a, b) => a.order - b.order);
   return <section className="tv-battery-board" data-testid="tv-event-batteries">
     <header className="tv-battery-heading">
       <div><div className="tv-battery-kicker">BATERIAS DO EVENTO · QUATRO PROVAS EM PARALELO</div>
         <h1>Baterias do evento</h1>
-        <p>{eventBatteries.length} baterias · cada cronômetro é independente</p>
+        <p>{eventBatteries.length} baterias · cada cronômetro é independente · {proofs.length} provas</p>
       </div>
       <div className="tv-public-actions">
         <RulesDialog/>
@@ -174,13 +181,150 @@ function EventBatteryBoard({board,now}:{board:Zero3PublicBoard;now:Date}){
       </div>
     </header>
     {eventBatteries.length ? (
-      <div className="tv-event-battery-list" data-testid="list-tv-event-batteries">
-        {eventBatteries.map((battery) => (
-          <EventBatteryCard key={battery.id} battery={battery} serverTime={board.serverTime} now={now} />
-        ))}
-      </div>
+      <UnifiedEventBatteryTable
+        eventBatteries={eventBatteries}
+        proofs={proofs}
+        serverTime={board.serverTime}
+        now={now}
+      />
     ) : <div className="tv-battery-empty">Ainda não há baterias cadastradas para este evento.</div>}
   </section>;
+}
+
+function UnifiedEventBatteryTable({
+  eventBatteries,
+  proofs,
+  serverTime,
+  now,
+}: {
+  eventBatteries: TvEventBattery[];
+  proofs: Zero3Proof[];
+  serverTime: string;
+  now: Date;
+}) {
+  return <div className="tv-event-result-table-wrap tv-unified-event-table-wrap" data-testid="list-tv-event-batteries">
+    <table className="tv-event-result-table tv-unified-event-table">
+      <caption className="sr-only">Baterias, categorias, cronômetros, equipes e resultados por prova</caption>
+      <thead><tr>
+        <th scope="col">BAT</th>
+        <th scope="col">CAT</th>
+        <th scope="col">INÍCIO PREVISTO</th>
+        <th scope="col">CAP</th>
+        <th scope="col">EQUIPE / ATLETAS</th>
+        {proofs.map(proof => <th scope="col" key={proof.id}>
+          <span>PROVA {proof.order}</span>
+          <small>{proof.name || `Prova ${proof.order}`} · {proof.metricType}{proof.unit ? ` · ${proof.unit}` : ''}</small>
+        </th>)}
+      </tr></thead>
+      <tbody>
+        {eventBatteries.flatMap(battery => {
+          const registrations = battery.registrations;
+          const operationalState = publicBatteryOperationalState({
+            state: battery.state,
+            operationalFinalized: battery.operationalFinalized,
+            elapsedMs: battery.elapsedMs,
+            timeCapMs: battery.timeCapMs,
+          });
+          const operationalLabel = publicBatteryOperationalLabel(operationalState);
+          const publicationLabel = battery.finalized
+            ? battery.finalizationCurrent ? 'PUBLICADA' : 'CORREÇÃO PENDENTE'
+            : 'AGUARDA PUBLICAÇÃO';
+          const publishedCount = battery.results.filter(result =>
+            result.status === 'VALIDATED' && result.publishedRevision === result.revision).length;
+          const resultsStatus = publishedCount === 0 ? 'PROVISÓRIO' : 'OFICIAL PARCIAL';
+          const publishedForProof = (category: string, proofId: string) => {
+            const categoryRegistrations = registrations.filter(reg => reg.category === category);
+            return categoryRegistrations.length > 0 && categoryRegistrations.every(reg => {
+              const result = battery.results.find(item =>
+                item.registrationId === reg.id && item.proofId === proofId);
+              return result?.status === 'VALIDATED' && result.publishedRevision === result.revision;
+            });
+          };
+          const clockDelta = Math.max(0, now.getTime() - Date.parse(serverTime));
+          const rawElapsed = battery.elapsedMs +
+            (battery.state === 'RUNNING' && !battery.operationalFinalized ? clockDelta : 0);
+          const capReached = Boolean(battery.timeCapMs > 0 && rawElapsed >= battery.timeCapMs);
+          const elapsed = Math.min(rawElapsed, battery.timeCapMs || rawElapsed);
+          const capElapsed = battery.state === 'PREPARATION' ? battery.elapsedMs : elapsed;
+          const capState = capReached
+            ? 'CAP ATINGIDO · CONGELADO'
+            : battery.state === 'PREPARATION' ? 'AGUARDANDO LARGADA' : timerStateLabel(battery.state);
+          const rows = registrations.length ? registrations : [null];
+
+          return rows.map(registration => {
+            const category = registration?.category ?? '';
+            const normalizedCategory = category.trim().toUpperCase();
+            const categoryLabel = normalizedCategory === 'RX'
+              ? 'RX'
+              : ['SC', 'SCALE', 'SCALED'].includes(normalizedCategory) ? 'SC' : category;
+            const categoryStyle = categoryLabel === 'RX' ? 'rx' : categoryLabel === 'SC' ? 'sc' : 'custom';
+            const teamName = registration
+              ? registration.teamName || registration.athleteNames.join(' / ') || 'Equipe sem nome'
+              : 'Bateria sem equipes vinculadas';
+
+            return <tr key={`${battery.id}-${registration?.id ?? 'empty'}`}>
+              <td className="tv-unified-battery-cell">
+                <strong>{String(battery.order).padStart(2, '0')}</strong>
+                <small className={`tv-unified-state ${battery.state === 'RUNNING' ? 'running' : ''}`}>{operationalLabel}</small>
+                <small className="tv-unified-publication">{publicationLabel}</small>
+                <small className="tv-unified-results-status">{resultsStatus}</small>
+              </td>
+              <td className="tv-unified-category-cell">
+                {registration
+                  ? <span className={`tv-category ${categoryStyle}`}>{categoryLabel}</span>
+                  : <span aria-label="Sem categoria inscrita">—</span>}
+              </td>
+              <td className="tv-unified-schedule-cell">
+                <small>BRASÍLIA</small>
+                <strong>{formatScheduledBrasiliaDateTime(battery.scheduledStartAt)}</strong>
+              </td>
+              <td className="tv-unified-cap-cell">
+                <strong>{duration(capElapsed)}</strong>
+                <small className={capReached ? 'is-capped' : ''}>{capState}</small>
+              </td>
+              <td className="tv-unified-team-cell">
+                <strong>{teamName}</strong>
+                {registration && registration.athleteNames.length > 0 &&
+                  <small>{registration.athleteNames.join(' · ')}</small>}
+              </td>
+              {proofs.map(proof => {
+                const result = registration
+                  ? battery.results.find(item =>
+                      item.registrationId === registration.id && item.proofId === proof.id)
+                  : undefined;
+                const published = registration && publishedForProof(category, proof.id);
+                const leaderboard = battery.proofLeaderboards
+                  .find(item => item.proofId === proof.id)?.leaderboards
+                  .find(item => item.category === category);
+                const entry = registration && leaderboard?.entries
+                  .find(item => item.registrationId === registration.id);
+                const score = entry?.proofScores.find(item => item.proofId === proof.id);
+                const value = result?.status === 'DNS' || result?.status === 'DNF'
+                  ? result.status
+                  : result?.rawValue != null
+                    ? `${result.rawValue}${proof.unit ? ` ${proof.unit}` : ''}`
+                    : '—';
+                const isPublished = result?.status === 'VALIDATED' &&
+                  result.publishedRevision === result.revision;
+                const label = !result ? 'PENDENTE'
+                  : result.status === 'PROVISIONAL' ? 'PROVISÓRIO · AGUARDA REVISÃO'
+                  : result.status === 'VALIDATED' && isPublished ? 'PUBLICADO NO RANKING'
+                  : result.status === 'VALIDATED' ? 'REVISADO · AGUARDA PUBLICAR RANKING'
+                  : result.status;
+                const provisional = result?.status === 'PROVISIONAL' ||
+                  (result?.status === 'VALIDATED' && !isPublished);
+                const placement = published ? score?.placement : null;
+                return <td key={proof.id} className="tv-unified-result-cell">
+                  <strong>{placement ? `${placement}º · ` : ''}{value}</strong>
+                  <small className={provisional ? 'provisional' : ''}>{label}</small>
+                </td>;
+              })}
+            </tr>;
+          });
+        })}
+      </tbody>
+    </table>
+  </div>;
 }
 
 function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serverTime:string;now:Date}) {

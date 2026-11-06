@@ -820,3 +820,122 @@ body:has(.tv-root) {
   .tv-podium-empty { font-size: clamp(15px, .58vw, 22px); }
   .tv-live-board-link { min-height: 58px; padding: 15px 20px; font-size: clamp(16px, .62vw, 24px); }
 }
+
+/* Event TV: one continuous results table, with compact per-registration rows. */
+.tv-unified-event-table-wrap {
+  margin-top: 10px;
+  overflow-x: auto;
+  border: 1px solid #40394d;
+  border-radius: 8px;
+  background: #191722;
+  scrollbar-width: thin;
+}
+.tv-unified-event-table {
+  width: 100%;
+  min-width: 1120px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  text-align: left;
+}
+.tv-unified-event-table th {
+  padding: 11px 10px;
+  border-bottom: 1px solid #50475e;
+  color: #e0d7ea;
+  background: #211e2b;
+  font: 750 clamp(10px, .72vw, 13px)/1.25 Consolas, 'Courier New', monospace;
+  letter-spacing: .035em;
+  vertical-align: bottom;
+}
+.tv-unified-event-table th:nth-child(1) { width: 8%; }
+.tv-unified-event-table th:nth-child(2) { width: 5%; }
+.tv-unified-event-table th:nth-child(3) { width: 10%; }
+.tv-unified-event-table th:nth-child(4) { width: 10%; }
+.tv-unified-event-table th:nth-child(5) { width: 21%; }
+.tv-unified-event-table th:nth-child(n+6) { width: 11.5%; }
+.tv-unified-event-table th > span,
+.tv-unified-event-table th > small { display: block; }
+.tv-unified-event-table th > small {
+  margin-top: 4px;
+  color: #c5bbd1;
+  font: 500 clamp(9px, .62vw, 11px)/1.35 'Segoe UI', Arial, sans-serif;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+.tv-unified-event-table td {
+  padding: 9px 10px;
+  border-top: 1px solid #393442;
+  color: #f2eff5;
+  font-size: clamp(11px, .72vw, 13px);
+  line-height: 1.35;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.tv-unified-event-table tbody tr:first-child td { border-top: 0; }
+.tv-unified-event-table tbody tr:hover { background: #24202f; }
+.tv-unified-event-table td strong,
+.tv-unified-event-table td small { display: block; }
+.tv-unified-battery-cell > strong {
+  color: var(--arena-lime);
+  font: 800 clamp(18px, 1.15vw, 23px)/1 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.tv-unified-battery-cell > small,
+.tv-unified-cap-cell > small,
+.tv-unified-schedule-cell > small,
+.tv-unified-team-cell > small,
+.tv-unified-result-cell > small {
+  margin-top: 4px;
+  color: #b8aec5;
+  font-size: clamp(9px, .58vw, 11px);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.tv-unified-battery-cell .tv-unified-state.running { color: var(--arena-lime); }
+.tv-unified-battery-cell .tv-unified-publication { color: #d2baff; }
+.tv-unified-battery-cell .tv-unified-results-status { color: #c8bfd4; }
+.tv-unified-category-cell { text-align: center; }
+.tv-unified-category-cell .tv-category {
+  display: inline-flex;
+  min-width: 34px;
+  justify-content: center;
+  margin: 0;
+  padding: 5px 7px;
+  font-size: clamp(11px, .72vw, 13px);
+  line-height: 1;
+}
+.tv-unified-schedule-cell { font-variant-numeric: tabular-nums; }
+.tv-unified-schedule-cell > small { color: #c5b0eb; font: 700 9px/1.25 Consolas, 'Courier New', monospace; }
+.tv-unified-schedule-cell > strong {
+  margin-top: 4px;
+  color: #f2eff5;
+  font: 700 clamp(11px, .72vw, 14px)/1.3 Consolas, 'Courier New', monospace;
+  overflow-wrap: anywhere;
+}
+.tv-unified-cap-cell > strong {
+  color: var(--arena-lime);
+  font: 750 clamp(17px, 1.25vw, 24px)/1 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tv-unified-cap-cell > small.is-capped { color: #f2c58e; }
+.tv-unified-team-cell > strong {
+  color: #fbf9ff;
+  font-size: clamp(12px, .82vw, 16px);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.tv-unified-team-cell > small { color: #c5bbd1; }
+.tv-unified-result-cell > strong {
+  color: #f8f6fb;
+  font-size: clamp(12px, .85vw, 16px);
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.tv-unified-result-cell > small.provisional { color: #d2baff; }
+
+@media (max-width: 760px) {
+  .tv-unified-event-table { min-width: 1120px; }
+  .tv-unified-event-table th { padding: 9px 8px; }
+  .tv-unified-event-table td { padding: 8px; }
+}
