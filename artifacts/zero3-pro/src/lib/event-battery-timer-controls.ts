@@ -12,7 +12,7 @@ export type EventBatteryTimerState =
 export type EventBatteryTimerStatusChoice = {
   state: EventBatteryTimerState;
   label: string;
-  action: EventBatteryTimerCommand | null;
+  action: EventBatteryTimerCommand | "finalize" | null;
 };
 
 const statusLabels: Record<EventBatteryTimerState, string> = {
@@ -34,16 +34,16 @@ export function eventBatteryTimerStatusChoices(
 ): EventBatteryTimerStatusChoice[] {
   const current = (["IDLE", "PREPARATION", "RUNNING", "PAUSED", "FINISHED", "CANCELLED"] as const)
     .find((candidate) => candidate === state) ?? "IDLE";
-  const transitions: Partial<Record<EventBatteryTimerState, Partial<Record<EventBatteryTimerState, EventBatteryTimerCommand>>>> = {
-    IDLE: { RUNNING: "prepare", CANCELLED: "cancel" },
-    PREPARATION: { IDLE: "reset", CANCELLED: "cancel" },
-    RUNNING: { PAUSED: "pause", FINISHED: "finish", CANCELLED: "cancel" },
-    PAUSED: { IDLE: "reset", RUNNING: "resume", FINISHED: "finish", CANCELLED: "cancel" },
+  const transitions: Partial<Record<EventBatteryTimerState, Partial<Record<EventBatteryTimerState, EventBatteryTimerCommand | "finalize">>>> = {
+    IDLE: { RUNNING: "prepare", FINISHED: "finalize", CANCELLED: "cancel" },
+    PREPARATION: { IDLE: "reset", FINISHED: "finalize", CANCELLED: "cancel" },
+    RUNNING: { PAUSED: "pause", FINISHED: "finalize", CANCELLED: "cancel" },
+    PAUSED: { IDLE: "reset", RUNNING: "resume", FINISHED: "finalize", CANCELLED: "cancel" },
     FINISHED: { IDLE: "reset" },
-    CANCELLED: { IDLE: "reset" },
+    CANCELLED: { IDLE: "reset", FINISHED: "finalize" },
   };
   const reachable = Object.entries(transitions[current] ?? {}) as Array<
-    [EventBatteryTimerState, EventBatteryTimerCommand]
+    [EventBatteryTimerState, EventBatteryTimerCommand | "finalize"]
   >;
   return [
     { state: current, label: statusLabels[current], action: null },
@@ -58,7 +58,7 @@ export function eventBatteryTimerStatusChoices(
 export function eventBatteryTimerStatusAction(
   currentState: string | null | undefined,
   nextState: EventBatteryTimerState,
-): EventBatteryTimerCommand | null {
+): EventBatteryTimerCommand | "finalize" | null {
   return eventBatteryTimerStatusChoices(currentState)
     .find((choice) => choice.state === nextState)?.action ?? null;
 }

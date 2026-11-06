@@ -8,6 +8,9 @@ import {
   UpdateZero3EventBatteryTimeCapBody,
   UpdateZero3EventBatteryTimeCapParams,
   UpdateZero3EventBatteryTimeCapResponse,
+  UpdateZero3EventBatteryDurationBody,
+  UpdateZero3EventBatteryDurationParams,
+  UpdateZero3EventBatteryDurationResponse,
   FinalizeZero3EventBatteryBody,
   FinalizeZero3EventBatteryParams,
   FinalizeZero3EventBatteryResponse,
@@ -38,6 +41,7 @@ import { batteryTimerBlocksStructureChange, resolveBatteryOrderChange } from "./
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 import { workerLogger } from "./worker-logger";
 import { computeBatteryCapStop } from "./battery-time-cap";
+import { batteryEventDurationMs } from "./battery-event-duration";
 
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
 const ACCESS_ROLES = ["ADMIN", "JUIZ_CHEFE", "JUIZ"] as const;
@@ -297,7 +301,10 @@ export async function listD1EventBatteries(DB: D1Database, eventId: string, now 
     if (!latestPublication.has(publication.battery_id)) latestPublication.set(publication.battery_id, publication);
   }
   const elapsedByBattery = new Map(rows.runs.map((run) => [run.battery_id, runElapsed(run, now)]));
-  const eventElapsedMs = [...elapsedByBattery.values()].reduce((sum, value) => sum + value, 0);
+  const eventElapsedMs = batteryEventDurationMs(
+    rows.runs.map((run) => run.first_started_at),
+    now.getTime(),
+  );
 
   return Promise.all(rows.batteries.map(async (battery) => {
     const registrations = byBatteryEntries.get(battery.id) ?? [];
@@ -533,6 +540,99 @@ export async function handleD1StagingEventBatteries(
     return true;
   }
 
+  const durationMatch = route.match(/^\/events\/([^/]+)\/batteries\/([^/]+)\/duration$/);
+  if (durationMatch && req.method === "PATCH") {
+    const member = await requireD1Member(req, res, DB, EVENT_ROLES);
+    if (!member) return true;
+    if (member.role !== "ADMIN") {
+      d1ApiError(req, res, 403, "DURATION_CORRECTION_ADMIN_REQUIRED", "Somente ADMIN pode corrigir a duração registrada.");
+      return true;
+    }
+    const params = UpdateZero3EventBatteryDurationParams.safeParse({
+      eventId: durationMatch[1], batteryId: durationMatch[2],
+    });
+    const body = UpdateZero3EventBatteryDurationBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({
+        error: !params.success ? params.error.message : !body.success ? body.error.message : "Dados inválidos.",
+      });
+      return true;
+    }
+    const { eventId, batteryId } = params.data;
+    const { durationMs, expectedDurationMs, expectedTimerVersion, commandId } = body.data;
+    const now = new Date();
+    const nowIso = now.toISOString();
+    try {
+      const prior = await DB.prepare(`SELECT battery_id_snapshot,old_elapsed_ms,new_elapsed_ms
+        FROM zero3_battery_duration_audit WHERE event_id=? AND command_id=?`)
+        .bind(eventId, commandId).first<{
+          battery_id_snapshot: string; old_elapsed_ms: number; new_elapsed_ms: number;
+        }>();
+      if (prior) {
+        if (prior.battery_id_snapshot !== batteryId ||
+            prior.old_elapsed_ms !== expectedDurationMs || prior.new_elapsed_ms !== durationMs) {
+          d1ApiError(req, res, 409, "BATTERY_DURATION_COMMAND_CONFLICT", "Este identificador de comando já foi usado para outra correção.");
+          return true;
+        }
+        const saved = (await listD1EventBatteries(DB, eventId, now))
+          ?.find((item) => item.id === batteryId);
+        if (!saved) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
+        res.json(UpdateZero3EventBatteryDurationResponse.parse(saved));
+        return true;
+      }
+
+      const run = await DB.prepare(`SELECT state,elapsed_ms,started_at,version
+        FROM zero3_battery_runs WHERE battery_id=? AND event_id=?`)
+        .bind(batteryId, eventId).first<Pick<RunRow, "state" | "elapsed_ms" | "started_at" | "version">>();
+      if (!run) { d1ApiError(req, res, 404, "BATTERY_TIMER_NOT_FOUND", "O cronômetro registrado para esta bateria não existe."); return true; }
+      if (run.state !== "FINISHED" || run.started_at) {
+        d1ApiError(req, res, 409, "BATTERY_DURATION_REQUIRES_FINISHED", "A duração só pode ser corrigida após o cronômetro desta bateria ser finalizado.");
+        return true;
+      }
+      if (run.version !== expectedTimerVersion || run.elapsed_ms !== expectedDurationMs) {
+        d1ApiError(req, res, 409, "BATTERY_DURATION_VERSION_CONFLICT", "A duração ou o cronômetro mudou em outra tela. Atualize antes de corrigir.");
+        return true;
+      }
+      if (durationMs === expectedDurationMs) {
+        const current = (await listD1EventBatteries(DB, eventId, now))
+          ?.find((item) => item.id === batteryId);
+        if (!current) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
+        res.json(UpdateZero3EventBatteryDurationResponse.parse(current));
+        return true;
+      }
+
+      const batch = await DB.batch([
+        DB.prepare(`UPDATE zero3_battery_runs SET elapsed_ms=?,version=version+1,updated_at=?
+          WHERE battery_id=? AND event_id=? AND state='FINISHED' AND started_at IS NULL
+            AND elapsed_ms=? AND version=?`)
+          .bind(durationMs, nowIso, batteryId, eventId, expectedDurationMs, expectedTimerVersion),
+        DB.prepare(`INSERT INTO zero3_battery_duration_audit(
+            id,event_id,battery_id,battery_id_snapshot,command_id,clerk_user_id,role,
+            old_elapsed_ms,new_elapsed_ms,changed_at
+          )
+          SELECT ?,?,?,?,?,?,?,?,?,? WHERE changes()=1`)
+          .bind(newD1Id(), eventId, batteryId, batteryId, commandId, member.clerk_user_id,
+            member.role, expectedDurationMs, durationMs, nowIso),
+        changedRowsGuard(DB, eventId),
+      ]);
+      if ((batch[0]?.meta.changes ?? 0) !== 1 || (batch[1]?.meta.changes ?? 0) !== 1) {
+        d1ApiError(req, res, 409, "BATTERY_DURATION_VERSION_CONFLICT", "A duração mudou antes de salvar. Atualize e tente novamente.");
+        return true;
+      }
+      const saved = (await listD1EventBatteries(DB, eventId, now))
+        ?.find((item) => item.id === batteryId);
+      if (!saved) { d1ApiError(req, res, 500, "API_INTERNAL_ERROR", "A duração foi corrigida, mas não foi possível reler a bateria."); return true; }
+      res.json(UpdateZero3EventBatteryDurationResponse.parse(saved));
+    } catch (error) {
+      if (isBatteryConstraintConflict(error)) {
+        d1ApiError(req, res, 409, "BATTERY_DURATION_COMMAND_CONFLICT", "A correção entrou em conflito com outra alteração. Atualize e tente novamente.");
+      } else {
+        d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível registrar a correção da duração.");
+      }
+    }
+    return true;
+  }
+
   const timerMatch = route.match(/^\/events\/([^/]+)\/timer$/);
   if (timerMatch && req.method === "PUT" &&
       typeof req.body === "object" && req.body !== null && "expectedBatteryId" in req.body) {
@@ -599,7 +699,10 @@ export async function handleD1StagingEventBatteries(
       });
       const allRuns = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE event_id=?")
         .bind(eventId).all<RunRow>();
-      const eventElapsedMs = allRuns.results.reduce((sum, item) => sum + runElapsed(item, now), 0);
+      const eventElapsedMs = batteryEventDurationMs(
+        allRuns.results.map((item) => item.first_started_at),
+        now.getTime(),
+      );
       let next: Pick<RunRow, "state" | "elapsed_ms" | "started_at" | "preparation_ends_at" |
         "preparation_started_at" | "first_started_at" | "stopped_at">;
       switch (parsed.data.action) {

@@ -1,5 +1,5 @@
 export const ZERO3_EVENT_BACKUP_FORMAT = "zero3-event-backup";
-export const ZERO3_EVENT_BACKUP_VERSION = 7;
+export const ZERO3_EVENT_BACKUP_VERSION = 8;
 
 const ZERO3_EVENT_BACKUP_COLLECTIONS_V1 = [
   "athletes",
@@ -42,7 +42,12 @@ const ZERO3_EVENT_BACKUP_COLLECTIONS_V6 = [
   ...ZERO3_EVENT_BACKUP_COLLECTIONS_V5,
   "batteryTimeCapAudit",
 ] as const;
-export const ZERO3_EVENT_BACKUP_COLLECTIONS = ZERO3_EVENT_BACKUP_COLLECTIONS_V6;
+const ZERO3_EVENT_BACKUP_COLLECTIONS_V7 = ZERO3_EVENT_BACKUP_COLLECTIONS_V6;
+const ZERO3_EVENT_BACKUP_COLLECTIONS_V8 = [
+  ...ZERO3_EVENT_BACKUP_COLLECTIONS_V7,
+  "batteryDurationAudit",
+] as const;
+export const ZERO3_EVENT_BACKUP_COLLECTIONS = ZERO3_EVENT_BACKUP_COLLECTIONS_V8;
 
 export type EventBackupRow = Record<string, unknown>;
 export type Zero3EventBackupData = {
@@ -182,7 +187,8 @@ export async function validateZero3EventBackup(
   const candidate = value as Partial<Zero3EventBackup> & {version?:number;data?:Record<string,unknown>};
   const version = (value as {version?:unknown}).version;
   const versionNumber = version === 1 || version === 2 || version === 3 ||
-    version === 4 || version === 5 || version === ZERO3_EVENT_BACKUP_VERSION ? version : null;
+    version === 4 || version === 5 || version === 6 || version === 7 ||
+    version === ZERO3_EVENT_BACKUP_VERSION ? version : null;
   if (
     candidate.format !== ZERO3_EVENT_BACKUP_FORMAT ||
     versionNumber === null ||
@@ -207,7 +213,9 @@ export async function validateZero3EventBackup(
           ? ZERO3_EVENT_BACKUP_COLLECTIONS_V4
           : versionNumber === 5
             ? ZERO3_EVENT_BACKUP_COLLECTIONS_V5
-            : ZERO3_EVENT_BACKUP_COLLECTIONS;
+            : versionNumber === 8
+              ? ZERO3_EVENT_BACKUP_COLLECTIONS_V8
+              : ZERO3_EVENT_BACKUP_COLLECTIONS_V7;
   const data = candidate.data;
   if (!data.event || typeof data.event !== "object" ||
       String((data.event as Record<string,unknown>).id) !== candidate.eventId ||
@@ -267,6 +275,7 @@ export async function validateZero3EventBackup(
     batteryPublications: versionNumber >= 4 ? normalizedSource.batteryPublications : [],
     rankingPublications: versionNumber >= 5 ? normalizedSource.rankingPublications : [],
     batteryTimeCapAudit: versionNumber >= 7 ? normalizedSource.batteryTimeCapAudit : [],
+    batteryDurationAudit: versionNumber >= 8 ? normalizedSource.batteryDurationAudit : [],
   },ZERO3_EVENT_BACKUP_COLLECTIONS) as unknown as Zero3EventBackupData;
   const counts = {
     event:1,

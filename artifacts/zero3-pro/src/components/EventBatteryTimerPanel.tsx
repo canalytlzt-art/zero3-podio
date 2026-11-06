@@ -4,13 +4,16 @@ import {
   getGetZero3PublicBoardQueryKey,
   getListZero3EventBatteriesQueryKey,
   useControlZero3Timer,
+  useFinalizeZero3EventBattery,
   useGetZero3Me,
   useUpdateZero3EventBattery,
+  useUpdateZero3EventBatteryDuration,
   useUpdateZero3EventBatteryTimeCap,
 } from "@workspace/api-client-react";
 import type { Zero3EventBattery, Zero3PublicBoard } from "@workspace/api-client-react";
 import { CalendarClock, Clock3, Pause, Play, RotateCw, Settings2, Square, X } from "lucide-react";
 import { eventBatteryCode } from "@/lib/event-battery-code";
+import { formatBatteryDuration, parseBatteryDuration } from "@/lib/battery-duration";
 import { projectEventElapsedDelta } from "@/lib/battery-time-display";
 import {
   eventBatteryTimerActions,
@@ -27,8 +30,6 @@ import {
 
 type BatteryTimer = NonNullable<Zero3PublicBoard["batteryTimers"]>[number];
 const DEFAULT_CAP_MS = 2 * 60 * 60 * 1000;
-const formatDuration = (ms: number) =>
-  `${String(Math.floor(ms / 60000)).padStart(2, "0")}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}.${String(Math.floor((ms % 1000) / 10)).padStart(2, "0")}`;
 const parseTimestamp = (value?: string | Date | null) => {
   if (value instanceof Date) return value.getTime();
   if (!value) return undefined;
@@ -45,6 +46,8 @@ export function EventBatteryTimerPanel({
   serverTime,
   showTitle = false,
   isActiveForTv = false,
+  eventName = "Evento",
+  allowDurationCorrection = false,
 }: {
   battery: Zero3EventBattery;
   timer?: BatteryTimer;
@@ -52,17 +55,24 @@ export function EventBatteryTimerPanel({
   serverTime?: string | Date;
   showTitle?: boolean;
   isActiveForTv?: boolean;
+  eventName?: string;
+  allowDurationCorrection?: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [editingCap, setEditingCap] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(false);
+  const [confirmFinalize, setConfirmFinalize] = useState(false);
   const [scheduledStartInput, setScheduledStartInput] = useState("");
   const [capMinutes, setCapMinutes] = useState("120");
   const [capSeconds, setCapSeconds] = useState("0");
+  const [editingDuration, setEditingDuration] = useState(false);
+  const [durationInput, setDurationInput] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const command = useControlZero3Timer();
+  const finalizeBattery = useFinalizeZero3EventBattery();
   const updateBattery = useUpdateZero3EventBattery();
+  const updateDuration = useUpdateZero3EventBatteryDuration();
   const updateCap = useUpdateZero3EventBatteryTimeCap();
   const me = useGetZero3Me();
   const queryClient = useQueryClient();
@@ -78,9 +88,8 @@ export function EventBatteryTimerPanel({
   const deltaMs = serverNow === undefined ? 0 : Math.max(0, now - serverNow);
   const elapsedBase = timer?.elapsedMs ?? battery.elapsedMs;
   const liveElapsed = elapsedBase + (state === "RUNNING" ? deltaMs : 0);
-  const elapsedMs = Math.min(liveElapsed, capMs);
-  const capReached = state === "RUNNING" && liveElapsed >= capMs ||
-    state === "FINISHED" && elapsedBase >= capMs;
+  const elapsedMs = state === "RUNNING" ? Math.min(liveElapsed, capMs) : elapsedBase;
+  const capReached = state === "RUNNING" && liveElapsed >= capMs;
   const preparationEnd = parseTimestamp(timer?.preparationEndsAt ?? battery.preparationEndsAt);
   const preparationMs = state === "PREPARATION"
     ? preparationEnd === undefined
@@ -89,13 +98,15 @@ export function EventBatteryTimerPanel({
     : 0;
   const timerVersion = timer?.version ?? battery.timerVersion;
   const currentEventElapsed = timer?.eventElapsedMs ?? battery.eventElapsedMs;
-  const currentEventLimit = timer?.eventLimitMs ?? battery.eventLimitMs ?? DEFAULT_CAP_MS;
   const eventElapsedMs = currentEventElapsed + projectEventElapsedDelta(
     batteryTimers, deltaMs, { state, elapsedMs: elapsedBase, timeCapMs: capMs },
   );
   const firstStartedAt = timer?.firstStartedAt ?? battery.firstStartedAt;
   const role = me.data?.role;
   const canControl = role === "ADMIN" || role === "JUIZ_CHEFE";
+  const canFinalize = canControl && !battery.operationalFinalized &&
+    battery.registrations.length > 0 && Boolean(battery.finalizationFingerprint);
+  const canCorrectDuration = allowDurationCorrection && role === "ADMIN" && state === "FINISHED";
   const canEditCap = !battery.operationalFinalized && (
     !firstStartedAt
       ? canControl && ["IDLE", "PREPARATION"].includes(state)
@@ -104,7 +115,7 @@ export function EventBatteryTimerPanel({
   const canEditSchedule = canControl && !battery.operationalFinalized;
   const controls = battery.operationalFinalized
     ? []
-    : capReached && state !== "FINISHED"
+    : capReached
       ? []
       : eventBatteryTimerActions(state);
   const statusChoices = eventBatteryTimerStatusChoices(state);
@@ -148,6 +159,71 @@ export function EventBatteryTimerPanel({
           : `Comando “${action === "prepare" ? "Iniciar" : action === "pause" ? "Pausar" : action === "resume" ? "Retomar" : "Cancelar preparação"}” confirmado pelo servidor.`);
       },
       onError: (failure) => setError(errorMessage(failure)),
+    });
+  };
+
+  const finalizeOperationalBattery = () => {
+    if (!canFinalize || !battery.finalizationFingerprint || finalizeBattery.isPending) return;
+    setError("");
+    setNotice("");
+    finalizeBattery.mutate({
+      eventId: battery.eventId,
+      batteryId: battery.id,
+      data: { expectedFingerprint: battery.finalizationFingerprint },
+    }, {
+      onSuccess: (saved) => {
+        setConfirmFinalize(false);
+        refresh();
+        setNotice(saved.alreadyFinalized
+          ? "Esta bateria já estava finalizada."
+          : "Bateria finalizada. A publicação do ranking continua sendo uma ação separada.");
+      },
+      onError: (failure) => {
+        refresh();
+        setError(errorMessage(failure));
+      },
+    });
+  };
+
+  const beginDurationEdit = () => {
+    setDurationInput(formatBatteryDuration(elapsedBase));
+    setError("");
+    setNotice("");
+    setEditingDuration(true);
+  };
+
+  const saveDurationCorrection = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const durationMs = parseBatteryDuration(durationInput);
+    if (!canCorrectDuration || durationMs === null) {
+      setError("Informe uma duração válida no formato MM:SS.cc.");
+      return;
+    }
+    if (durationMs === elapsedBase) {
+      setEditingDuration(false);
+      return;
+    }
+    setError("");
+    setNotice("");
+    updateDuration.mutate({
+      eventId: battery.eventId,
+      batteryId: battery.id,
+      data: {
+        durationMs,
+        expectedDurationMs: elapsedBase,
+        expectedTimerVersion: timerVersion,
+        commandId: crypto.randomUUID(),
+      },
+    }, {
+      onSuccess: () => {
+        setEditingDuration(false);
+        refresh();
+        setNotice(`Duração corrigida de ${formatBatteryDuration(elapsedBase)} para ${formatBatteryDuration(durationMs)}. CAP, resultados e publicação não foram alterados.`);
+      },
+      onError: (failure) => {
+        refresh();
+        setError(errorMessage(failure));
+      },
     });
   };
 
@@ -299,18 +375,18 @@ export function EventBatteryTimerPanel({
       <div className="event-battery-timer-metrics">
         <div className="event-battery-timer-main">
           <small>{state === "PREPARATION" ? "PREPARAÇÃO" : "TEMPO DA BATERIA"}</small>
-          <strong>{formatDuration(statusValue)}</strong>
+          <strong>{formatBatteryDuration(statusValue)}</strong>
           <span>{stateText}</span>
         </div>
         <div>
           <small>CAP DA BATERIA</small>
-          <strong>{formatDuration(capMs)}</strong>
+          <strong>{formatBatteryDuration(capMs)}</strong>
           <span>{capReached ? "CAP ATINGIDO" : "Parada automática, sem finalizar"}</span>
         </div>
         <div>
-          <small>ACUMULADO DO EVENTO</small>
-          <strong>{formatDuration(eventElapsedMs)} / {formatDuration(currentEventLimit)}</strong>
-          <span>Acumulado informativo · não bloqueia largadas</span>
+          <small>DURAÇÃO DO EVENTO</small>
+          <strong>{formatBatteryDuration(eventElapsedMs)}</strong>
+          <span>Relógio cronológico · não bloqueia largadas</span>
         </div>
       </div>
       <div className="event-battery-timer-actions">
@@ -319,16 +395,24 @@ export function EventBatteryTimerPanel({
           <select
             aria-label={`Status da bateria ${eventBatteryCode(battery.order)}`}
             value={state}
-            disabled={!canControl || command.isPending || battery.operationalFinalized}
+            disabled={!canControl || command.isPending || finalizeBattery.isPending || battery.operationalFinalized}
             onChange={(event) => {
-              const nextState = event.currentTarget.value as EventBatteryTimerState;
+              const value = event.currentTarget.value;
+              if (value === "__FINALIZE__") {
+                setConfirmFinalize(true);
+                return;
+              }
+              const nextState = value as EventBatteryTimerState;
               const action = eventBatteryTimerStatusAction(state, nextState);
-              if (action) runCommand(action);
+              if (action === "finalize") setConfirmFinalize(true);
+              else if (action) runCommand(action);
             }}
           >
             {statusChoices.map((choice) => (
               <option key={choice.state} value={choice.state}>{choice.label}</option>
             ))}
+            {canFinalize && (state === "FINISHED" || state === "CANCELLED") &&
+              <option value="__FINALIZE__">Finalizar bateria…</option>}
           </select>
         </label>
         {controls.map((control) => (
@@ -353,8 +437,40 @@ export function EventBatteryTimerPanel({
         >
           <Settings2 size={13} aria-hidden="true"/> Editar CAP
         </button>
+        {canCorrectDuration && <button
+          type="button"
+          className="button small"
+          aria-label={`Corrigir duração da bateria ${eventBatteryCode(battery.order)}`}
+          disabled={updateDuration.isPending}
+          onClick={beginDurationEdit}
+        >
+          <RotateCw size={13} aria-hidden="true"/> Corrigir duração
+        </button>}
         <span className="field-help">A largada de 10 s não consome o CAP. Finalizar a bateria é uma ação separada.</span>
       </div>
+      {confirmFinalize && <section role="alertdialog" aria-label="Confirmar finalização da bateria"
+        className="panel panel-pad" style={{ marginTop: 12 }}>
+        <strong>Confirmar finalização da bateria?</strong>
+        <p className="field-help">
+          {eventName} · {eventBatteryCode(battery.order)} · {battery.name} ·
+          {" "}{battery.proofs.map((proof) => `${proof.order}. ${proof.name || "Prova sem nome"}`).join(" · ")} ·
+          {" "}{battery.registrations.length} inscrições · {battery.results.length} marcas registradas ·
+          {" "}{battery.reviewedResultCount} de {battery.expectedResultCount} resultados revisados.
+        </p>
+        <p className="field-help">
+          Esta ação encerra operacionalmente somente esta bateria e preserva cronômetro, resultados,
+          revisões e publicações. Não publica pontos, ranking ou pódio.
+        </p>
+        <div className="toolbar">
+          <button type="button" className="button primary"
+            disabled={!canFinalize || finalizeBattery.isPending}
+            onClick={finalizeOperationalBattery}>
+            {finalizeBattery.isPending ? "Finalizando…" : "Confirmar finalização"}
+          </button>
+          <button type="button" className="button" disabled={finalizeBattery.isPending}
+            onClick={() => setConfirmFinalize(false)}>Cancelar</button>
+        </div>
+      </section>}
       {editingCap && (
         <form className="event-battery-cap-form" onSubmit={saveCap}>
           <strong>Editar tempo máximo · {eventBatteryCode(battery.order)}</strong>
@@ -377,6 +493,39 @@ export function EventBatteryTimerPanel({
             </button>
             <button type="button" className="button" disabled={updateCap.isPending}
               onClick={() => setEditingCap(false)}>Cancelar</button>
+          </div>
+        </form>
+      )}
+      {editingDuration && canCorrectDuration && (
+        <form className="event-battery-cap-form" onSubmit={saveDurationCorrection}>
+          <strong>Corrigir duração registrada · {eventBatteryCode(battery.order)}</strong>
+          <p className="field-help">
+            Anterior: <strong>{formatBatteryDuration(elapsedBase)}</strong> · Nova duração:{" "}
+            <strong>{parseBatteryDuration(durationInput) === null ? "inválida" : formatBatteryDuration(parseBatteryDuration(durationInput)!)}</strong>
+          </p>
+          <label htmlFor={`battery-duration-${battery.id}`}>Nova duração · MM:SS.cc</label>
+          <input
+            id={`battery-duration-${battery.id}`}
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={durationInput}
+            onChange={(event) => setDurationInput(event.currentTarget.value)}
+            placeholder="00:00.00"
+            aria-invalid={parseBatteryDuration(durationInput) === null}
+            disabled={updateDuration.isPending}
+          />
+          <span className="field-help">
+            A alteração fica registrada em auditoria, mantém a bateria finalizada e não muda CAP,
+            resultados, pontos ou publicações.
+          </span>
+          <div className="toolbar">
+            <button type="submit" className="button primary"
+              disabled={updateDuration.isPending || parseBatteryDuration(durationInput) === null}>
+              {updateDuration.isPending ? "Salvando correção…" : "Salvar correção"}
+            </button>
+            <button type="button" className="button" disabled={updateDuration.isPending}
+              onClick={() => setEditingDuration(false)}>Cancelar</button>
           </div>
         </form>
       )}

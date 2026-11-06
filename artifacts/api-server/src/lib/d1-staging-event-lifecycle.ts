@@ -41,6 +41,7 @@ const RESTORE_DEFINITIONS = [
   { collection: "importTeams", table: "zero3_import_teams", columns: ["id", "batch_id", "source_code", "source_category", "source_row", "source_cells", "source_athlete_names", "target_category", "registration_id", "created_at"] },
   { collection: "batteries", table: "zero3_batteries", columns: ["id", "event_id", "battery_order", "name", "created_at", "operational_finalized_at", "operational_finalized_by", "time_cap_ms"] },
   { collection: "batteryTimeCapAudit", table: "zero3_battery_time_cap_audit", columns: ["id", "event_id", "battery_id", "battery_id_snapshot", "command_id", "clerk_user_id", "role", "old_time_cap_ms", "new_time_cap_ms", "changed_at"] },
+  { collection: "batteryDurationAudit", table: "zero3_battery_duration_audit", columns: ["id", "event_id", "battery_id", "battery_id_snapshot", "command_id", "clerk_user_id", "role", "old_elapsed_ms", "new_elapsed_ms", "changed_at"] },
   { collection: "batteryEntries", table: "zero3_battery_entries", columns: ["battery_id", "registration_id", "lane_label", "assigned_at"] },
   { collection: "activeBatteries", table: "zero3_active_batteries", columns: ["event_id", "battery_id", "updated_at"] },
   { collection: "batteryRuns", table: "zero3_battery_runs", columns: ["battery_id", "event_id", "state", "elapsed_ms", "started_at", "preparation_ends_at", "version", "last_command_id", "updated_at", "preparation_started_at", "first_started_at", "stopped_at"] },
@@ -64,6 +65,7 @@ const OPTIONAL_BATTERY_TABLES = [
   "zero3_battery_runs",
   "zero3_battery_publications",
   "zero3_battery_time_cap_audit",
+  "zero3_battery_duration_audit",
 ] as const;
 
 const REQUIRED_EVENT_TABLES = [
@@ -103,6 +105,7 @@ const COUNT_GUARDS: Array<{ key: string; tables: string[]; query: string }> = [
   { key: "batteryRuns", tables: ["zero3_battery_runs"], query: "SELECT COUNT(*) FROM zero3_battery_runs WHERE event_id=?" },
   { key: "batteryPublications", tables: ["zero3_battery_publications"], query: "SELECT COUNT(*) FROM zero3_battery_publications WHERE event_id=?" },
   { key: "batteryTimeCapAudit", tables: ["zero3_battery_time_cap_audit"], query: "SELECT COUNT(*) FROM zero3_battery_time_cap_audit WHERE event_id=?" },
+  { key: "batteryDurationAudit", tables: ["zero3_battery_duration_audit"], query: "SELECT COUNT(*) FROM zero3_battery_duration_audit WHERE event_id=?" },
   { key: "heats", tables: ["zero3_heats"], query: "SELECT COUNT(*) FROM zero3_heats WHERE event_id=?" },
   { key: "heatEntries", tables: ["zero3_heat_entries", "zero3_heats"], query: "SELECT COUNT(DISTINCT h.heat_id || ':' || h.registration_id) FROM zero3_heat_entries h JOIN zero3_heats x ON x.id=h.heat_id WHERE x.event_id=?" },
   { key: "activeHeats", tables: ["zero3_active_heats"], query: "SELECT COUNT(*) FROM zero3_active_heats WHERE event_id=?" },
@@ -159,6 +162,7 @@ async function fetchD1EventBackupData(
   const [
     proofs, registrations, registrationMembers, registrationAudit, importBatches,
     batteries, batteryEntries, activeBatteries, batteryRuns, batteryPublications, batteryTimeCapAudit,
+    batteryDurationAudit,
     heats, activeHeats, results, rankingPublications, timers, podiumVersions, heatRuns, heatPublications,
   ] = await Promise.all([
     readD1Rows(DB, tables, ["zero3_proofs"], "SELECT * FROM zero3_proofs WHERE event_id=?", [eventId]),
@@ -173,6 +177,7 @@ async function fetchD1EventBackupData(
     readD1Rows(DB, tables, ["zero3_battery_runs"], "SELECT * FROM zero3_battery_runs WHERE event_id=?", [eventId]),
     readD1Rows(DB, tables, ["zero3_battery_publications"], "SELECT * FROM zero3_battery_publications WHERE event_id=? ORDER BY battery_id,version", [eventId]),
     readD1Rows(DB, tables, ["zero3_battery_time_cap_audit"], "SELECT * FROM zero3_battery_time_cap_audit WHERE event_id=? ORDER BY changed_at,id", [eventId]),
+    readD1Rows(DB, tables, ["zero3_battery_duration_audit"], "SELECT * FROM zero3_battery_duration_audit WHERE event_id=? ORDER BY changed_at,id", [eventId]),
     readD1Rows(DB, tables, ["zero3_heats"], "SELECT * FROM zero3_heats WHERE event_id=?", [eventId]),
     readD1Rows(DB, tables, ["zero3_active_heats"], "SELECT * FROM zero3_active_heats WHERE event_id=?", [eventId]),
     readD1Rows(DB, tables, ["zero3_results"], "SELECT * FROM zero3_results WHERE event_id=?", [eventId]),
@@ -219,6 +224,7 @@ async function fetchD1EventBackupData(
     batteryRuns: batteryRuns.results,
     batteryPublications: batteryPublications.results,
     batteryTimeCapAudit: batteryTimeCapAudit.results,
+    batteryDurationAudit: batteryDurationAudit.results,
     heats: heats.results,
     heatEntries: heatEntries.results,
     activeHeats: activeHeats.results,

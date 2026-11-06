@@ -64,11 +64,13 @@ test("finished and cancelled clocks can be explicitly reset without touching res
   assert.deepEqual(eventBatteryTimerActions("UNKNOWN"), []);
 });
 
-test("status choices map to explicit shared-timer commands", () => {
+test("status choices route operational finalization separately from stopping a timer", () => {
   assert.equal(eventBatteryTimerStatusAction("IDLE", "RUNNING"), "prepare");
+  assert.equal(eventBatteryTimerStatusAction("IDLE", "FINISHED"), "finalize");
   assert.equal(eventBatteryTimerStatusAction("RUNNING", "PAUSED"), "pause");
   assert.equal(eventBatteryTimerStatusAction("PAUSED", "RUNNING"), "resume");
-  assert.equal(eventBatteryTimerStatusAction("RUNNING", "FINISHED"), "finish");
+  assert.equal(eventBatteryTimerStatusAction("RUNNING", "FINISHED"), "finalize");
+  assert.equal(eventBatteryTimerStatusAction("PAUSED", "FINISHED"), "finalize");
   assert.equal(eventBatteryTimerStatusAction("RUNNING", "CANCELLED"), "cancel");
   assert.equal(eventBatteryTimerStatusAction("FINISHED", "IDLE"), "reset");
   assert.equal(eventBatteryTimerStatusAction("RUNNING", "IDLE"), null);

@@ -183,6 +183,8 @@ export const Zero3EventBackupVersion = {
   NUMBER_4: 4,
   NUMBER_5: 5,
   NUMBER_6: 6,
+  NUMBER_7: 7,
+  NUMBER_8: 8,
 } as const;
 
 export type Zero3EventBackupCounts = {[key: string]: number};
@@ -237,6 +239,8 @@ export type Zero3EventBackupDataBatteryPublicationsItem = { [key: string]: unkno
 
 export type Zero3EventBackupDataBatteryTimeCapAuditItem = { [key: string]: unknown };
 
+export type Zero3EventBackupDataBatteryDurationAuditItem = { [key: string]: unknown };
+
 export type Zero3EventBackupData = {
   event: Zero3EventBackupDataEvent;
   athletes: Zero3EventBackupDataAthletesItem[];
@@ -263,6 +267,7 @@ export type Zero3EventBackupData = {
   batteryRuns?: Zero3EventBackupDataBatteryRunsItem[];
   batteryPublications?: Zero3EventBackupDataBatteryPublicationsItem[];
   batteryTimeCapAudit?: Zero3EventBackupDataBatteryTimeCapAuditItem[];
+  batteryDurationAudit?: Zero3EventBackupDataBatteryDurationAuditItem[];
 };
 
 export interface Zero3EventBackup {
@@ -1020,6 +1025,23 @@ export interface Zero3BatteryTimeCapUpdateInput {
      * @maximum 7200000
      */
   expectedTimeCapMs: number;
+  /** @minimum 0 */
+  expectedTimerVersion: number;
+  /** @minLength 1 */
+  commandId: string;
+}
+
+export interface Zero3BatteryDurationUpdateInput {
+  /**
+     * @minimum 0
+     * @maximum 9007199254740991
+     */
+  durationMs: number;
+  /**
+     * @minimum 0
+     * @maximum 9007199254740991
+     */
+  expectedDurationMs: number;
   /** @minimum 0 */
   expectedTimerVersion: number;
   /** @minLength 1 */

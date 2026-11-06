@@ -471,6 +471,43 @@ paths:
           description: Battery not found
         "409":
           description: Timer changed, battery is not paused after start, or cap conflicts with elapsed time
+  /zero3/events/{eventId}/batteries/{batteryId}/duration:
+    patch:
+      operationId: updateZero3EventBatteryDuration
+      tags: [zero3]
+      summary: Correct the recorded duration of a finished battery with an audit record
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: batteryId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3BatteryDurationUpdateInput" }
+      responses:
+        "200":
+          description: Updated finished battery with duration correction
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3EventBattery" }
+        "400":
+          description: Invalid duration
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Battery not found
+        "409":
+          description: Timer state, version or recorded duration changed
+        "503":
+          description: D1 schema or database unavailable
   /zero3/events/{eventId}/active-event-battery:
     patch:
       operationId: setZero3ActiveEventBattery
@@ -1347,7 +1384,7 @@ components:
       required: [format, version, eventId, eventName, exportedAt, counts, data, digest]
       properties:
         format: { type: string, const: zero3-event-backup }
-        version: { type: integer, enum: [1, 2, 3, 4, 5, 6] }
+        version: { type: integer, enum: [1, 2, 3, 4, 5, 6, 7, 8] }
         eventId: { type: string }
         eventName: { type: string }
         exportedAt: { type: string, format: date-time }
@@ -1383,6 +1420,7 @@ components:
             batteryRuns: { type: array, items: { type: object, additionalProperties: true } }
             batteryPublications: { type: array, items: { type: object, additionalProperties: true } }
             batteryTimeCapAudit: { type: array, items: { type: object, additionalProperties: true } }
+            batteryDurationAudit: { type: array, items: { type: object, additionalProperties: true } }
         digest: { type: string, minLength: 64, maxLength: 64 }
     Zero3EventDeleteInput:
       type: object
@@ -1891,6 +1929,14 @@ components:
         expectedTimerVersion: { type: integer, minimum: 0 }
         commandId: { type: string, minLength: 1 }
       required: [timeCapMs, expectedTimeCapMs, expectedTimerVersion, commandId]
+    Zero3BatteryDurationUpdateInput:
+      type: object
+      properties:
+        durationMs: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        expectedDurationMs: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        expectedTimerVersion: { type: integer, minimum: 0 }
+        commandId: { type: string, minLength: 1 }
+      required: [durationMs, expectedDurationMs, expectedTimerVersion, commandId]
     Zero3ProofLeaderboards:
       type: object
       properties:

@@ -13,7 +13,8 @@ command -v sqlite3 >/dev/null || {
 }
 
 for migration in "$MIGRATIONS"/*.sql; do
-  [[ "$(basename "$migration")" == "0014_cancelled_battery_timer_state.sql" ]] && continue
+  [[ "$(basename "$migration")" == "0014_cancelled_battery_timer_state.sql" ||
+     "$(basename "$migration")" == "0015_battery_duration_correction_audit.sql" ]] && continue
   sqlite3 -bail "$DB" < "$migration"
 done
 
@@ -40,6 +41,28 @@ SQL
 # Apply the timer-state expansion after a real pre-0014 timer row exists so
 # this regression proves the migration preserves state and accumulated time.
 sqlite3 -bail "$DB" < "$MIGRATIONS/0014_cancelled_battery_timer_state.sql"
+sqlite3 -bail "$DB" < "$MIGRATIONS/0015_battery_duration_correction_audit.sql"
+
+# A corrected duration can exceed its CAP without changing the CAP or the
+# finished state, and the original/new values remain in a separate audit row.
+sqlite3 -bail "$DB" <<'SQL'
+INSERT INTO zero3_batteries(id,event_id,battery_order,name)
+VALUES('20000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000001',4,'Duração corrigida');
+INSERT INTO zero3_battery_runs(battery_id,event_id,state,elapsed_ms,started_at,stopped_at,version)
+VALUES('20000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000001','FINISHED',7200000,NULL,'2026-11-05T17:00:00.000Z',4);
+UPDATE zero3_battery_runs SET elapsed_ms=7522350,version=version+1
+WHERE battery_id='20000000-0000-4000-8000-000000000004' AND state='FINISHED' AND elapsed_ms=7200000 AND version=4;
+INSERT INTO zero3_battery_duration_audit(
+  id,event_id,battery_id,battery_id_snapshot,command_id,clerk_user_id,role,
+  old_elapsed_ms,new_elapsed_ms,changed_at
+) VALUES(
+  '30000000-0000-4000-8000-000000000004',
+  '10000000-0000-4000-8000-000000000001',
+  '20000000-0000-4000-8000-000000000004',
+  '20000000-0000-4000-8000-000000000004',
+  'duration-correction-1','clerk_test_admin','ADMIN',7200000,7522350,'2026-11-05T17:01:00.000Z'
+);
+SQL
 
 assert_eq() {
   local actual="$1" expected="$2" label="$3"
@@ -51,6 +74,9 @@ assert_eq() {
 
 assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT time_cap_ms FROM zero3_batteries WHERE battery_order=1;")" "7200000" "existing batteries receive the 2-hour default"
 assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT COUNT(*) FROM zero3_battery_time_cap_audit WHERE event_id='10000000-0000-4000-8000-000000000001';")" "1" "CAP edit is auditable"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT state || ':' || elapsed_ms || ':' || version FROM zero3_battery_runs WHERE battery_id='20000000-0000-4000-8000-000000000004';")" "FINISHED:7522350:5" "duration correction preserves finished state and can exceed CAP"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT old_elapsed_ms || ':' || new_elapsed_ms FROM zero3_battery_duration_audit WHERE command_id='duration-correction-1';")" "7200000:7522350" "duration correction retains old and new values"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT time_cap_ms FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000004';")" "7200000" "duration correction does not alter CAP"
 assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT elapsed_ms FROM zero3_battery_runs WHERE state='PAUSED';")" "12000" "existing timer duration is preserved"
 assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT scheduled_start_at FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000001';")" "2026-11-05T15:30:00.000Z" "scheduled start persists as a UTC instant"
 assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT COUNT(*) FROM zero3_battery_runs WHERE state='CANCELLED';")" "0" "migration does not change existing states"
@@ -72,6 +98,8 @@ assert_eq "$(sqlite3 -batch -noheader "$DB" 'PRAGMA foreign_key_check;')" "" "fo
 
 sqlite3 -bail "$DB" "PRAGMA foreign_keys=ON; DELETE FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000001';"
 assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT COUNT(*) FROM zero3_battery_time_cap_audit WHERE battery_id IS NULL AND battery_id_snapshot='20000000-0000-4000-8000-000000000001';")" "1" "audit survives battery deletion"
+sqlite3 -bail "$DB" "PRAGMA foreign_keys=ON; DELETE FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000004';"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT COUNT(*) FROM zero3_battery_duration_audit WHERE battery_id IS NULL AND battery_id_snapshot='20000000-0000-4000-8000-000000000004';")" "1" "duration correction audit survives battery deletion"
 assert_eq "$(sqlite3 -batch -noheader "$DB" 'PRAGMA foreign_key_check;')" "" "foreign-key integrity after delete"
 
 sqlite3 -bail "$DB" "INSERT INTO zero3_batteries(id,event_id,battery_order,name) VALUES('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001',2,'Cap validation');"
@@ -80,4 +108,4 @@ if sqlite3 -bail "$DB" "UPDATE zero3_batteries SET time_cap_ms=7200001 WHERE id=
   exit 1
 fi
 
-echo "PASS: migrations, two-hour CAP, cancelled-state migration, independent timer preservation, and audit retention"
+echo "PASS: migrations, per-battery CAP, independent timer preservation, duration correction above CAP, and audit retention"

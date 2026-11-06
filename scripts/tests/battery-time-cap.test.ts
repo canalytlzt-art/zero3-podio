@@ -47,3 +47,22 @@ test("one of four simultaneous batteries reaches only its own CAP", () => {
     stoppedAt: "2026-11-05T12:08:00.000Z",
   });
 });
+
+test("P01 freezes at its CAP while a later-started P02 keeps counting", () => {
+  const nowMs = startMs + 90_000;
+  const p01 = computeBatteryCapStop({
+    state: "RUNNING", elapsedMs: 0, startedAt, timeCapMs: 60_000, nowMs,
+  });
+  const p02 = computeBatteryCapStop({
+    state: "RUNNING",
+    elapsedMs: 0,
+    startedAt: new Date(startMs + 80_000).toISOString(),
+    timeCapMs: 60_000,
+    nowMs,
+  });
+  assert.deepEqual(p01, {
+    elapsedMs: 60_000,
+    stoppedAt: "2026-11-05T12:01:00.000Z",
+  });
+  assert.equal(p02, null);
+});

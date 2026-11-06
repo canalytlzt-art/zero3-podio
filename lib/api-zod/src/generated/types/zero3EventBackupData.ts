@@ -9,6 +9,7 @@ import type { Zero3EventBackupDataActiveBatteriesItem } from './zero3EventBackup
 import type { Zero3EventBackupDataActiveHeatsItem } from './zero3EventBackupDataActiveHeatsItem';
 import type { Zero3EventBackupDataAthletesItem } from './zero3EventBackupDataAthletesItem';
 import type { Zero3EventBackupDataBatteriesItem } from './zero3EventBackupDataBatteriesItem';
+import type { Zero3EventBackupDataBatteryDurationAuditItem } from './zero3EventBackupDataBatteryDurationAuditItem';
 import type { Zero3EventBackupDataBatteryEntriesItem } from './zero3EventBackupDataBatteryEntriesItem';
 import type { Zero3EventBackupDataBatteryPublicationsItem } from './zero3EventBackupDataBatteryPublicationsItem';
 import type { Zero3EventBackupDataBatteryRunsItem } from './zero3EventBackupDataBatteryRunsItem';
@@ -57,4 +58,5 @@ export type Zero3EventBackupData = {
   batteryRuns?: Zero3EventBackupDataBatteryRunsItem[];
   batteryPublications?: Zero3EventBackupDataBatteryPublicationsItem[];
   batteryTimeCapAudit?: Zero3EventBackupDataBatteryTimeCapAuditItem[];
+  batteryDurationAudit?: Zero3EventBackupDataBatteryDurationAuditItem[];
 };

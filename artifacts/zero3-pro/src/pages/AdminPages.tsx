@@ -18,7 +18,7 @@ import {
   useSetZero3ActiveHeat,
   useSetZero3ActiveBattery, useUpdateZero3HeatProof, useFinalizeZero3Battery,
   useListZero3EventBatteries, useCreateZero3EventBattery, useSetZero3ActiveEventBattery,
-  useFinalizeZero3EventBattery, useUpdateZero3EventBattery, useDeleteZero3EventBattery,
+  useUpdateZero3EventBattery, useDeleteZero3EventBattery,
   useSaveZero3PodiumDraft, usePublishZero3Podium,
   useGetZero3PublicBoard,
    useDeleteZero3Event, useRestoreZero3EventBackup,
@@ -604,7 +604,7 @@ function Registrations({eventId}:{eventId:string}) {
       const batteryTimer=board.data?.batteryTimers?.find(item=>item.batteryId===battery.id);
       const state=batteryTimer?.state??battery.state;
       const elapsed=state==='PREPARATION'?batteryTimer?.preparationRemainingMs??battery.preparationRemainingMs:batteryTimer?.elapsedMs??battery.elapsedMs;
-      const capReached=battery.timeCapMs>0&&state==='FINISHED'&&elapsed>=battery.timeCapMs;
+      const capReached=battery.timeCapMs>0&&state==='RUNNING'&&elapsed>=battery.timeCapMs;
       return <details className="timer-center-details" key={battery.id}>
        <summary className="timer-center-summary">
         <div className="timer-center-summary-name"><span className="lane-tag">{eventBatteryCode(battery.order)}</span><div><strong>{battery.name}</strong><small>{battery.categories.join(' + ')||'Sem categoria'}</small></div></div>
@@ -613,6 +613,8 @@ function Registrations({eventId}:{eventId:string}) {
        </summary>
        <EventBatteryTimerPanel
         battery={battery}
+        eventName={event?.name||'Evento'}
+        allowDurationCorrection
         timer={batteryTimer}
         batteryTimers={board.data?.batteryTimers}
         serverTime={board.data?.serverTime}
@@ -666,14 +668,12 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const proofs=useListZero3Proofs(eventId,{query:{queryKey:getListZero3ProofsQueryKey(eventId),refetchInterval:10000}});
  const select=useSetZero3ActiveEventBattery();
  const create=useCreateZero3EventBattery();
- const finalize=useFinalizeZero3EventBattery();
   const updateBattery=useUpdateZero3EventBattery();
   const deleteBattery=useDeleteZero3EventBattery();
   const me=useGetZero3Me();
  const qc=useQueryClient();
  const [error,setError]=useState('');
  const [notice,setNotice]=useState('');
- const [confirmId,setConfirmId]=useState<string|null>(null);
   const [editingBatteryId,setEditingBatteryId]=useState<string|null>(null);
   const [editingName,setEditingName]=useState('');
    const [editingOrder,setEditingOrder]=useState(1);
@@ -722,7 +722,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
    deleteBattery.mutate({eventId,batteryId:battery.id,data:{
     confirmation:deleteBatteryConfirmation,
     expectedFingerprint:battery.finalizationFingerprint,
-   }},{onSuccess:()=>{setDeleteBatteryId(null);setDeleteBatteryConfirmation('');setEditingBatteryId(null);setResultsBatteryId(current=>current===battery.id?null:current);setConfirmId(null);setError('');refresh();},
+   }},{onSuccess:()=>{setDeleteBatteryId(null);setDeleteBatteryConfirmation('');setEditingBatteryId(null);setResultsBatteryId(current=>current===battery.id?null:current);setError('');refresh();},
      onError:failure=>{setError(feedback(failure));refresh();}});
   };
  const createBattery=(event:FormEvent<HTMLFormElement>)=>{
@@ -740,20 +740,8 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
   onSuccess:()=>{setError('');refresh();},onError:failure=>setError(feedback(failure)),
  });
  const openResultsPanel=(batteryId:string,issue:BatteryReadinessIssue|null=null)=>{
-  setConfirmId(null);
   setResultsBatteryId(batteryId);
   setResultsFocusIssue(issue);
- };
-  const requestFinalization=(battery:Zero3EventBattery)=>{
-  setConfirmId(battery.id);
- };
- const finalizeBattery=(battery:Zero3EventBattery)=>{
-   if(confirmId!==battery.id||battery.operationalFinalized||battery.registrations.length===0||
-     !battery.finalizationFingerprint)return;
-  finalize.mutate({eventId,batteryId:battery.id,data:{expectedFingerprint:battery.finalizationFingerprint}},{
-    onSuccess:saved=>{setConfirmId(null);setError('');setNotice(saved.alreadyFinalized?'Esta bateria já estava finalizada.':'Bateria finalizada; cronômetro encerrado sem publicar o ranking.');refresh();},
-    onError:failure=>{setError(feedback(failure));refresh();},
-  });
  };
  const unresolved=(battery:Zero3EventBattery)=>battery.proofLeaderboards.some(proof=>
   proof.leaderboards.some(leaderboard=>leaderboard.entries.some(entry=>
@@ -767,9 +755,6 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
       const readinessIssues=getBatteryReadinessIssues(battery);
       const readyCount=batteryReadinessCount(battery);
       const exceptionPending=readinessIssues.some(issue=>issue.kind==='EXCEPTION');
-       const canFinalize=(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&
-        battery.registrations.length>0&&Boolean(battery.finalizationFingerprint)&&!battery.operationalFinalized;
-       const canOpenFinalize=canFinalize;
       const batteryTimer=batteryModel.batteryTimers?.find(item=>item.batteryId===battery.id);
        const deleteConfirmationPhrase=zero3EventBatteryDeleteConfirmation(battery.order,battery.name);
        const hasTimerData=battery.timerVersion>0||battery.state!=='IDLE';
@@ -787,12 +772,12 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
         {battery.state==='PAUSED'&&<span className="field-help">Cronômetro pausado; renomear ou reordenar preserva o tempo.</span>}
        <button className={`button small ${isActive?'primary':''}`} disabled={select.isPending||isActive} onClick={()=>selectBattery(battery.id)}>{isActive?'Na TV':'Colocar na TV'}</button>
         <button className="button small" type="button" onClick={()=>openResultsPanel(battery.id)}>{resultsBatteryId===battery.id?'Resultados abertos':'Gerenciar Resultados'}</button>
-          <button className={`button small ${canFinalize?'primary':''}`} disabled={!canOpenFinalize||finalize.isPending} onClick={()=>requestFinalization(battery)}>{battery.operationalFinalized?'Finalizada':finalize.isPending&&confirmId===battery.id?'Finalizando…':'Finalizar Bateria'}</button>
         {(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&<button className="button small" type="button" disabled={!canEditBattery||updateBattery.isPending} onClick={()=>beginBatteryEdit(battery)} aria-label={`Editar bateria ${eventBatteryCode(battery.order)}`}>Editar bateria</button>}
         {isAdmin&&<button className="button small" type="button" disabled={['PREPARATION','RUNNING'].includes(battery.state)||deleteBattery.isPending} onClick={()=>{setDeleteBatteryId(battery.id);setDeleteBatteryConfirmation('');setError('');}} aria-label={`Excluir bateria ${eventBatteryCode(battery.order)}`}><Trash2 size={13}/> Excluir bateria</button>}
       </div>
        <EventBatteryTimerPanel
         battery={battery}
+        eventName={batteryModel.event?.name||'Evento'}
         timer={batteryTimer}
         batteryTimers={batteryModel.batteryTimers}
         serverTime={batteryModel.serverTime}
@@ -848,16 +833,6 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
         onClose={()=>{setResultsBatteryId(null);setResultsFocusIssue(null);}}
         onSaved={refresh}
        />}
-       {confirmId===battery.id&&<div role="alertdialog" aria-label="Confirmar finalização operacional da bateria" className="panel panel-pad" style={{marginTop:12}}>
-         <strong>Confirmar Finalizar Bateria?</strong>
-         <p className="field-help">{batteryModel.event?.name||'Evento'} · {eventBatteryCode(battery.order)} · {battery.name} · {battery.proofs.map(proof=>`${proof.order}. ${proof.name||'Prova sem nome'}`).join(' · ')} · {battery.registrations.length} inscrições · {battery.results.length} marcas registradas · {readyCount} de {battery.expectedResultCount} revisadas.</p>
-         <p className="field-help">Esta ação encerra somente o cronômetro desta bateria e preserva o tempo decorrido. Não publica resultados, pontos, ranking nem pódio. A publicação oficial continua separada em “Publicar Ranking”.</p>
-         {readinessIssues.length>0&&<div className="battery-readiness-panel" role="status">
-          <strong>Há {readinessIssues.length} pendência(s). A bateria será finalizada mesmo assim.</strong>
-          <span className="field-help">Os resultados ausentes ou provisórios continuarão identificados como pendentes; não serão preenchidos com zero.</span>
-         </div>}
-         <div className="toolbar"><button className="button primary" disabled={!canFinalize||finalize.isPending} onClick={()=>finalizeBattery(battery)}>{finalize.isPending?'Finalizando…':'Confirmar Finalizar Bateria'}</button><button className="button" onClick={()=>setConfirmId(null)}>Cancelar</button></div>
-       </div>}
      </article>;
     })}</div>}
    {error&&<p role="alert" className="error-box">{error}</p>}

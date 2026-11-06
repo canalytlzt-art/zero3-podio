@@ -254,8 +254,11 @@ function UnifiedEventBatteryTable({
           const clockDelta = Math.max(0, now.getTime() - Date.parse(serverTime));
           const rawElapsed = battery.elapsedMs +
             (battery.state === 'RUNNING' && !battery.operationalFinalized ? clockDelta : 0);
-          const capReached = Boolean(battery.timeCapMs > 0 && rawElapsed >= battery.timeCapMs);
-          const elapsed = Math.min(rawElapsed, battery.timeCapMs || rawElapsed);
+          const capReached = Boolean(battery.timeCapMs > 0 &&
+            battery.state === "RUNNING" && rawElapsed >= battery.timeCapMs);
+          const elapsed = battery.state === "RUNNING"
+            ? Math.min(rawElapsed, battery.timeCapMs || rawElapsed)
+            : battery.elapsedMs;
           const capElapsed = battery.state === 'PREPARATION' ? battery.elapsedMs : elapsed;
           const capState = capReached
             ? 'CAP ATINGIDO · CONGELADO'
@@ -352,8 +355,10 @@ function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serve
   const resultsStatus=publishedCount===0?'RESULTADOS PROVISÓRIOS':'RANKING OFICIAL PARCIAL';
   const clockDelta=Math.max(0,now.getTime()-Date.parse(serverTime));
   const rawElapsed=battery.elapsedMs+(battery.state==='RUNNING'&&!battery.operationalFinalized?clockDelta:0);
-  const capReached=Boolean(battery.timeCapMs>0&&rawElapsed>=battery.timeCapMs);
-  const elapsed=Math.min(rawElapsed,battery.timeCapMs||rawElapsed);
+  const capReached=Boolean(battery.timeCapMs>0&&battery.state==='RUNNING'&&rawElapsed>=battery.timeCapMs);
+  const elapsed=battery.state==='RUNNING'
+    ?Math.min(rawElapsed,battery.timeCapMs||rawElapsed)
+    :battery.elapsedMs;
   const categoriesWithTeams=categories.filter(category=>registrations.some(reg=>reg.category===category));
 
   const capElapsed = battery.state === 'PREPARATION' ? battery.elapsedMs : elapsed;

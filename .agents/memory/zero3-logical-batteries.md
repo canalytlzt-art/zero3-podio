@@ -17,11 +17,17 @@ When a result has no legacy heat or battery link, preserve it as pending and do 
 
 **How to apply:** Migration diagnostics may report these rows, but must not create battery entries or change result links automatically. Pause publication until the mapping is explicitly resolved.
 
-Each battery has its own configurable runtime CAP (default 2 hours), excluding the preparation countdown. Reaching it freezes only that timer at the exact cap and does not operationally finalize the battery or publish results. Keep the separate event-aggregate limit. Before the first start, ADMIN/JUIZ_CHEFE may change the CAP; after a start, only ADMIN may change it while paused, with an audit record. Stop, finalization, and ranking publication remain distinct actions.
+Each battery has its own configurable runtime CAP (default 2 hours), excluding the preparation countdown. Reaching it freezes only that timer at the exact cap and does not operationally finalize the battery or publish results. The event duration is a separate wall-clock indicator from the earliest battery first-start time; never sum concurrent battery timers or use event duration to block another battery's start. Before the first start, ADMIN/JUIZ_CHEFE may change the CAP; after a start, only ADMIN may change it while paused, with an audit record. Stop, finalization, and ranking publication remain distinct actions.
 
-**Why:** The user explicitly requested per-battery time limits while preserving independent timer state, the existing event limit, and the separation between timer stop, operational finalization, and official publication.
+**Why:** The user explicitly requested per-battery time limits while preserving independent timer state, a non-blocking chronological event-duration indicator, and the separation between timer stop, operational finalization, and official publication.
 
-**How to apply:** Store the limit by stable battery ID in D1. Enforce role, timer state, expected version, and audit requirements on the server; derive CAP ATINGIDO from the frozen run and keep every other running battery unchanged.
+**How to apply:** Store the limit by stable battery ID in D1. Enforce role, timer state, expected version, and audit requirements on the server; derive the event indicator from the first-start timestamp and keep every other running battery unchanged.
+
+An ADMIN may correct a finished battery's recorded duration without changing its CAP, finished state, timer start/stop history, results, ranking, or publication. Preserve each changed old/new value in a dedicated duration-audit record; do not reuse the CAP audit table.
+
+**Why:** The user requested reviewable duration corrections, including legitimate times above CAP, while keeping CAP and official score records independent.
+
+**How to apply:** Require a finished run and concurrency checks, update only its elapsed value/version, and atomically append the duration audit record. Include that audit in event backup/restore.
 
 Scheduled start is also attached to the stable battery ID and event, but remains separate from the actual timer start and elapsed time. It is displayed in Brasília time, stays visible after launch, and may be edited without starting, pausing, resetting, or changing the timer. An unset schedule stays unset rather than being inferred from battery order.
 

@@ -2,6 +2,7 @@ type BatteryTimerSnapshot = {
   state?: string | null;
   elapsedMs?: number | null;
   timeCapMs?: number | null;
+  firstStartedAt?: string | Date | null;
 };
 
 export function projectEventElapsedDelta(
@@ -10,10 +11,14 @@ export function projectEventElapsedDelta(
   fallback?: BatteryTimerSnapshot,
 ): number {
   const snapshots = timers?.length ? timers : fallback ? [fallback] : [];
-  return snapshots.reduce((sum, timer) => {
-    if (timer.state !== "RUNNING") return sum;
-    const elapsedMs = Math.max(0, timer.elapsedMs ?? 0);
-    const timeCapMs = Math.max(1, timer.timeCapMs ?? 2 * 60 * 60 * 1000);
-    return sum + Math.min(Math.max(0, deltaMs), Math.max(0, timeCapMs - elapsedMs));
-  }, 0);
+  // Event duration is wall-clock time from the first battery start, not the
+  // sum of concurrent battery clocks. A paused/finished battery still belongs
+  // to the event timeline.
+  const hasStarted = snapshots.some((timer) => {
+    const value = timer.firstStartedAt;
+    if (!value) return false;
+    const timestamp = value instanceof Date ? value.getTime() : Date.parse(value);
+    return Number.isFinite(timestamp);
+  });
+  return hasStarted ? Math.max(0, deltaMs) : 0;
 }
