@@ -126,3 +126,45 @@ mtime_ms = 1793922244933
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/326684d8-4bc8-4458-b5f7-23774c4c81fe/84b47d3a-cf6e-4305-97cd-5bdc86ed83de"
 storage_version_token = "1793922497646078"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "S-4wefbs9IXBwZw4KjUaN"
+uri = "file://generated-artifacts/zero3-tv-header-final-1920x1080.jpg"
+type = "image"
+title = "TV · cabeçalho final · 1920×1080"
+description = "Foto original reutilizada à direita com degradê escuro, logotipo ZERO3 PRO, LEADERBOARD 03 PRO, relógio de Brasília central e indicador Ao Vivo. O Preview atual está em modo de demonstração sem baterias ativas; por isso a lista de baterias não aparece nesta captura."
+logical_id = "94b9e23e-ed84-4f4e-99a0-df5df5808ec8"
+content_hash = "sha256:c5f148e3f309af4e83bff0f586e1a6047993b4727d1cb47a909ed66ec4d9d91f"
+size = 47386
+mtime_ms = 1793923338016
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/94b9e23e-ed84-4f4e-99a0-df5df5808ec8/e002c799-0103-41bd-93bb-0f40d654ec60"
+storage_version_token = "1793923372667304"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "EVo_fHo1xU4iTwPgAgzWa"
+uri = "file://generated-artifacts/zero3-tv-header-final-390x844.jpg"
+type = "image"
+title = "TV · cabeçalho final · celular 390 px"
+description = "Versão compacta responsiva; título, identificação de demonstração, relógio e Ao Vivo permanecem legíveis."
+logical_id = "52188562-1fcf-407e-9e0a-ba213ff2fac9"
+content_hash = "sha256:c35278b723095ae804b8caca1c4a4628753b4b825f65b02887c39722b937e36e"
+size = 18986
+mtime_ms = 1793923339840
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/52188562-1fcf-407e-9e0a-ba213ff2fac9/66fa2e4b-0963-440c-a93d-f0d7a7182452"
+storage_version_token = "1793923373143476"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Hgsg8pBKI_k0FgKGR5X40"
+uri = "file://generated-artifacts/zero3-tv-header-final-320x800.jpg"
+type = "image"
+title = "TV · cabeçalho final · celular 320 px"
+description = "Versão estreita: título pode quebrar linha sem cortar o horário ou sobrepor o status."
+logical_id = "1787e2d1-491c-4da5-8494-cee5522eefaf"
+content_hash = "sha256:671da35902968001e9c61a4802ea0b341e79960f1f16d03b4899fa330faa8c25"
+size = 17939
+mtime_ms = 1793923341660
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/1787e2d1-491c-4da5-8494-cee5522eefaf/ef1ca167-d294-4b38-a7b0-61e0ba87f38e"
+storage_version_token = "1793923373636472"
+content_type = "image/jpeg"

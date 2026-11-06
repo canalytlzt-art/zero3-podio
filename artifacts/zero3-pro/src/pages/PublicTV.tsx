@@ -338,9 +338,14 @@ export function PublicTV(){
 }
 function TvPageHeader({now,eventLabel,status,offline=false}:{now:Date;eventLabel?:string;status:string;offline?:boolean}){
   return <header className="tv-header">
-    <img className="tv-logo" src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO"/>
+    <div className="tv-brand">
+      <img className="tv-logo" src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO"/>
+      <div className="tv-brand-copy">
+        <div className="tv-program-title">LEADERBOARD <span>03 PRO</span></div>
+        {eventLabel&&<div className="tv-eventline">{eventLabel}</div>}
+      </div>
+    </div>
     <div className="tv-header-center">
-      {eventLabel&&<div className="tv-eventline">{eventLabel}</div>}
       <ClockBlock now={now}/>
     </div>
     <span className={`tv-status-chip ${offline?'offline':''}`}><i/> {status}</span>
