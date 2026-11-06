@@ -14,6 +14,7 @@ import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
 import { publicBatteryOperationalLabel, publicBatteryOperationalState } from '@/lib/public-battery-status';
 import { formatBrasiliaDateTime as formatScheduledBrasiliaDateTime } from '@/lib/brasilia-schedule';
+import { RulesDialog } from '@/components/public/RulesDialog';
 
 // Keep target=_blank links native; Wouter's Link handler cancels their navigation.
 function Link(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
@@ -77,7 +78,7 @@ function BatteryBoard({board,now}:{board:Zero3PublicBoard;now:Date}){
       </div>
       <div className="tv-battery-actions">
         {battery&&<TimerReadout timer={board.timer} serverTime={board.serverTime} now={now}/>}
-        <div><div className={`tv-battery-state ${battery?.state==='RUNNING'?'running':''}`}>{!battery?'AGUARDANDO SELEÇÃO':timerStateLabel(battery.state).toLocaleUpperCase('pt-BR')}</div>{battery&&<div className="tv-battery-kicker" style={{textAlign:'right',marginTop:6}}>{battery.finalized&&battery.finalizationCurrent?'BATERIA FINALIZADA':battery.finalized?'CORREÇÃO PENDENTE DE PUBLICAÇÃO':'BATERIA ABERTA'}</div>}</div><Link className="tv-live-board-link" href={liveBoardHref} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">Placar ao vivo <span aria-hidden="true">↗</span></Link></div>
+        <div><div className={`tv-battery-state ${battery?.state==='RUNNING'?'running':''}`}>{!battery?'AGUARDANDO SELEÇÃO':timerStateLabel(battery.state).toLocaleUpperCase('pt-BR')}</div>{battery&&<div className="tv-battery-kicker" style={{textAlign:'right',marginTop:6}}>{battery.finalized&&battery.finalizationCurrent?'BATERIA FINALIZADA':battery.finalized?'CORREÇÃO PENDENTE DE PUBLICAÇÃO':'BATERIA ABERTA'}</div>}</div><RulesDialog/><Link className="tv-live-board-link" href={liveBoardHref} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">Placar ao vivo <span aria-hidden="true">↗</span></Link></div>
     </header>
      {battery&&battery.registrations.length>0?<div className="tv-battery-grid">{battery.categories.map(category=><BatteryCategory key={category} category={category} battery={battery} proof={proof}/>)}</div>
        :battery?<div className="tv-battery-empty">Nenhuma equipe vinculada.</div>
@@ -164,9 +165,12 @@ function EventBatteryBoard({board,now}:{board:Zero3PublicBoard;now:Date}){
         <h1>Baterias do evento</h1>
         <p>{eventBatteries.length} baterias · cada cronômetro é independente</p>
       </div>
-      <Link className="tv-live-board-link" href={liveBoardHrefForEvent(board.event?.id)} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">
-        Placar ao vivo ↗
-      </Link>
+      <div className="tv-public-actions">
+        <RulesDialog/>
+        <Link className="tv-live-board-link" href={liveBoardHrefForEvent(board.event?.id)} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">
+          Placar ao vivo ↗
+        </Link>
+      </div>
     </header>
     {eventBatteries.length ? (
       <div className="tv-event-battery-list" data-testid="list-tv-event-batteries">
@@ -319,12 +323,12 @@ export function PublicTV(){
   const connectionLabel=boardQuery.isError
     ?boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO · DADOS CONFIRMADOS'
     :connected?'AO VIVO':'SINCRONIZANDO';
-  if(boardQuery.isLoading&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status="SINCRONIZANDO"/><div className="public-empty"><h1>Conectando à transmissão</h1><p>Carregando o placar oficial do evento.</p></div></div></main>;
-  if(boardQuery.isError&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status={boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'} offline/><div className="public-empty"><h1>Transmissão indisponível</h1><p>Não foi possível carregar dados oficiais.</p><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button></div></div></main>;
-  if(!board?.event)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status={connected?'CONECTADO':'AGUARDANDO EVENTO'} offline={!connected}/><div className="public-empty"><h1>Aguardando evento</h1><p>A transmissão será atualizada quando um evento estiver disponível.</p></div></div></main>;
+  if(boardQuery.isLoading&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status="SINCRONIZANDO"/><div className="public-empty"><h1>Conectando à transmissão</h1><p>Carregando o placar oficial do evento.</p><RulesDialog/></div></div></main>;
+  if(boardQuery.isError&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status={boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'} offline/><div className="public-empty"><h1>Transmissão indisponível</h1><p>Não foi possível carregar dados oficiais.</p><div className="tv-public-empty-actions"><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button><RulesDialog/></div></div></div></main>;
+  if(!board?.event)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status={connected?'CONECTADO':'AGUARDANDO EVENTO'} offline={!connected}/><div className="public-empty"><h1>Aguardando evento</h1><p>A transmissão será atualizada quando um evento estiver disponível.</p><RulesDialog/></div></div></main>;
   return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board">
      <TvPageHeader now={now} eventLabel={`${board.event.name} · ${board.event.proofName}`} status={connectionLabel} offline={!connected}/>
-       {board.batteryOperationsEnabled?<BatteryBoard board={board} now={now}/>:<div className="tv-live-board-callout"><span>Listas completas e ranking geral do evento</span><Link href={liveBoardHrefForEvent(board.event.id)} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">Abrir Placar ao Vivo <span aria-hidden="true">↗</span></Link></div>}
+        {board.batteryOperationsEnabled?<BatteryBoard board={board} now={now}/>:<div className="tv-live-board-callout"><span>Listas completas e ranking geral do evento</span><div className="tv-public-actions"><RulesDialog/><Link href={liveBoardHrefForEvent(board.event.id)} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">Abrir Placar ao Vivo <span aria-hidden="true">↗</span></Link></div></div>}
     <div className="tv-footer-note">PLACAR OFICIAL · PONTUAÇÃO E CLASSIFICAÇÃO CALCULADAS NO SERVIDOR</div>
   </div></main>;
 }

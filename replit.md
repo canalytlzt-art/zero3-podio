@@ -74,6 +74,15 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - `/sign-in?redirect_url=%2Fadmin` é um destino interno válido. Não use endereços de login externos nem crie outra instância Clerk. O vínculo atual de papéis usa e-mail primário verificado; não altere ou eleve papéis para contornar erros.
 - O login real no domínio Cloudflare ainda precisa ser validado com uma sessão autorizada. A tela local e respostas anônimas não substituem esse teste.
 
+## Responsividade — requisito de release
+
+- Validar `/tv`, `/placar-ao-vivo` (Resultados e Ranking Geral), `/admin/events/:eventId` (Baterias, Cronômetros e Resultados) e `/operacao` antes e depois de publicar.
+- Usar a matriz: celular 320, 360, 390 e 430 px; celular horizontal 844×390; tablet 768×1024 e 1024×768; computador 1366×768 e 1440×900; TV Full HD 1920×1080; telão 4K 3840×2160. Incluir larguras intermediárias e considerar área útil do navegador, escala e zoom.
+- Confirmar no celular que a tabela única mantém todas as colunas e dados, com rolagem horizontal somente dentro da tabela; a página não pode ter overflow horizontal. Conferir banner/logo/título/relógio, controles por toque e teclado, cabeçalhos fixos, orientação e tela cheia sem ocultar controles nem reiniciar cronômetros ou alterar programação.
+- Registrar evidências/capturas e resultados na matriz `Tela | Navegador/dispositivo | Dimensão | Esperado | Observado | Passou/Falhou/Não testado`; marcar navegadores/plataformas não testados.
+- Identificar explicitamente cada resultado como **emulação** ou **dispositivo físico**. Emulação não substitui a validação física; registrar os testes reais pendentes, especialmente toque, rotação, fullscreen e leitura à distância em TV/telão.
+- Não alterar dados, colunas, rotas, eventId, API, timer, CAP, horários, pontuação ou semântica de interação para corrigir layout.
+
 ## Cloudflare publication boundary
 
 - Root build command `pnpm run build` runs typecheck and workspace builds. Cloudflare's static output is `artifacts/zero3-pro/dist/public/`; the staging Worker entry is `artifacts/api-server/src/worker-d1-staging.ts`.

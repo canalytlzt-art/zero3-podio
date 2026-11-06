@@ -24,6 +24,7 @@ import {
   publicBatteryOperationalState,
 } from '@/lib/public-battery-status';
 import './LiveBoardPage.css';
+import { RulesDialog } from '@/components/public/RulesDialog';
 
 type BoardView = 'battery' | 'overall';
 const publicBase = import.meta.env.BASE_URL;
@@ -558,7 +559,7 @@ export function LiveBoardPage() {
     || batteries[0];
   const highlightedEventBatteryId = requestedEventBatteryId ||
     board?.activeBattery?.batteryId || null;
-  const selectedProof = board?.proofs.find((proof) => proof.id === selectedBattery?.proofId);
+  const selectedProof = board?.proofs?.find((proof) => proof.id === selectedBattery?.proofId);
 
   function updateQuery(updates: Record<string, string | null>) {
     const next = new URLSearchParams(search);
@@ -587,6 +588,7 @@ export function LiveBoardPage() {
             <Link href={tvHrefForEvent(board?.event?.id || eventId)} className="lb-tv-link" data-testid="link-tv-mode">
               <Radio size={15} aria-hidden="true" /><span>Modo TV</span><ArrowUpRight size={13} aria-hidden="true" />
             </Link>
+            <RulesDialog/>
           </div>
         </header>
 
