@@ -2227,6 +2227,10 @@ components:
         publishedAt: { type: ["string", "null"], format: date-time }
         publishReason: { type: ["string", "null"] }
         arbitrationNote: { type: ["string", "null"], maxLength: 2000 }
+        placeObservations:
+          type: array
+          maxItems: 3
+          items: { $ref: "#/components/schemas/Zero3PodiumPlaceObservation" }
         version: { type: integer }
         updatedAt: { type: string, format: date-time }
       required: [eventId, category, registrationIds, published, publishedBy, publishedAt, publishReason, version, updatedAt]
@@ -2245,7 +2249,25 @@ components:
           minItems: 3
           maxItems: 3
         arbitrationNote: { type: ["string", "null"], maxLength: 2000 }
+        placeObservations:
+          type: array
+          maxItems: 3
+          items: { $ref: "#/components/schemas/Zero3PodiumPlaceObservationInput" }
       required: [registrationIds]
+    Zero3PodiumPlaceObservation:
+      type: object
+      properties:
+        place: { type: integer, enum: [1, 2, 3] }
+        registrationId: { type: string }
+        note: { type: string, minLength: 1, maxLength: 2000 }
+      required: [place, registrationId, note]
+    Zero3PodiumPlaceObservationInput:
+      type: object
+      properties:
+        place: { type: integer, enum: [1, 2, 3] }
+        registrationId: { type: ["string", "null"] }
+        note: { type: ["string", "null"], maxLength: 2000 }
+      required: [place, registrationId, note]
     Zero3PodiumPublishInput:
       type: object
       properties:
@@ -2284,6 +2306,10 @@ components:
       properties:
         category: { $ref: "#/components/schemas/Zero3Category" }
         arbitrationNote: { type: ["string", "null"], maxLength: 2000 }
+        placeObservations:
+          type: array
+          maxItems: 3
+          items: { $ref: "#/components/schemas/Zero3PodiumPlaceObservation" }
         places:
           type: array
           items:

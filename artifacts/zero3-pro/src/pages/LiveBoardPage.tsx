@@ -24,6 +24,13 @@ import {
   publicBatteryOperationalLabel,
   publicBatteryOperationalState,
 } from '@/lib/public-battery-status';
+import {
+  entriesForOverallCategory,
+  overallCategoryLabel,
+  overallEntryPublicationState,
+  overallProofScorePresentation,
+  preferredOverallCategory,
+} from '@/lib/overall-ranking-display';
 import './LiveBoardPage.css';
 import { RulesDialog } from '@/components/public/RulesDialog';
 import { PodiumAwards } from '@/components/public/PodiumAwards';
@@ -49,13 +56,6 @@ const statusLabels: Record<string, string> = {
   DNF: 'DNF',
   MISSING: 'Aguardando resultado',
 };
-const rankingProofHeadings: Record<number, string> = {
-  1: 'Carga',
-  2: 'Rep',
-  3: 'For Time',
-  4: 'Condition',
-};
-
 function statusLabel(status?: string | null) {
   return status ? statusLabels[status] || status.replaceAll('_', ' ').toLocaleLowerCase('pt-BR') : 'Aguardando';
 }
@@ -384,26 +384,47 @@ function EventBatteriesResultsTable({
 function OverallBoard({ board }: { board: Zero3PublicBoard }) {
   const categories = board.event?.categories || [];
   const proofs = useMemo(() => (board.proofs || []).slice().sort((a, b) => a.order - b.order), [board.proofs]);
+  const categoryKey = categories.join('\u0000');
+  const defaultCategory = preferredOverallCategory(categories);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(defaultCategory);
+
+  useEffect(() => {
+    if (!selectedCategory || !categories.includes(selectedCategory)) {
+      setSelectedCategory(defaultCategory);
+    }
+  }, [categoryKey, defaultCategory, selectedCategory]);
+
   if (!categories.length) {
     return <div className="lb-empty" data-testid="empty-overall-categories">
       <CircleHelp size={19} aria-hidden="true" /><strong>Nenhuma categoria disponível</strong>
       <span>A classificação será exibida quando o evento tiver categorias.</span>
     </div>;
   }
+  const activeCategory = selectedCategory && categories.includes(selectedCategory)
+    ? selectedCategory
+    : defaultCategory ?? categories[0]!;
+  const leaderboard = board.leaderboards.find((item) => item.category === activeCategory);
+  const entries = (leaderboard?.entries || []).slice().sort(compareOverallEntries);
+  const correction = isCorrectionPending(leaderboard) || entries.some((entry) =>
+    isCorrectionPending(entry) || entry.proofScores.some((score) => score.status === 'PUBLICATION_PENDING'),
+  );
+  const publishedPodium = board.podiums.find((item) => item.category === activeCategory);
+
   return (
-    <div className="lb-category-stack">
-      {categories.map((category) => {
-        const leaderboard = board.leaderboards.find((item) => item.category === category);
-        const entries = (leaderboard?.entries || []).slice().sort(compareOverallEntries);
-        const correction = isCorrectionPending(leaderboard) || entries.some((entry) =>
-          isCorrectionPending(entry) || entry.proofScores.some((score) => score.status === 'PUBLICATION_PENDING'),
-        );
-        const publishedPodium=board.podiums.find(item=>item.category===category);
-        return (
-          <OverallCategory key={category} category={category} leaderboard={leaderboard} entries={entries}
-            proofs={proofs} correction={correction} publishedPodium={publishedPodium} />
-        );
-      })}
+    <div className="lb-overall-board" data-testid="overall-board">
+      <div className="lb-overall-filter" role="group" aria-label="Filtrar classificação por categoria"
+        data-testid="overall-category-filter">
+        <span>Categoria</span>
+        {categories.map((category) => (
+          <button key={category} type="button" aria-pressed={activeCategory === category}
+            data-testid={`filter-overall-category-${category}`}
+            onClick={() => setSelectedCategory(category)}>
+            {overallCategoryLabel(category)}
+          </button>
+        ))}
+      </div>
+      <OverallCategory key={activeCategory} category={activeCategory} leaderboard={leaderboard} entries={entries}
+        proofs={proofs} results={board.results} correction={correction} publishedPodium={publishedPodium} />
     </div>
   );
 }
@@ -415,11 +436,12 @@ function compareOverallEntries(a: Zero3LeaderboardEntry, b: Zero3LeaderboardEntr
   return (a.totalPoints ?? Number.MAX_SAFE_INTEGER) - (b.totalPoints ?? Number.MAX_SAFE_INTEGER);
 }
 
-function OverallCategory({ category, leaderboard, entries, proofs, correction, publishedPodium }: {
+function OverallCategory({ category, leaderboard, entries, proofs, results, correction, publishedPodium }: {
   category: string;
   leaderboard?: Zero3CategoryLeaderboard;
   entries: Zero3LeaderboardEntry[];
   proofs: Zero3Proof[];
+  results: Zero3PublicResult[];
   correction: boolean;
   publishedPodium?: Zero3PublicBoard['podiums'][number];
 }) {
@@ -446,7 +468,8 @@ function OverallCategory({ category, leaderboard, entries, proofs, correction, p
             const partialPlace = entry.totalPoints != null && totalCounts.get(entry.totalPoints) === 1
               ? index + 1
               : undefined;
-            return <OverallEntry key={entry.registrationId} entry={entry} proofs={proofs} partialPlace={partialPlace} />;
+            return <OverallEntry key={entry.registrationId} entry={entry} proofs={proofs} results={results}
+              partialPlace={partialPlace} />;
           })}
         </div>
       ) : (
@@ -461,6 +484,7 @@ function OverallCategory({ category, leaderboard, entries, proofs, correction, p
           <h3>Pódio publicado</h3>
           <PodiumAwards places={publishedPodium.places}
             arbitrationNote={publishedPodium.arbitrationNote}
+            placeObservations={publishedPodium.placeObservations}
             label={`Pódio público de ${category}`}/>
         </section>
       ) : null}
@@ -468,20 +492,26 @@ function OverallCategory({ category, leaderboard, entries, proofs, correction, p
   );
 }
 
-function OverallEntry({ entry, proofs, partialPlace }: {
+function OverallEntry({ entry, proofs, results, partialPlace }: {
   entry: Zero3LeaderboardEntry;
   proofs: Zero3Proof[];
+  results: Zero3PublicResult[];
   partialPlace?: number;
 }) {
-  const final = entry.status === 'FINAL';
-  const correction = isCorrectionPending(entry) || entry.status === 'PUBLICATION_PENDING' ||
-    entry.proofScores.some((score) => score.status === 'PUBLICATION_PENDING');
+  const publicationState = overallEntryPublicationState(entry, results);
+  const final = publicationState === 'published';
+  const correction = publicationState === 'pending';
   const progress = `${entry.completedProofs}/${entry.proofCount}`;
+  const publicationLabel = final
+    ? 'Resultado publicado'
+    : correction
+      ? 'Aguardando revisão ou publicação'
+      : 'Classificação parcial';
   return (
     <article className="lb-overall-row" data-testid={`row-overall-${entry.registrationId}`}>
       <div className="lb-overall-rank">
         <span className="lb-rank-number" data-testid={`rank-overall-${entry.registrationId}`}>{entry.overallPlace ? `${entry.overallPlace}º` : partialPlace ? `${partialPlace}º` : '—'}</span>
-        <span className="lb-rank-label">{final ? 'FINAL' : 'PARCIAL'}</span>
+        <span className="lb-rank-label">{final ? 'PUBLICADO' : correction ? 'PENDENTE' : 'PARCIAL'}</span>
       </div>
       <div className="lb-overall-team">
         <strong data-testid={`team-overall-${entry.registrationId}`}>{entry.teamName || entry.athleteNames.join(' · ') || 'Equipe sem nome'}</strong>
@@ -505,7 +535,7 @@ function OverallEntry({ entry, proofs, partialPlace }: {
       </div>
       <span className={`lb-entry-state ${final ? 'is-final' : correction ? 'is-correction' : 'is-partial'}`}
         data-testid={`status-overall-${entry.registrationId}`}>
-        {correction ? 'Aguardando revisão ou publicação' : statusLabel(entry.status)}
+        {publicationLabel}
       </span>
     </article>
   );
@@ -516,22 +546,14 @@ function ProofPoints({ proof, score, registrationId }: {
   score?: Zero3LeaderboardProofScore;
   registrationId: string;
 }) {
-  const heading = rankingProofHeadings[proof.order] ?? `P${proof.order}`;
-  const pending = !score || score.points == null;
-  const cancelledLabel = cancelledProofLabel("VALIDATED", score?.value);
-  const value = score?.points != null
-    ? `${score.points} pt`
-    : cancelledLabel
-      ? formatSnapshotValue(score?.value, proof)
-      : score?.status === 'DNS' || score?.status === 'DNF'
-      ? score.status
-      : pending ? '—' : statusLabel(score.status);
+  const presentation = overallProofScorePresentation(proof, score);
   return (
     <div className="lb-proof-cell" data-testid={`points-proof-${registrationId}-${proof.id}`}>
-      <span title={proof.name} aria-label={`${heading}: ${proof.name}`}>{heading}</span>
-      <strong>{value}</strong>
-      {score?.placement != null && <small>{score.placement}º lugar</small>}
-      {pending && <small>{cancelledLabel ?? (score ? statusLabel(score.status) : 'Pendente')}</small>}
+      <span title={presentation.proofName} aria-label={`Prova ${proof.order}: ${presentation.proofName}`}>
+        {presentation.proofName}
+      </span>
+      <strong>{presentation.mark}</strong>
+      <small>{presentation.detail}</small>
     </div>
   );
 }
@@ -558,8 +580,10 @@ export function LiveBoardPage() {
     ? undefined
     : inspectPublicBoardPayload(boardQuery.data);
   const board = boardPayload?.kind === 'valid' ? boardPayload.board : undefined;
-  const invalidBoardResponse = boardPayload?.kind === 'invalid' ||
-    (boardQuery.data === undefined && isPublicBoardJsonParseError(boardQuery.error));
+  const invalidBoardResponse = Boolean(
+    boardPayload?.kind === 'invalid' ||
+    (boardQuery.data === undefined && isPublicBoardJsonParseError(boardQuery.error)),
+  );
   const eventBatteryOptions = useMemo(() => {
     if (board?.batteryModel !== 'EVENT') return [];
     if (Array.isArray(board.eventBatteries)) {
@@ -784,7 +808,7 @@ export function LiveBoardPage() {
                 <header className="lb-view-heading">
                   <div><div className="lb-section-kicker">PONTUAÇÃO ACUMULADA</div>
                     <h2 id="lb-view-heading">Ranking geral do evento</h2>
-                    <p>Somente pontos publicados entram na classificação. Resultados brutos não são exibidos.</p>
+                     <p>Marcas, colocações e pontos usam a mesma versão publicada; alterações pendentes não substituem o resultado oficial.</p>
                   </div>
                 </header>
                 {board.leaderboards.length ? <OverallBoard board={board} /> : (

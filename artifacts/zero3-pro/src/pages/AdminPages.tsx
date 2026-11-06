@@ -31,6 +31,12 @@ import { EventBatteryResultsPanel } from '@/components/EventBatteryResultsPanel'
 import { EventBatteryTimerPanel } from '@/components/EventBatteryTimerPanel';
 import { EventResultsWorkspace } from '@/components/EventResultsWorkspace';
 import { PodiumAwards, type PodiumAwardPlace } from '@/components/public/PodiumAwards';
+import {
+  changePodiumSelection,
+  observationsForPodiumSelection,
+  podiumObservationsMatch,
+  type PodiumEditorPlaceObservation,
+} from '@/lib/podium-editor-state';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { liveBoardHrefForBattery } from '@/lib/live-board-navigation';
 import { pollingIntervalAfterError, shouldRefetchAfterError, shouldRetryZero3Query } from '@/lib/api-error-policy';
@@ -1080,7 +1086,11 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
 }
 
 function PodiumEditor({eventId}:{eventId:string}) {
-  type PodiumFormState={sourceKey:string;registrationIds:Array<string|null>;arbitrationNote:string};
+  type PodiumFormState={
+    sourceKey:string;
+    registrationIds:Array<string|null>;
+    placeObservations:PodiumEditorPlaceObservation[];
+  };
   const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId),refetchInterval:10000}});
   const board=useGetZero3PublicBoard({eventId},{query:{queryKey:getGetZero3PublicBoardQueryKey({eventId}),refetchInterval:5000}});
   const save=useSaveZero3PodiumDraft();
@@ -1118,30 +1128,43 @@ function PodiumEditor({eventId}:{eventId:string}) {
     :publishedManual
       ?publishedManual.registrationIds
       :publicReferenceIds;
-  const sourceNote=localDraft
+  const sourceLegacyNote=localDraft
     ?localDraft.arbitrationNote??''
     :publishedManual
       ?publishedManual.arbitrationNote??''
       :publicPodium?.arbitrationNote??'';
+  const sourceObservations=localDraft?.placeObservations
+    ??publishedManual?.placeObservations
+    ??publicPodium?.placeObservations
+    ??[];
   const formKey=`${eventId}:${category}`;
   const sourceIdsKey=sourceIds.join('|');
-  const sourceKey=`${localDraft?.version??publishedManual?.version??0}:${localDraft?.updatedAt??publishedManual?.updatedAt??''}:${sourceIdsKey}:${sourceNote}`;
+  const sourceObservationsKey=JSON.stringify(sourceObservations);
+  const sourceKey=`${localDraft?.version??publishedManual?.version??0}:${localDraft?.updatedAt??publishedManual?.updatedAt??''}:${sourceIdsKey}:${sourceLegacyNote}:${sourceObservationsKey}`;
   const storedForm=categoryForms[formKey];
   const formState=storedForm?.sourceKey===sourceKey
     ?storedForm
-    :{sourceKey,registrationIds:sourceIds,arbitrationNote:sourceNote};
+    :{
+      sourceKey,
+      registrationIds:sourceIds,
+      placeObservations:observationsForPodiumSelection(sourceIds,sourceObservations),
+    };
   useEffect(()=>{
     setCategoryForms(current=>current[formKey]?.sourceKey===sourceKey
       ?current
-      :{...current,[formKey]:{sourceKey,registrationIds:sourceIds,arbitrationNote:sourceNote}});
-  },[formKey,sourceKey,sourceIdsKey,sourceNote]);
-  const updateForm=(patch:Partial<Pick<PodiumFormState,'registrationIds'|'arbitrationNote'>>)=>{
+      :{...current,[formKey]:{
+        sourceKey,
+        registrationIds:sourceIds,
+        placeObservations:observationsForPodiumSelection(sourceIds,sourceObservations),
+      }});
+  },[formKey,sourceKey,sourceIdsKey,sourceObservationsKey]);
+  const updateForm=(patch:Partial<Pick<PodiumFormState,'registrationIds'|'placeObservations'>>)=>{
     setCategoryForms(current=>({
       ...current,
       [formKey]:{
         sourceKey,
         registrationIds:patch.registrationIds??formState.registrationIds,
-        arbitrationNote:patch.arbitrationNote??formState.arbitrationNote,
+        placeObservations:patch.placeObservations??formState.placeObservations,
       },
     }));
   };
@@ -1159,7 +1182,10 @@ function PodiumEditor({eventId}:{eventId:string}) {
       category,
       data:{
         registrationIds:ids,
-        arbitrationNote:formState.arbitrationNote.trim()||null,
+        placeObservations:formState.placeObservations.map(item=>({
+          ...item,
+          note:item.note.trim()||null,
+        })),
       },
     },{
       onSuccess:saved=>{
@@ -1194,12 +1220,13 @@ function PodiumEditor({eventId}:{eventId:string}) {
     }]:[];
   })||[];
   const publishedPreview:PodiumAwardPlace[]=publicPodium?.places||[];
+  const draftPlaceObservations=localDraft?.placeObservations??[];
   const draftHasThreeDistinctPlaces=Boolean(localDraft)&&
     localDraft!.registrationIds.length===3&&localDraft!.registrationIds.every(Boolean)&&
     new Set(localDraft!.registrationIds).size===3;
   const draftMatchesForm=Boolean(localDraft)&&
     localDraft!.registrationIds.every((id,index)=>id===formState.registrationIds[index])&&
-    (localDraft!.arbitrationNote??'')===formState.arbitrationNote.trim();
+    podiumObservationsMatch(formState.registrationIds,formState.placeObservations,draftPlaceObservations);
   const canPublishDraft=draftHasThreeDistinctPlaces&&draftMatchesForm;
   const publishedLabel=publishedManual
     ?'Pódio da arbitragem publicado'
@@ -1210,7 +1237,7 @@ function PodiumEditor({eventId}:{eventId:string}) {
   return <div className="grid-two">
     <form className="panel panel-pad" onSubmit={saveDraft}>
       <h2 className="panel-title">Montar pódio final do evento</h2>
-      <p className="field-help">Selecione participações de toda a categoria, sem limitar a bateria. O pódio não altera marcas nem pontos.</p>
+      <p className="field-help">Selecione participações de toda a categoria e registre uma observação opcional por colocação. O pódio não altera marcas nem pontos.</p>
       <div className="field">
         <label htmlFor="podium-category">Categoria</label>
         <select id="podium-category" value={category} onChange={event=>{
@@ -1223,34 +1250,50 @@ function PodiumEditor({eventId}:{eventId:string}) {
           {availableCategories.map(value=><option key={value} value={value}>{categoryName(value)}</option>)}
         </select>
       </div>
-      {[0,1,2].map(index=><div className="field" key={`${category}-${index}`}>
-        <label htmlFor={`place${index}`}>{['1º lugar','2º lugar','3º lugar'][index]}</label>
+      {[0,1,2].map(index=><section className="podium-place-editor" key={`${category}-${index}`}>
+        <div className="field">
+          <label htmlFor={`place${index}`}>{['1º lugar','2º lugar','3º lugar'][index]}</label>
           <select id={`place${index}`} value={formState.registrationIds[index]||''}
             disabled={confirmPublishing||save.isPending||publish.isPending}
-          onChange={event=>{
-            const registrationIds=[...formState.registrationIds];
-            registrationIds[index]=event.target.value||null;
-            updateForm({registrationIds});
-          }}>
-          <option value="">Sem colocação</option>
-          {registrationsInCategory.map(registration=>{
-            const alreadySelected=formState.registrationIds.some((id,otherIndex)=>otherIndex!==index&&id===registration.id);
-            return <option key={registration.id} value={registration.id} disabled={alreadySelected}>
-              {registration.teamName||`Equipe ${registration.laneLabel||registration.id.slice(0,6).toUpperCase()} — nome pendente`}
-              {registration.athleteNames.length?` · ${registration.athleteNames.join(' / ')}`:''}
-              {alreadySelected?' · já selecionada':''}
-            </option>;
-          })}
-        </select>
-      </div>)}
-      <div className="field">
-        <label htmlFor="podium-arbitration-note">Observação da arbitragem (opcional)</label>
-        <textarea id="podium-arbitration-note" value={formState.arbitrationNote}
-          onChange={event=>updateForm({arbitrationNote:event.target.value})}
-          disabled={confirmPublishing||save.isPending||publish.isPending}
-          maxLength={2000} rows={3} placeholder="Observação interna desta categoria; só aparece após publicar."/>
-        <span className="field-help">Texto simples. Uma observação vazia não será exibida.</span>
-      </div>
+            onChange={event=>{
+              const changed=changePodiumSelection(
+                formState.registrationIds,
+                formState.placeObservations,
+                index,
+                event.target.value||null,
+              );
+              updateForm({registrationIds:changed.registrationIds,placeObservations:changed.observations});
+            }}>
+            <option value="">Sem colocação</option>
+            {registrationsInCategory.map(registration=>{
+              const alreadySelected=formState.registrationIds.some((id,otherIndex)=>otherIndex!==index&&id===registration.id);
+              return <option key={registration.id} value={registration.id} disabled={alreadySelected}>
+                {registration.teamName||`Equipe ${registration.laneLabel||registration.id.slice(0,6).toUpperCase()} — nome pendente`}
+                {registration.athleteNames.length?` · ${registration.athleteNames.join(' / ')}`:''}
+                {alreadySelected?' · já selecionada':''}
+              </option>;
+            })}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor={`place-observation-${index}`}>Observação do {['1º','2º','3º'][index]} lugar (opcional)</label>
+          <textarea id={`place-observation-${index}`}
+            value={formState.placeObservations[index]?.note??''}
+            onChange={event=>{
+              const placeObservations=[...formState.placeObservations];
+              placeObservations[index]={
+                place:(index+1) as PodiumEditorPlaceObservation['place'],
+                registrationId:formState.registrationIds[index]??null,
+                note:event.target.value,
+              };
+              updateForm({placeObservations});
+            }}
+            disabled={confirmPublishing||save.isPending||publish.isPending||!formState.registrationIds[index]}
+            maxLength={2000} rows={2}
+            placeholder={formState.registrationIds[index]?"Visível somente após publicar o pódio":"Selecione a colocação primeiro"}/>
+        </div>
+      </section>)}
+      {sourceLegacyNote&&<p className="field-help">Este pódio tem uma observação geral de uma versão anterior. Ela permanece pública até a nova publicação substituir essa versão.</p>}
       <div className="toolbar">
         <button className="button primary" disabled={save.isPending||registrations.isError}>
           <Save size={14}/> {save.isPending?'Salvando…':'Salvar rascunho'}
@@ -1285,12 +1328,15 @@ function PodiumEditor({eventId}:{eventId:string}) {
           <div className={`pill ${publishedManual?'':'neutral'}`} data-testid="podium-publication-state">{publishedLabel}</div>
           {publishedPreview.length
             ?<div style={{marginTop:12}}><PodiumAwards places={publishedPreview}
-              arbitrationNote={publicPodium?.arbitrationNote} label={`Pódio público de ${categoryName(category)}`}/></div>
+              arbitrationNote={publicPodium?.arbitrationNote}
+              placeObservations={publicPodium?.placeObservations}
+              label={`Pódio público de ${categoryName(category)}`}/></div>
             :<p className="field-help" style={{marginTop:12}}>Ainda não há pódio publicado para esta categoria.</p>}
           <section className="podium-editor-preview" aria-label="Prévia privada do rascunho">
             <h3>Rascunho privado · não publicado</h3>
             {localDraft
-              ?<PodiumAwards places={draftPreview} arbitrationNote={localDraft.arbitrationNote}
+               ?<PodiumAwards places={draftPreview} arbitrationNote={localDraft.arbitrationNote}
+                 placeObservations={draftPlaceObservations}
                 showEmptyPositions label={`Rascunho privado de ${categoryName(category)}`}/>
               :<p className="field-help">Nenhum rascunho salvo para esta categoria. O que está no formulário ainda não foi salvo.</p>}
           </section>

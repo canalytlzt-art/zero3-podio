@@ -23,7 +23,12 @@ import {
 import { readD1ActiveBattery } from "./d1-staging-batteries";
 import { handleD1BatteryFinalization } from "./d1-staging-finalization";
 import { advanceD1TimerPreparation, d1TimerDto, type D1HeatRunRow } from "./d1-staging-timer";
-import { hasUniquePodiumRegistrations, normalizePodiumArbitrationNote } from "./zero3-podium";
+import {
+  encodePodiumPlaceObservations,
+  hasUniquePodiumRegistrations,
+  normalizePodiumArbitrationNote,
+  readPodiumPlaceObservations,
+} from "./zero3-podium";
 
 type TimerRow = D1HeatRunRow;
 type EventRow = { id: string; preparation_seconds: number };
@@ -45,6 +50,7 @@ function podiumDto(row: PodiumRow | null) {
       ? parsed.map((item) => typeof item === "string" ? item : null)
       : [];
   } catch { registrationIds = []; }
+  const observations = readPodiumPlaceObservations(row.arbitration_note, registrationIds);
   return {
     eventId: row.event_id,
     category: row.category,
@@ -53,7 +59,7 @@ function podiumDto(row: PodiumRow | null) {
     publishedBy: row.published_by,
     publishedAt: d1Date(row.published_at),
     publishReason: row.publish_reason,
-    arbitrationNote: row.arbitration_note ?? null,
+    ...observations,
     version: row.version,
     updatedAt: d1Date(row.updated_at),
   };
@@ -202,7 +208,15 @@ export async function handleD1StagingControls(
     }
     const selected = body.data.registrationIds.filter((id): id is string => id !== null);
     if (!hasUniquePodiumRegistrations(body.data.registrationIds)) { res.status(400).json({ error: "Cada posição do pódio deve ser única." }); return true; }
-    const arbitrationNote = normalizePodiumArbitrationNote(body.data.arbitrationNote);
+    let arbitrationNote: string | null;
+    try {
+      arbitrationNote = body.data.placeObservations !== undefined
+        ? encodePodiumPlaceObservations(body.data.placeObservations, body.data.registrationIds)
+        : normalizePodiumArbitrationNote(body.data.arbitrationNote);
+    } catch {
+      res.status(400).json({ error: "Cada observação deve corresponder à inscrição selecionada na mesma colocação." });
+      return true;
+    }
     try {
       if (selected.length) {
         const registrations = await DB.prepare(`SELECT id,category FROM zero3_registrations
@@ -274,7 +288,17 @@ export async function handleD1StagingControls(
         published_at=?,publish_reason=?,updated_at=?
         WHERE event_id=? AND category=? AND version=? AND published=0`)
         .bind(member.email, stamp, body.data.reason, stamp, params.data.eventId, params.data.category, draft.version).run();
-      if ((result.meta.changes ?? 0) !== 1) { d1ApiError(req, res, 409, "PODIUM_CONFLICT", "O rascunho mudou antes da publicação. Atualize e tente novamente."); return true; }
+      if ((result.meta.changes ?? 0) !== 1) {
+        const current = await DB.prepare(`SELECT * FROM zero3_podium_versions
+          WHERE event_id=? AND category=? AND version=?`)
+          .bind(params.data.eventId, params.data.category, draft.version).first<PodiumRow>();
+        if (current?.published === 1) {
+          res.json(PublishZero3PodiumResponse.parse(podiumDto(current)));
+          return true;
+        }
+        d1ApiError(req, res, 409, "PODIUM_CONFLICT", "O rascunho mudou antes da publicação. Atualize e tente novamente.");
+        return true;
+      }
       const published = await DB.prepare(`SELECT * FROM zero3_podium_versions
         WHERE event_id=? AND category=? AND version=?`)
         .bind(params.data.eventId, params.data.category, draft.version).first<PodiumRow>();

@@ -46,7 +46,7 @@ import {
 import { advanceD1TimerPreparation, d1TimerDto } from "./d1-staging-timer";
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 import { buildRankingPublicationPlan } from "./zero3-ranking-publication";
-import { visiblePodiumArbitrationNote } from "./zero3-podium";
+import { visiblePodiumObservations } from "./zero3-podium";
 
 type D1Env = { DB: D1Database };
 type Member = { clerk_user_id: string; email: string; role: string; active: number };
@@ -352,18 +352,24 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       heatName: row.heat_id ? heatNames.get(row.heat_id) ?? null : null,
     };
   });
-  const latestPodium = new Map<string, { registrationIds: string; arbitrationNote: string | null }>();
+  const latestPodium = new Map<string, {
+    registrationIds: string;
+    arbitrationNote: string | null;
+    placeObservations: Array<{ place: number; registrationId: string; note: string }>;
+  }>();
   for (const podium of podiumResult.results) {
     if (!latestPodium.has(podium.category)) {
+      const registrationIds = nullableStringArray(podium.registration_ids);
       latestPodium.set(podium.category, {
         registrationIds: podium.registration_ids,
-        arbitrationNote: visiblePodiumArbitrationNote(podium.published === 1, podium.arbitration_note),
+        ...visiblePodiumObservations(podium.published === 1, podium.arbitration_note, registrationIds),
       });
     }
   }
   const manuallyPublishedPodiums = [...latestPodium].map(([category, podium]) => ({
     category,
     arbitrationNote: podium.arbitrationNote,
+    placeObservations: podium.placeObservations,
     places: nullableStringArray(podium.registrationIds).flatMap((registrationId, index) => {
       if (!registrationId) return [];
       const reg = registrationsById.get(registrationId);

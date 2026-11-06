@@ -2796,12 +2796,20 @@ export const getZero3PodiumStateResponseDraftOneRegistrationIdsMax = 3;
 
 export const getZero3PodiumStateResponseDraftOneArbitrationNoteMax = 2000;
 
+export const getZero3PodiumStateResponseDraftOnePlaceObservationsItemNoteMax = 2000;
+
+export const getZero3PodiumStateResponseDraftOnePlaceObservationsMax = 3;
+
 export const getZero3PodiumStateResponsePublishedOneCategoryMax = 32;
 
 export const getZero3PodiumStateResponsePublishedOneRegistrationIdsMin = 3;
 export const getZero3PodiumStateResponsePublishedOneRegistrationIdsMax = 3;
 
 export const getZero3PodiumStateResponsePublishedOneArbitrationNoteMax = 2000;
+
+export const getZero3PodiumStateResponsePublishedOnePlaceObservationsItemNoteMax = 2000;
+
+export const getZero3PodiumStateResponsePublishedOnePlaceObservationsMax = 3;
 
 
 
@@ -2815,6 +2823,11 @@ export const GetZero3PodiumStateResponse = zod.object({
   "publishedAt": zod.coerce.date().nullable(),
   "publishReason": zod.string().nullable(),
   "arbitrationNote": zod.string().max(getZero3PodiumStateResponseDraftOneArbitrationNoteMax).nullish(),
+  "placeObservations": zod.array(zod.object({
+  "place": zod.union([zod.literal(1),zod.literal(2),zod.literal(3)]),
+  "registrationId": zod.string(),
+  "note": zod.string().min(1).max(getZero3PodiumStateResponseDraftOnePlaceObservationsItemNoteMax)
+})).max(getZero3PodiumStateResponseDraftOnePlaceObservationsMax).optional(),
   "version": zod.number().int(),
   "updatedAt": zod.coerce.date()
 }),zod.null()]),
@@ -2827,6 +2840,11 @@ export const GetZero3PodiumStateResponse = zod.object({
   "publishedAt": zod.coerce.date().nullable(),
   "publishReason": zod.string().nullable(),
   "arbitrationNote": zod.string().max(getZero3PodiumStateResponsePublishedOneArbitrationNoteMax).nullish(),
+  "placeObservations": zod.array(zod.object({
+  "place": zod.union([zod.literal(1),zod.literal(2),zod.literal(3)]),
+  "registrationId": zod.string(),
+  "note": zod.string().min(1).max(getZero3PodiumStateResponsePublishedOnePlaceObservationsItemNoteMax)
+})).max(getZero3PodiumStateResponsePublishedOnePlaceObservationsMax).optional(),
   "version": zod.number().int(),
   "updatedAt": zod.coerce.date()
 }),zod.null()])
@@ -2850,11 +2868,20 @@ export const saveZero3PodiumDraftBodyRegistrationIdsMax = 3;
 
 export const saveZero3PodiumDraftBodyArbitrationNoteMax = 2000;
 
+export const saveZero3PodiumDraftBodyPlaceObservationsItemNoteMax = 2000;
+
+export const saveZero3PodiumDraftBodyPlaceObservationsMax = 3;
+
 
 
 export const SaveZero3PodiumDraftBody = zod.object({
   "registrationIds": zod.array(zod.string().nullable()).min(saveZero3PodiumDraftBodyRegistrationIdsMin).max(saveZero3PodiumDraftBodyRegistrationIdsMax),
-  "arbitrationNote": zod.string().max(saveZero3PodiumDraftBodyArbitrationNoteMax).nullish()
+  "arbitrationNote": zod.string().max(saveZero3PodiumDraftBodyArbitrationNoteMax).nullish(),
+  "placeObservations": zod.array(zod.object({
+  "place": zod.union([zod.literal(1),zod.literal(2),zod.literal(3)]),
+  "registrationId": zod.string().nullable(),
+  "note": zod.string().max(saveZero3PodiumDraftBodyPlaceObservationsItemNoteMax).nullable()
+})).max(saveZero3PodiumDraftBodyPlaceObservationsMax).optional()
 })
 
 export const saveZero3PodiumDraftResponseCategoryMax = 32;
@@ -2863,6 +2890,10 @@ export const saveZero3PodiumDraftResponseRegistrationIdsMin = 3;
 export const saveZero3PodiumDraftResponseRegistrationIdsMax = 3;
 
 export const saveZero3PodiumDraftResponseArbitrationNoteMax = 2000;
+
+export const saveZero3PodiumDraftResponsePlaceObservationsItemNoteMax = 2000;
+
+export const saveZero3PodiumDraftResponsePlaceObservationsMax = 3;
 
 
 
@@ -2875,6 +2906,11 @@ export const SaveZero3PodiumDraftResponse = zod.object({
   "publishedAt": zod.coerce.date().nullable(),
   "publishReason": zod.string().nullable(),
   "arbitrationNote": zod.string().max(saveZero3PodiumDraftResponseArbitrationNoteMax).nullish(),
+  "placeObservations": zod.array(zod.object({
+  "place": zod.union([zod.literal(1),zod.literal(2),zod.literal(3)]),
+  "registrationId": zod.string(),
+  "note": zod.string().min(1).max(saveZero3PodiumDraftResponsePlaceObservationsItemNoteMax)
+})).max(saveZero3PodiumDraftResponsePlaceObservationsMax).optional(),
   "version": zod.number().int(),
   "updatedAt": zod.coerce.date()
 })
@@ -2907,6 +2943,10 @@ export const publishZero3PodiumResponseRegistrationIdsMax = 3;
 
 export const publishZero3PodiumResponseArbitrationNoteMax = 2000;
 
+export const publishZero3PodiumResponsePlaceObservationsItemNoteMax = 2000;
+
+export const publishZero3PodiumResponsePlaceObservationsMax = 3;
+
 
 
 export const PublishZero3PodiumResponse = zod.object({
@@ -2918,6 +2958,11 @@ export const PublishZero3PodiumResponse = zod.object({
   "publishedAt": zod.coerce.date().nullable(),
   "publishReason": zod.string().nullable(),
   "arbitrationNote": zod.string().max(publishZero3PodiumResponseArbitrationNoteMax).nullish(),
+  "placeObservations": zod.array(zod.object({
+  "place": zod.union([zod.literal(1),zod.literal(2),zod.literal(3)]),
+  "registrationId": zod.string(),
+  "note": zod.string().min(1).max(publishZero3PodiumResponsePlaceObservationsItemNoteMax)
+})).max(publishZero3PodiumResponsePlaceObservationsMax).optional(),
   "version": zod.number().int(),
   "updatedAt": zod.coerce.date()
 })
@@ -3207,6 +3252,10 @@ export const getZero3PublicBoardResponseLeaderboardsItemEntriesItemTotalPointsMi
 export const getZero3PublicBoardResponsePodiumsItemCategoryMax = 32;
 
 export const getZero3PublicBoardResponsePodiumsItemArbitrationNoteMax = 2000;
+
+export const getZero3PublicBoardResponsePodiumsItemPlaceObservationsItemNoteMax = 2000;
+
+export const getZero3PublicBoardResponsePodiumsItemPlaceObservationsMax = 3;
 
 export const getZero3PublicBoardResponseActiveHeatsItemCategoryMax = 32;
 
@@ -3743,6 +3792,11 @@ export const GetZero3PublicBoardResponse = zod.object({
   "podiums": zod.array(zod.object({
   "category": zod.string().min(1).max(getZero3PublicBoardResponsePodiumsItemCategoryMax),
   "arbitrationNote": zod.string().max(getZero3PublicBoardResponsePodiumsItemArbitrationNoteMax).nullish(),
+  "placeObservations": zod.array(zod.object({
+  "place": zod.union([zod.literal(1),zod.literal(2),zod.literal(3)]),
+  "registrationId": zod.string(),
+  "note": zod.string().min(1).max(getZero3PublicBoardResponsePodiumsItemPlaceObservationsItemNoteMax)
+})).max(getZero3PublicBoardResponsePodiumsItemPlaceObservationsMax).optional(),
   "places": zod.array(zod.object({
   "place": zod.number().int(),
   "registrationId": zod.string(),

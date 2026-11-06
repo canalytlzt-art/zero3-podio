@@ -103,7 +103,13 @@ import {
   type ScoreProof,
 } from "../lib/zero3-scoring";
 import { normalizeEventCategories, validateEventCategories } from "../lib/zero3-categories";
-import { hasUniquePodiumRegistrations, normalizePodiumArbitrationNote, visiblePodiumArbitrationNote } from "../lib/zero3-podium";
+import {
+  encodePodiumPlaceObservations,
+  hasUniquePodiumRegistrations,
+  normalizePodiumArbitrationNote,
+  readPodiumPlaceObservations,
+  visiblePodiumObservations,
+} from "../lib/zero3-podium";
 import { findZero3RegistrationConflict } from "../lib/zero3-registration-conflict";
 import rosterRouter from "./zero3-roster";
 
@@ -609,6 +615,14 @@ async function currentEvent(eventId?: string): Promise<EventRow | undefined> {
   return latest;
 }
 
+function podiumApiDto(row: typeof zero3PodiumsTable.$inferSelect | null) {
+  if (!row) return null;
+  return {
+    ...row,
+    ...readPodiumPlaceObservations(row.arbitrationNote, row.registrationIds),
+  };
+}
+
 async function publicPodiums(eventId: string) {
   const versions = await db
     .select()
@@ -664,7 +678,7 @@ async function publicPodiums(eventId: string) {
     podiums.push({
       category,
       places,
-      arbitrationNote: visiblePodiumArbitrationNote(podium.published, podium.arbitrationNote),
+      ...visiblePodiumObservations(podium.published, podium.arbitrationNote, podium.registrationIds),
     });
   }
   return podiums;
@@ -2192,8 +2206,8 @@ router.get(
     const published = rows.find((row) => row.published) ?? null;
     res.json(
       GetZero3PodiumStateResponse.parse({
-        draft,
-        published,
+        draft: podiumApiDto(draft),
+        published: podiumApiDto(published),
       }),
     );
   },
@@ -2218,6 +2232,15 @@ router.put(
     );
     if (!hasUniquePodiumRegistrations(body.data.registrationIds)) {
       res.status(400).json({ error: "Cada posição do pódio deve ser única." });
+      return;
+    }
+    let storedArbitrationNote: string | null;
+    try {
+      storedArbitrationNote = body.data.placeObservations !== undefined
+        ? encodePodiumPlaceObservations(body.data.placeObservations, body.data.registrationIds)
+        : normalizePodiumArbitrationNote(body.data.arbitrationNote);
+    } catch {
+      res.status(400).json({ error: "Cada observação deve corresponder à inscrição selecionada na mesma colocação." });
       return;
     }
     if (selected.length) {
@@ -2256,7 +2279,7 @@ router.put(
             .update(zero3PodiumsTable)
             .set({
               registrationIds: body.data.registrationIds,
-              arbitrationNote: normalizePodiumArbitrationNote(body.data.arbitrationNote),
+              arbitrationNote: storedArbitrationNote,
               updatedAt: new Date(),
             })
             .where(
@@ -2275,13 +2298,13 @@ router.put(
               eventId: params.data.eventId,
               category: params.data.category,
               registrationIds: body.data.registrationIds,
-              arbitrationNote: normalizePodiumArbitrationNote(body.data.arbitrationNote),
+              arbitrationNote: storedArbitrationNote,
               version,
               published: false,
             })
             .returning()
         )[0];
-    res.json(SaveZero3PodiumDraftResponse.parse(saved));
+    res.json(SaveZero3PodiumDraftResponse.parse(podiumApiDto(saved)));
   },
 );
 
@@ -2315,7 +2338,7 @@ router.post(
       return;
     }
     if (draft.published) {
-      res.json(PublishZero3PodiumResponse.parse(draft));
+      res.json(PublishZero3PodiumResponse.parse(podiumApiDto(draft)));
       return;
     }
     const ids = draft.registrationIds.filter(
@@ -2341,10 +2364,30 @@ router.post(
           eq(zero3PodiumsTable.eventId, params.data.eventId),
           eq(zero3PodiumsTable.category, params.data.category),
           eq(zero3PodiumsTable.version, draft.version),
+          eq(zero3PodiumsTable.published, false),
         ),
       )
       .returning();
-    res.json(PublishZero3PodiumResponse.parse(published));
+    if (!published) {
+      const [current] = await db
+        .select()
+        .from(zero3PodiumsTable)
+        .where(
+          and(
+            eq(zero3PodiumsTable.eventId, params.data.eventId),
+            eq(zero3PodiumsTable.category, params.data.category),
+            eq(zero3PodiumsTable.version, draft.version),
+          ),
+        )
+        .limit(1);
+      if (current?.published) {
+        res.json(PublishZero3PodiumResponse.parse(podiumApiDto(current)));
+        return;
+      }
+      res.status(409).json({ error: "O rascunho mudou antes da publicação. Atualize e tente novamente." });
+      return;
+    }
+    res.json(PublishZero3PodiumResponse.parse(podiumApiDto(published)));
   },
 );
 

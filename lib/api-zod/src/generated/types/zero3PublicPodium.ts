@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Zero3Category } from './zero3Category';
+import type { Zero3PodiumPlaceObservation } from './zero3PodiumPlaceObservation';
 import type { Zero3PublicPodiumPlacesItem } from './zero3PublicPodiumPlacesItem';
 
 export interface Zero3PublicPodium {
@@ -15,5 +16,7 @@ export interface Zero3PublicPodium {
      * @nullable
      */
   arbitrationNote?: string | null;
+  /** @maxItems 3 */
+  placeObservations?: Zero3PodiumPlaceObservation[];
   places: Zero3PublicPodiumPlacesItem[];
 }

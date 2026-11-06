@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Zero3PodiumPlaceObservationInput } from './zero3PodiumPlaceObservationInput';
 
 export interface Zero3PodiumInput {
   /**
@@ -17,4 +18,6 @@ export interface Zero3PodiumInput {
      * @nullable
      */
   arbitrationNote?: string | null;
+  /** @maxItems 3 */
+  placeObservations?: Zero3PodiumPlaceObservationInput[];
 }

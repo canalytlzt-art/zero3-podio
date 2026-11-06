@@ -1,4 +1,5 @@
 import { Trophy } from "lucide-react";
+import { observationForPodiumPlace } from "@/lib/podium-editor-state";
 import "./PodiumAwards.css";
 
 export type PodiumAwardPlace = {
@@ -8,14 +9,22 @@ export type PodiumAwardPlace = {
   athleteNames: string[];
 };
 
+export type PodiumAwardObservation = {
+  place: 1 | 2 | 3;
+  registrationId: string;
+  note: string;
+};
+
 export function PodiumAwards({
   places,
   arbitrationNote,
+  placeObservations = [],
   showEmptyPositions = false,
   label = "Pódio publicado",
 }: {
   places: readonly PodiumAwardPlace[];
   arbitrationNote?: string | null;
+  placeObservations?: readonly PodiumAwardObservation[];
   showEmptyPositions?: boolean;
   label?: string;
 }) {
@@ -25,10 +34,13 @@ export function PodiumAwards({
   const note = arbitrationNote?.trim();
 
   return (
-    <div className="zero3-podium-awards" aria-label={label}>
+    <div className="zero3-podium-awards" role="group" aria-label={label}>
       <div className="zero3-podium-awards-grid">
         {shownPlaces.map((place) => {
           const winner = places.find((item) => item.place === place);
+          const placeObservation = winner
+            ? observationForPodiumPlace(place, winner.registrationId, placeObservations)
+            : null;
           const displayName = winner?.teamName?.trim() || winner?.athleteNames.join(" · ") || "";
           return (
             <article className={`zero3-podium-award place-${place}`} key={place}>
@@ -39,6 +51,11 @@ export function PodiumAwards({
                 {winner?.teamName && winner.athleteNames.length > 0 && (
                   <small>{winner.athleteNames.join(" · ")}</small>
                 )}
+                {placeObservation ? (
+                  <p className="zero3-podium-place-observation">
+                    {placeObservation}
+                  </p>
+                ) : null}
               </div>
             </article>
           );

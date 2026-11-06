@@ -378,3 +378,31 @@ mtime_ms = 1793971734394
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/151402b6-3340-482e-b1dd-417236691765/85513282-12c6-448f-9272-4a98040cb8bf"
 storage_version_token = "1793971743192235"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "ol3c8IyYzRHDiqmWrYS6W"
+uri = "file://generated-artifacts/zero3-ranking-scale.jpg"
+type = "image"
+title = "Ranking geral — Scale (fixture fictícia)"
+description = "Captura integral do placar com categoria Scale, marcas e pontos publicados e uma equipe parcial. Dados exclusivamente de fixture local; nenhum registro real foi consultado ou alterado."
+logical_id = "c3c79b90-19c9-441e-8a04-59a7d0702a35"
+content_hash = "sha256:062462c976cd8a9426bbe2526c355b7ed816c655b684d6a1d06ecf2a12270a60"
+size = 101992
+mtime_ms = 1794002410431
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/c3c79b90-19c9-441e-8a04-59a7d0702a35/984da5a6-3957-4fda-91f3-40a90f9a2682"
+storage_version_token = "1794002535127142"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "zQADMwaELgiMuxakTL01I"
+uri = "file://generated-artifacts/zero3-ranking-rx.jpg"
+type = "image"
+title = "Ranking geral — RX (fixture fictícia)"
+description = "Captura integral do placar com categoria RX, marcas e pontos publicados e uma equipe parcial. Dados exclusivamente de fixture local; nenhum registro real foi consultado ou alterado."
+logical_id = "e1cf65b6-907a-44a7-996f-bec8f813faaa"
+content_hash = "sha256:0e1b7af6718b37b2f1a23fe852d627621173fdb4bef65f4417d7c2b00ef73b4f"
+size = 101515
+mtime_ms = 1794002412691
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/e1cf65b6-907a-44a7-996f-bec8f813faaa/f2bf1257-f574-4946-b172-f5e8bca4fb3e"
+storage_version_token = "1794002535664535"
+content_type = "image/jpeg"

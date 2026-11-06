@@ -787,6 +787,76 @@ body:has(.live-board-page) {
 .lb-proof-cell { border-color: #e7e2ed; }
 .lb-proof-cell > span, .lb-proof-cell small { color: #625e6c; }
 .lb-proof-cell strong { color: #302044; }
+.live-board-page .lb-overall-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.live-board-page .lb-overall-filter > span {
+  margin-right: 3px;
+  color: var(--lb-muted, #625e6c);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.live-board-page .lb-overall-filter button {
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 1px solid var(--lb-line, #d7d1df);
+  border-radius: 6px;
+  color: var(--lb-ink, #302044);
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.live-board-page .lb-overall-filter button[aria-pressed="true"] {
+  border-color: var(--lb-purple, #7044bd);
+  color: #fff;
+  background: #302044;
+  box-shadow: inset 0 -2px #c9ee00;
+}
+.live-board-page .lb-proof-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 5px;
+  text-align: center;
+}
+.live-board-page .lb-proof-cell > span {
+  max-width: 100%;
+  min-height: 2.3em;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.live-board-page .lb-proof-cell strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 14px;
+  line-height: 1.15;
+}
+.live-board-page .lb-proof-cell small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 9px;
+  line-height: 1.25;
+}
+.live-board-page .lb-entry-state.is-partial {
+  color: #65551f;
+  background: #f4ecd9;
+}
 .lb-overall-total strong { color: #44257d; font-weight: 750; }
 .lb-entry-state { border-radius: 4px; color: #70511d; background: #f4ecd9; }
 .lb-entry-state.is-final { color: #4b2a87; background: #eee7fc; }

@@ -32,6 +32,18 @@
 }
 .zero3-podium-award-copy strong { color: #29252f; font-size: 11px; }
 .zero3-podium-award-copy small { color: #77727e; font-size: 9px; }
+.zero3-podium-place-observation {
+  margin: 4px 0 0;
+  padding: 6px 7px;
+  border-left: 2px solid #7560a1;
+  border-radius: 0 3px 3px 0;
+  background: #f5f2fa;
+  color: #403a4a;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 .zero3-podium-observation {
   padding: 9px 11px;
   border-left: 3px solid #7560a1;
@@ -61,6 +73,16 @@
   padding-top: 14px;
   border-top: 1px solid #e6e2eb;
 }
+.podium-place-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e8e4ed;
+  border-radius: 6px;
+  background: #faf9fc;
+}
+.podium-place-editor .field { margin: 0; }
 .podium-editor-preview h3 {
   margin: 0;
   color: #625d6a;

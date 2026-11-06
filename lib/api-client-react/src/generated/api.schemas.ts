@@ -1324,6 +1324,25 @@ export interface Zero3RankingPublicationResult {
   alreadyPublished: boolean;
 }
 
+export type Zero3PodiumPlaceObservationPlace = typeof Zero3PodiumPlaceObservationPlace[keyof typeof Zero3PodiumPlaceObservationPlace];
+
+
+export const Zero3PodiumPlaceObservationPlace = {
+  NUMBER_1: 1,
+  NUMBER_2: 2,
+  NUMBER_3: 3,
+} as const;
+
+export interface Zero3PodiumPlaceObservation {
+  place: Zero3PodiumPlaceObservationPlace;
+  registrationId: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  note: string;
+}
+
 export interface Zero3Podium {
   eventId: string;
   category: Zero3Category;
@@ -1344,6 +1363,8 @@ export interface Zero3Podium {
      * @nullable
      */
   arbitrationNote?: string | null;
+  /** @maxItems 3 */
+  placeObservations?: Zero3PodiumPlaceObservation[];
   version: number;
   updatedAt: string;
 }
@@ -1351,6 +1372,26 @@ export interface Zero3Podium {
 export interface Zero3PodiumState {
   draft: Zero3Podium | null;
   published: Zero3Podium | null;
+}
+
+export type Zero3PodiumPlaceObservationInputPlace = typeof Zero3PodiumPlaceObservationInputPlace[keyof typeof Zero3PodiumPlaceObservationInputPlace];
+
+
+export const Zero3PodiumPlaceObservationInputPlace = {
+  NUMBER_1: 1,
+  NUMBER_2: 2,
+  NUMBER_3: 3,
+} as const;
+
+export interface Zero3PodiumPlaceObservationInput {
+  place: Zero3PodiumPlaceObservationInputPlace;
+  /** @nullable */
+  registrationId: string | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  note: string | null;
 }
 
 export interface Zero3PodiumInput {
@@ -1364,6 +1405,8 @@ export interface Zero3PodiumInput {
      * @nullable
      */
   arbitrationNote?: string | null;
+  /** @maxItems 3 */
+  placeObservations?: Zero3PodiumPlaceObservationInput[];
 }
 
 export interface Zero3PodiumPublishInput {
@@ -1408,6 +1451,8 @@ export interface Zero3PublicPodium {
      * @nullable
      */
   arbitrationNote?: string | null;
+  /** @maxItems 3 */
+  placeObservations?: Zero3PodiumPlaceObservation[];
   places: Zero3PublicPodiumPlacesItem[];
 }
 

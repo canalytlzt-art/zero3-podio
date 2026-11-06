@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Zero3Category } from './zero3Category';
+import type { Zero3PodiumPlaceObservation } from './zero3PodiumPlaceObservation';
 
 export interface Zero3Podium {
   eventId: string;
@@ -27,6 +28,8 @@ export interface Zero3Podium {
      * @nullable
      */
   arbitrationNote?: string | null;
+  /** @maxItems 3 */
+  placeObservations?: Zero3PodiumPlaceObservation[];
   version: number;
   updatedAt: Date;
 }

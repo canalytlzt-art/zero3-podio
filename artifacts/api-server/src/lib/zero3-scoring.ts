@@ -55,10 +55,16 @@ export type RankingPodiumPlace = {
   teamName: string | null;
   athleteNames: string[];
 };
+export type RankingPodiumPlaceObservation = {
+  place: number;
+  registrationId: string;
+  note: string;
+};
 export type RankingPodium = {
   category: string;
   places: RankingPodiumPlace[];
   arbitrationNote?: string | null;
+  placeObservations?: RankingPodiumPlaceObservation[];
 };
 
 export type ProofScore = {
