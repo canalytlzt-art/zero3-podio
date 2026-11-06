@@ -93,7 +93,6 @@ export function EventBatteryTimerPanel({
   const eventElapsedMs = currentEventElapsed + projectEventElapsedDelta(
     batteryTimers, deltaMs, { state, elapsedMs: elapsedBase, timeCapMs: capMs },
   );
-  const eventLimitReached = eventElapsedMs >= currentEventLimit;
   const firstStartedAt = timer?.firstStartedAt ?? battery.firstStartedAt;
   const role = me.data?.role;
   const canControl = role === "ADMIN" || role === "JUIZ_CHEFE";
@@ -127,10 +126,6 @@ export function EventBatteryTimerPanel({
         !window.confirm(`Cancelar somente a bateria ${eventBatteryCode(battery.order)} · ${battery.name}? O cronômetro será interrompido. Marcas, revisões e publicações serão preservadas.`)) return;
     if (action === "reset" &&
         !window.confirm(`Voltar a bateria ${eventBatteryCode(battery.order)} · ${battery.name} para Não iniciada e zerar somente o cronômetro? Resultados, revisões e publicações serão preservados.`)) return;
-    if (eventLimitReached && (action === "prepare" || action === "resume")) {
-      setError("O limite acumulado de 2 horas do evento foi atingido.");
-      return;
-    }
     setError("");
     setNotice("");
     command.mutate({
@@ -315,7 +310,7 @@ export function EventBatteryTimerPanel({
         <div>
           <small>ACUMULADO DO EVENTO</small>
           <strong>{formatDuration(eventElapsedMs)} / {formatDuration(currentEventLimit)}</strong>
-          <span>{eventLimitReached ? "Limite acumulado atingido" : "A soma não altera este cronômetro"}</span>
+          <span>Acumulado informativo · não bloqueia largadas</span>
         </div>
       </div>
       <div className="event-battery-timer-actions">
@@ -341,8 +336,7 @@ export function EventBatteryTimerPanel({
             key={control.action}
             type="button"
             className={`button small ${control.action === "prepare" || control.action === "resume" ? "primary" : ""}`}
-            disabled={!canControl || command.isPending ||
-              (eventLimitReached && (control.action === "prepare" || control.action === "resume"))}
+            disabled={!canControl || command.isPending}
             onClick={() => runCommand(control.action)}
           >
             {actionIcon(control.action)}
