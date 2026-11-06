@@ -2047,6 +2047,15 @@ components:
           minItems: 2
           uniqueItems: true
           items: { type: string }
+        conditionDistance:
+          type: object
+          properties:
+            proofId: { type: string }
+            proofName: { type: string }
+            proofOrder: { type: integer, minimum: 1 }
+            unit: { type: string }
+            exactValue: { type: string, minLength: 1 }
+          required: [proofId, proofName, proofOrder, unit, exactValue]
       required: [key, scope, category, proofId, proofOrder, proofName, value, exactValue, registrationIds, orderedRegistrationIds]
     Zero3RankingPublicationAffectedScope:
       type: object
@@ -2096,9 +2105,12 @@ components:
         ties:
           type: array
           items: { $ref: "#/components/schemas/Zero3RankingTieGroup" }
+        leaderboards:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3CategoryLeaderboard" }
         fingerprint: { type: string, minLength: 64, maxLength: 64 }
         canPublish: { type: boolean }
-      required: [eventId, version, publishedAt, publishedBy, eligibleResultCount, partialResultCount, affected, issues, resultStates, ties, fingerprint, canPublish]
+      required: [eventId, version, publishedAt, publishedBy, eligibleResultCount, partialResultCount, affected, issues, resultStates, ties, leaderboards, fingerprint, canPublish]
     Zero3RankingPublicationResult:
       type: object
       properties:

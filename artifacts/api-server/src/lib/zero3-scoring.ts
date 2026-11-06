@@ -41,6 +41,13 @@ export type ScoreTieGroup = {
   exactValue: string;
   registrationIds: string[];
   orderedRegistrationIds: string[] | null;
+  conditionDistance?: {
+    proofId: string;
+    proofName: string;
+    proofOrder: number;
+    unit: string;
+    exactValue: string;
+  };
 };
 export type RankingPodiumPlace = {
   place: number;
@@ -148,6 +155,52 @@ function compareDecimals(left: ExactDecimal, right: ExactDecimal) {
 }
 
 const valueOf = (value: ScoreResult["rawValue"]) => exactDecimal(value)?.numeric ?? null;
+
+const normalizedUnit = (unit: string | null) => (unit ?? "")
+  .trim()
+  .toLocaleLowerCase("pt-BR")
+  .normalize("NFD")
+  .replace(/\p{Diacritic}/gu, "")
+  .replace(/\s+/g, " ");
+
+const distanceUnits = new Set([
+  "distancia",
+  "distancia total",
+  "mm",
+  "milimetro",
+  "milimetros",
+  "cm",
+  "centimetro",
+  "centimetros",
+  "m",
+  "metro",
+  "metros",
+  "km",
+  "quilometro",
+  "quilometros",
+  "ft",
+  "foot",
+  "feet",
+  "yd",
+  "yard",
+  "yards",
+]);
+
+/**
+ * The current ZERO3 event stores Condition's distance in rawValue with unit
+ * "Distancia Total", although its legacy metricType is REPETITIONS. Trust only
+ * this named fourth proof and an explicit distance unit; never treat a generic
+ * repetitions result (for example, unit "Reps") as distance.
+ */
+function conditionDistanceProof(proofs: readonly ScoreProof[]) {
+  const matches = proofs.filter((proof) =>
+    proof.order === 4 &&
+    proof.name.trim().toLocaleLowerCase("pt-BR") === "condition" &&
+    proof.direction === "HIGHER" &&
+    distanceUnits.has(normalizedUnit(proof.unit)),
+  );
+  return matches.length === 1 ? matches[0]! : null;
+}
 
 function tieKey(input: {
   scope: ScoreTieGroup["scope"];
@@ -271,7 +324,7 @@ export function mergeRankingPodiums(
  * Points are derived from the current validated results every time; corrections
  * therefore replace the previous ranking instead of adding points a second time.
  * Exact proof ties share competition places and points unless an explicit
- * manual arbitration order is supplied for that still-valid tie group.
+ * manual arbitration order is supplied for a persistent final overall tie.
  */
 export function calculateCategoryLeaderboard(input: {
   eventId?: string;
@@ -330,7 +383,10 @@ export function calculateCategoryLeaderboard(input: {
       });
       let orderedRegistrationIds: string[] | null = null;
       if (tiedRows.length > 1) {
-        orderedRegistrationIds = validTieBreak({ key: groupKey, registrationIds }, tieBreaks);
+        // Proof ties always share points under the event rules. Historical
+        // resolutions remain in prior snapshots but do not change new proof
+        // placements or require a choice during publication.
+        orderedRegistrationIds = null;
         ties.push({
           key: groupKey,
           scope: "PROOF",
@@ -344,11 +400,8 @@ export function calculateCategoryLeaderboard(input: {
           orderedRegistrationIds,
         });
       }
-      const placementByRegistration = orderedRegistrationIds
-        ? new Map(orderedRegistrationIds.map((registrationId, index) => [registrationId, start + index + 1]))
-        : null;
       for (const { result } of tiedRows) {
-        const place = placementByRegistration?.get(result.registrationId) ?? start + 1;
+        const place = start + 1;
         placementByResultId.set(result.id, { placement: place, points: place, tiePending: false });
       }
       start = end;
@@ -440,41 +493,102 @@ export function calculateCategoryLeaderboard(input: {
     .filter((entry) => entry.totalPoints !== null)
     .slice()
     .sort((a, b) => (a.totalPoints ?? Number.POSITIVE_INFINITY) - (b.totalPoints ?? Number.POSITIVE_INFINITY));
+  const conditionProof = conditionDistanceProof(proofs);
   for (let start = 0; start < rankedEntries.length;) {
     let end = start + 1;
     while (end < rankedEntries.length && rankedEntries[end]?.totalPoints === rankedEntries[start]?.totalPoints) end += 1;
     const tiedEntries = rankedEntries.slice(start, end);
     const total = tiedEntries[0]?.totalPoints;
     if (tiedEntries.length > 1 && total !== null && total !== undefined) {
-      const registrationIds = tiedEntries.map((entry) => entry.registrationId);
-      const groupKey = tieKey({
-        scope: "OVERALL",
-        eventId: input.eventId ?? "",
-        category: input.category,
-        proofId: null,
-        value: String(total),
-        registrationIds,
-      });
-      const orderedRegistrationIds = validTieBreak({ key: groupKey, registrationIds }, tieBreaks);
-      ties.push({
-        key: groupKey,
-        scope: "OVERALL",
-        category: input.category,
-        proofId: null,
-        proofOrder: null,
-        proofName: null,
-        value: total,
-        exactValue: String(total),
-        registrationIds: [...registrationIds].sort(),
-        orderedRegistrationIds,
-      });
-      if (orderedRegistrationIds) {
-        const entryById = new Map(tiedEntries.map((entry) => [entry.registrationId, entry]));
-        orderedRegistrationIds.forEach((registrationId, index) => {
-          const entry = entryById.get(registrationId);
-          if (entry) entry.overallPlace = start + index + 1;
-        });
+      const conditionValues = conditionProof && tiedEntries.every((entry) => entry.status === "FINAL")
+        ? tiedEntries.flatMap((entry) => {
+            const result = proofResults.get(`${entry.registrationId}:${conditionProof.id}`);
+            const value = result?.status === "VALIDATED" ? exactDecimal(result.rawValue) : null;
+            return value ? [{ entry, value }] : [];
+          })
+        : [];
+      const canUseCondition = conditionValues.length === tiedEntries.length;
+
+      if (canUseCondition && conditionProof) {
+        const orderedByDistance = conditionValues.slice().sort((a, b) => compareDecimals(b.value, a.value));
+        let offset = 0;
+        for (let distanceStart = 0; distanceStart < orderedByDistance.length;) {
+          let distanceEnd = distanceStart + 1;
+          while (
+            distanceEnd < orderedByDistance.length &&
+            compareDecimals(orderedByDistance[distanceEnd]!.value, orderedByDistance[distanceStart]!.value) === 0
+          ) distanceEnd += 1;
+          const distanceGroup = orderedByDistance.slice(distanceStart, distanceEnd);
+          if (distanceGroup.length > 1) {
+            const registrationIds = distanceGroup.map(({ entry }) => entry.registrationId);
+            const groupKey = tieKey({
+              scope: "OVERALL",
+              eventId: input.eventId ?? "",
+              category: input.category,
+              proofId: null,
+              value: String(total),
+              registrationIds,
+            });
+            const orderedRegistrationIds = validTieBreak({ key: groupKey, registrationIds }, tieBreaks);
+            ties.push({
+              key: groupKey,
+              scope: "OVERALL",
+              category: input.category,
+              proofId: null,
+              proofOrder: null,
+              proofName: null,
+              value: total,
+              exactValue: String(total),
+              registrationIds: [...registrationIds].sort(),
+              orderedRegistrationIds,
+              conditionDistance: {
+                proofId: conditionProof.id,
+                proofName: conditionProof.name,
+                proofOrder: conditionProof.order,
+                unit: conditionProof.unit!,
+                exactValue: orderedByDistance[distanceStart]!.value.canonical,
+              },
+            });
+            const finalTieEntries = orderedRegistrationIds
+              ? orderedRegistrationIds
+                .map((registrationId) => distanceGroup.find(({ entry }) => entry.registrationId === registrationId))
+                .filter((item): item is NonNullable<typeof item> => Boolean(item))
+              : distanceGroup;
+            finalTieEntries.forEach(({ entry }, index) => {
+              entry.overallPlace = orderedRegistrationIds
+                ? start + offset + index + 1
+                : start + offset + 1;
+            });
+          } else {
+            const entry = distanceGroup[0]?.entry;
+            if (entry) entry.overallPlace = start + offset + 1;
+          }
+          offset += distanceGroup.length;
+          distanceStart = distanceEnd;
+        }
       } else {
+        const registrationIds = tiedEntries.map((entry) => entry.registrationId);
+        const groupKey = tieKey({
+          scope: "OVERALL",
+          eventId: input.eventId ?? "",
+          category: input.category,
+          proofId: null,
+          value: String(total),
+          registrationIds,
+        });
+        const orderedRegistrationIds = null;
+        ties.push({
+          key: groupKey,
+          scope: "OVERALL",
+          category: input.category,
+          proofId: null,
+          proofOrder: null,
+          proofName: null,
+          value: total,
+          exactValue: String(total),
+          registrationIds: [...registrationIds].sort(),
+          orderedRegistrationIds,
+        });
         for (const entry of tiedEntries) entry.overallPlace = start + 1;
       }
     } else {
@@ -502,15 +616,7 @@ export function calculateCategoryLeaderboard(input: {
     if (a.totalPoints !== null && b.totalPoints !== null && a.totalPoints !== b.totalPoints) {
       return a.totalPoints - b.totalPoints;
     }
-    const tie = ties.find((item) =>
-      item.scope === "OVERALL" &&
-      item.orderedRegistrationIds &&
-      item.registrationIds.includes(a.registrationId) &&
-      item.registrationIds.includes(b.registrationId),
-    );
-    return tie?.orderedRegistrationIds
-      ? tie.orderedRegistrationIds.indexOf(a.registrationId) - tie.orderedRegistrationIds.indexOf(b.registrationId)
-      : 0;
+    return (a.overallPlace ?? Number.MAX_SAFE_INTEGER) - (b.overallPlace ?? Number.MAX_SAFE_INTEGER);
   });
 
   return { category: input.category, proofCount: proofs.length, status, entries, ties };

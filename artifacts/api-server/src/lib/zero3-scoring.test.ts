@@ -75,6 +75,55 @@ function resultRows(): ScoreResult[] {
   });
 }
 
+const conditionProofs: ScoreProof[] = [
+  { id: "condition-p1", order: 1, name: "Prova 1", metricType: "LOAD", unit: "kg", direction: "HIGHER" },
+  { id: "condition-p2", order: 2, name: "Prova 2", metricType: "REPETITIONS", unit: "reps", direction: "HIGHER" },
+  { id: "condition-p3", order: 3, name: "Prova 3", metricType: "TIME", unit: "s", direction: "HIGHER" },
+  { id: "condition-p4", order: 4, name: "Condition", metricType: "REPETITIONS", unit: "Distancia Total", direction: "HIGHER" },
+];
+
+const conditionRegistrations: ScoreRegistration[] = ["A", "B", "C"].map((name) => ({
+  id: `condition-${name}`,
+  category: "SC",
+  teamName: `Equipe ${name}`,
+  athleteNames: [`Atleta ${name}`],
+  laneLabel: null,
+}));
+
+function conditionResults(
+  distances: Record<string, string | number>,
+  options: { sharedFirstThree?: boolean; missingConditionFor?: string } = {},
+): ScoreResult[] {
+  const values: Record<string, Record<string, string | number>> = options.sharedFirstThree
+    ? {
+        "condition-p1": { A: 100, B: 100, C: 100 },
+        "condition-p2": { A: 100, B: 100, C: 100 },
+        "condition-p3": { A: 100, B: 100, C: 100 },
+        "condition-p4": distances,
+      }
+    : {
+        "condition-p1": { C: 300, A: 200, B: 100 },
+        "condition-p2": { A: 100, B: 100, C: 100 },
+        "condition-p3": { A: 100, B: 100, C: 100 },
+        "condition-p4": distances,
+      };
+  return conditionRegistrations.flatMap((registration) =>
+    conditionProofs.flatMap((proof) => {
+      if (proof.id === "condition-p4" && registration.id === options.missingConditionFor) {
+        return [];
+      }
+      const team = registration.id.slice(-1);
+      return [{
+        id: `${registration.id}:${proof.id}`,
+        registrationId: registration.id,
+        proofId: proof.id,
+        rawValue: values[proof.id]?.[team] ?? null,
+        status: "VALIDATED",
+      }];
+    }),
+  );
+}
+
 test("calculates placement points across four proofs, including a 15-point total", () => {
   const result = calculateAllResultPlacements({
     categories: ["SC", "RX"],
@@ -155,7 +204,7 @@ test("exact proof ties share place and points without blocking the ranking", () 
   assert.equal(board.ties.filter((tie) => tie.scope === "PROOF" && tie.proofId === "p2").length, 1);
 });
 
-test("manual arbitration order assigns sequential points and survives a ranking snapshot", () => {
+test("proof ties keep shared points even when a historical manual proof order is supplied", () => {
   const results = resultRows();
   const bravo = results.find((result) => result.id === "rx-Bravo-p2");
   const alpha = results.find((result) => result.id === "rx-Alfa-p2");
@@ -168,14 +217,15 @@ test("manual arbitration order assigns sequential points and survives a ranking 
   const resolution = { key: tie.key, orderedRegistrationIds: ["rx-Bravo", "rx-Alfa"] };
   const adjudicated = calculateCategoryLeaderboard({ ...input, tieBreaks: [resolution] });
   assert.equal(adjudicated.entries.find((entry) => entry.registrationId === "rx-Bravo")?.proofScores[1]?.points, 1);
-  assert.equal(adjudicated.entries.find((entry) => entry.registrationId === "rx-Alfa")?.proofScores[1]?.points, 2);
-  assert.deepEqual(scoreTieBreaksFromSnapshot([adjudicated]), [resolution]);
+  assert.equal(adjudicated.entries.find((entry) => entry.registrationId === "rx-Alfa")?.proofScores[1]?.points, 1);
+  assert.equal(adjudicated.ties.find((item) => item.key === tie.key)?.orderedRegistrationIds, null);
+  assert.deepEqual(scoreTieBreaksFromSnapshot([adjudicated]), []);
   const republished = calculateCategoryLeaderboard({
     ...input,
     tieBreaks: scoreTieBreaksFromSnapshot([adjudicated]),
   });
   assert.equal(republished.entries.find((entry) => entry.registrationId === "rx-Bravo")?.proofScores[1]?.points, 1);
-  assert.equal(republished.ties.find((item) => item.key === tie.key)?.orderedRegistrationIds?.join(","), "rx-Bravo,rx-Alfa");
+  assert.equal(republished.entries.find((entry) => entry.registrationId === "rx-Alfa")?.proofScores[1]?.points, 1);
   const otherEvent = calculateCategoryLeaderboard({
     ...input,
     eventId: "event-2",
@@ -249,7 +299,168 @@ test("an overall point tie shares the place and does not block the final ranking
   assert.equal(board.ties.filter((tie) => tie.scope === "OVERALL").length, 1);
 });
 
-test("manual overall arbitration changes only the displayed place, not summed proof points", () => {
+test("lower final sum beats a larger Condition distance; equal sums use the exact Condition distance", () => {
+  const board = calculateCategoryLeaderboard({
+    eventId: "condition-event",
+    category: "SC",
+    eventStatus: "FINISHED",
+    proofs: conditionProofs,
+    registrations: conditionRegistrations,
+    results: conditionResults({ A: "7000.000", B: "7000.001", C: "8000.000" }),
+  });
+  const entry = (id: string) => board.entries.find((item) => item.registrationId === `condition-${id}`);
+  const c = entry("C");
+  const b = entry("B");
+  const a = entry("A");
+
+  assert.equal(c?.totalPoints, 4);
+  assert.equal(c?.overallPlace, 1, "the lowest total stays first even though C has the greatest distance");
+  assert.equal(a?.totalPoints, 7);
+  assert.equal(b?.totalPoints, 7);
+  assert.equal(b?.overallPlace, 2);
+  assert.equal(a?.overallPlace, 3, "the exact 0.001 distance difference orders B ahead of A");
+  assert.equal(board.ties.some((tie) => tie.scope === "OVERALL"), false);
+  assert.deepEqual(b?.proofScores.map((score) => score.points), [3, 1, 1, 2]);
+});
+
+test("Condition tie-breaks stay independent between RX and SC", () => {
+  const rxRegistrations = conditionRegistrations.map((registration) => ({
+    ...registration,
+    id: registration.id.replace("condition-", "rx-condition-"),
+    category: "RX",
+  }));
+  const rxRows = conditionResults({ A: "8000", B: "7000", C: "6000" }).map((result) => ({
+    ...result,
+    id: result.id.replace("condition-", "rx-condition-"),
+    registrationId: result.registrationId.replace("condition-", "rx-condition-"),
+  }));
+  const results = calculateAllResultPlacements({
+    eventId: "condition-event",
+    categories: ["SC", "RX"],
+    eventStatus: "FINISHED",
+    proofs: conditionProofs,
+    registrations: [...conditionRegistrations, ...rxRegistrations],
+    results: [
+      ...conditionResults({ A: "7000", B: "7001", C: "8000" }),
+      ...rxRows,
+    ],
+  });
+  const sc = results.leaderboards.find((board) => board.category === "SC");
+  const rx = results.leaderboards.find((board) => board.category === "RX");
+  assert.equal(sc?.entries[0]?.registrationId, "condition-C");
+  assert.equal(sc?.entries.find((entry) => entry.registrationId === "condition-B")?.overallPlace, 2);
+  assert.equal(rx?.entries[0]?.registrationId, "rx-condition-A");
+  assert.equal(rx?.entries.find((entry) => entry.registrationId === "rx-condition-C")?.overallPlace, 2);
+});
+
+test("the final overall tie remains shared when Condition distances are exactly equal", () => {
+  const results = conditionResults(
+    { A: "7000.000", B: "7000.000", C: "8000.000" },
+    { sharedFirstThree: true },
+  );
+  const board = calculateCategoryLeaderboard({
+    eventId: "condition-event",
+    category: "SC",
+    eventStatus: "FINISHED",
+    proofs: conditionProofs,
+    registrations: conditionRegistrations,
+    results,
+  });
+  const tie = board.ties.find((item) => item.scope === "OVERALL");
+  assert.ok(tie);
+  assert.deepEqual(tie.registrationIds, ["condition-A", "condition-B"]);
+  assert.deepEqual(tie.conditionDistance, {
+    proofId: "condition-p4",
+    proofName: "Condition",
+    proofOrder: 4,
+    unit: "Distancia Total",
+    exactValue: "7000",
+  });
+  assert.equal(board.entries.find((item) => item.registrationId === "condition-A")?.overallPlace, 2);
+  assert.equal(board.entries.find((item) => item.registrationId === "condition-B")?.overallPlace, 2);
+});
+
+test("manual arbitration remains optional and applies only to the persistent final tie", () => {
+  const input = {
+    eventId: "condition-event",
+    category: "SC",
+    eventStatus: "FINISHED",
+    proofs: conditionProofs,
+    registrations: conditionRegistrations,
+    results: conditionResults(
+      { A: "7000", B: "7000", C: "8000" },
+      { sharedFirstThree: true },
+    ),
+  };
+  const unresolved = calculateCategoryLeaderboard(input);
+  const tie = unresolved.ties.find((item) => item.scope === "OVERALL");
+  assert.ok(tie);
+  const resolved = calculateCategoryLeaderboard({
+    ...input,
+    tieBreaks: [{ key: tie.key, orderedRegistrationIds: ["condition-B", "condition-A"] }],
+  });
+  const a = resolved.entries.find((item) => item.registrationId === "condition-A");
+  const b = resolved.entries.find((item) => item.registrationId === "condition-B");
+  assert.equal(a?.overallPlace, 3);
+  assert.equal(b?.overallPlace, 2);
+  assert.equal(a?.totalPoints, b?.totalPoints);
+  assert.deepEqual(a?.proofScores.map((score) => score.points), [1, 1, 1, 2]);
+  assert.deepEqual(b?.proofScores.map((score) => score.points), [1, 1, 1, 2]);
+});
+
+test("Condition distance does not break partial standings or treat a missing result as zero", () => {
+  const partial = calculateCategoryLeaderboard({
+    category: "SC",
+    eventStatus: "ACTIVE",
+    proofs: conditionProofs,
+    registrations: conditionRegistrations,
+    results: conditionResults({ A: "7000", B: "7000.001", C: "8000" }),
+  });
+  const partialA = partial.entries.find((item) => item.registrationId === "condition-A");
+  const partialB = partial.entries.find((item) => item.registrationId === "condition-B");
+  assert.equal(partialA?.status, "PARTIAL");
+  assert.equal(partialA?.overallPlace, partialB?.overallPlace, "an active event keeps the existing shared provisional tie");
+
+  const missing = calculateCategoryLeaderboard({
+    category: "SC",
+    eventStatus: "FINISHED",
+    proofs: conditionProofs,
+    registrations: conditionRegistrations,
+    results: conditionResults(
+      { A: "7000", B: "7000", C: "8000" },
+      { sharedFirstThree: true, missingConditionFor: "condition-A" },
+    ),
+  });
+  const missingA = missing.entries.find((item) => item.registrationId === "condition-A");
+  assert.equal(missingA?.completedProofs, 3);
+  assert.equal(missingA?.proofScores[3]?.value, null);
+  assert.equal(missingA?.proofScores[3]?.status, "MISSING");
+  assert.notEqual(missingA?.status, "FINAL");
+});
+
+test("Condition tie-break requires an explicit distance unit, not a repetitions unit", () => {
+  const proofsWithoutDistanceUnit = conditionProofs.map((proof) =>
+    proof.id === "condition-p4" ? { ...proof, unit: "Reps" } : proof,
+  );
+  const board = calculateCategoryLeaderboard({
+    eventId: "condition-event",
+    category: "SC",
+    eventStatus: "FINISHED",
+    proofs: proofsWithoutDistanceUnit,
+    registrations: conditionRegistrations,
+    results: conditionResults(
+      { A: "7000", B: "7000", C: "8000" },
+      { sharedFirstThree: true },
+    ),
+  });
+  const tie = board.ties.find((item) => item.scope === "OVERALL");
+  assert.ok(tie);
+  assert.equal(tie.conditionDistance, undefined);
+  assert.equal(board.entries.find((item) => item.registrationId === "condition-A")?.overallPlace, 2);
+  assert.equal(board.entries.find((item) => item.registrationId === "condition-B")?.overallPlace, 2);
+});
+
+test("manual overall order is not available for final ties without a verified distance Condition", () => {
   const ranksByProof = [
     [1, 2, 3, 4, 5],
     [2, 1, 3, 4, 5],
@@ -279,7 +490,7 @@ test("manual overall arbitration changes only the displayed place, not summed pr
     tieBreaks: [{ key: tie.key, orderedRegistrationIds: ["sc-Bravo", "sc-Alfa"] }],
   });
   assert.equal(resolved.entries.find((entry) => entry.registrationId === "sc-Bravo")?.overallPlace, 2);
-  assert.equal(resolved.entries.find((entry) => entry.registrationId === "sc-Alfa")?.overallPlace, 3);
+  assert.equal(resolved.entries.find((entry) => entry.registrationId === "sc-Alfa")?.overallPlace, 2);
   assert.equal(resolved.entries.find((entry) => entry.registrationId === "sc-Bravo")?.totalPoints, 10);
   assert.equal(resolved.entries.find((entry) => entry.registrationId === "sc-Alfa")?.totalPoints, 10);
 });

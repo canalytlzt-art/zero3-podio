@@ -717,6 +717,7 @@ export function d1StagingApi(
               issues: state.plan.issues,
               resultStates: state.plan.resultStates,
               ties: state.plan.ties,
+              leaderboards: state.plan.leaderboards,
               fingerprint: state.plan.fingerprint,
               canPublish: state.plan.canPublish,
             }));

@@ -1174,6 +1174,16 @@ export const Zero3RankingTieGroupScope = {
   OVERALL: 'OVERALL',
 } as const;
 
+export type Zero3RankingTieGroupConditionDistance = {
+  proofId: string;
+  proofName: string;
+  /** @minimum 1 */
+  proofOrder: number;
+  unit: string;
+  /** @minLength 1 */
+  exactValue: string;
+};
+
 export interface Zero3RankingTieGroup {
   /** @minLength 1 */
   key: string;
@@ -1199,6 +1209,7 @@ export interface Zero3RankingTieGroup {
      * @nullable
      */
   orderedRegistrationIds: string[] | null;
+  conditionDistance?: Zero3RankingTieGroupConditionDistance;
 }
 
 export interface Zero3RankingPublicationAffectedScope {
@@ -1252,6 +1263,7 @@ export interface Zero3RankingPublicationPreview {
   issues: Zero3RankingPublicationIssue[];
   resultStates: Zero3RankingResultState[];
   ties: Zero3RankingTieGroup[];
+  leaderboards: Zero3CategoryLeaderboard[];
   /**
      * @minLength 64
      * @maxLength 64

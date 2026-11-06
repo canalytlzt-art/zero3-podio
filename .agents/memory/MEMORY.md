@@ -1,5 +1,5 @@
 - [ZERO3 display and scoring](zero3-public-display.md) — One Brasília-clock TV shows SC/RX, four-proof points, progress and manually published podiums; admin stays separate.
-- [ZERO3 ranking publication](zero3-ranking-publication.md) — Event scores publish explicitly; exact ties share points unless manually ordered, while saved category podium choices affect presentation only.
+- [ZERO3 ranking publication](zero3-ranking-publication.md) — Proof ties share points; the higher verified Condition distance breaks only an equal final sum, and manual podiums remain presentation-only.
 - [Clerk package compatibility](clerk-package-compatibility.md) — Keep Clerk React and shared packages on compatible major lines; misaligned exports can fail only during Vite bundling.
 - [Cloudflare Clerk instance](clerk-cloudflare-instance.md) — The user confirmed Cloudflare should keep using the existing Clerk test instance; do not switch instances implicitly.
 - [ZERO3 Worker cutover](zero3-worker-cutover.md) — The user intends to adopt the D1 staging Worker and retire `zero3-podio` only after readiness checks.

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Zero3CategoryLeaderboard } from './zero3CategoryLeaderboard';
 import type { Zero3RankingPublicationAffectedScope } from './zero3RankingPublicationAffectedScope';
 import type { Zero3RankingPublicationIssue } from './zero3RankingPublicationIssue';
 import type { Zero3RankingResultState } from './zero3RankingResultState';
@@ -26,6 +27,7 @@ export interface Zero3RankingPublicationPreview {
   issues: Zero3RankingPublicationIssue[];
   resultStates: Zero3RankingResultState[];
   ties: Zero3RankingTieGroup[];
+  leaderboards: Zero3CategoryLeaderboard[];
   /**
      * @minLength 64
      * @maxLength 64

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Zero3Category } from './zero3Category';
+import type { Zero3RankingTieGroupConditionDistance } from './zero3RankingTieGroupConditionDistance';
 import type { Zero3RankingTieGroupScope } from './zero3RankingTieGroupScope';
 
 export interface Zero3RankingTieGroup {
@@ -33,4 +34,5 @@ export interface Zero3RankingTieGroup {
      * @nullable
      */
   orderedRegistrationIds: string[] | null;
+  conditionDistance?: Zero3RankingTieGroupConditionDistance;
 }

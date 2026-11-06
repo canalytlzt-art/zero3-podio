@@ -2190,6 +2190,23 @@ export const getZero3RankingPublicationResponseTiesItemRegistrationIdsMin = 2;
 
 export const getZero3RankingPublicationResponseTiesItemOrderedRegistrationIdsMin = 2;
 
+
+
+export const getZero3RankingPublicationResponseLeaderboardsItemCategoryMax = 32;
+
+export const getZero3RankingPublicationResponseLeaderboardsItemProofCountMin = 0;
+
+export const getZero3RankingPublicationResponseLeaderboardsItemEntriesItemCategoryMax = 32;
+
+
+
+export const getZero3RankingPublicationResponseLeaderboardsItemEntriesItemCompletedProofsMin = 0;
+
+export const getZero3RankingPublicationResponseLeaderboardsItemEntriesItemProofCountMin = 0;
+
+export const getZero3RankingPublicationResponseLeaderboardsItemEntriesItemTotalPointsMin = 0;
+
+
 export const getZero3RankingPublicationResponseFingerprintMin = 64;
 export const getZero3RankingPublicationResponseFingerprintMax = 64;
 
@@ -2231,7 +2248,42 @@ export const GetZero3RankingPublicationResponse = zod.object({
   "value": zod.number().min(getZero3RankingPublicationResponseTiesItemValueMin),
   "exactValue": zod.string().min(1),
   "registrationIds": zod.array(zod.string()).min(getZero3RankingPublicationResponseTiesItemRegistrationIdsMin),
-  "orderedRegistrationIds": zod.array(zod.string()).min(getZero3RankingPublicationResponseTiesItemOrderedRegistrationIdsMin).nullable()
+  "orderedRegistrationIds": zod.array(zod.string()).min(getZero3RankingPublicationResponseTiesItemOrderedRegistrationIdsMin).nullable(),
+  "conditionDistance": zod.object({
+  "proofId": zod.string(),
+  "proofName": zod.string(),
+  "proofOrder": zod.number().int().min(1),
+  "unit": zod.string(),
+  "exactValue": zod.string().min(1)
+}).optional()
+})),
+  "leaderboards": zod.array(zod.object({
+  "category": zod.string().min(1).max(getZero3RankingPublicationResponseLeaderboardsItemCategoryMax),
+  "proofCount": zod.number().int().min(getZero3RankingPublicationResponseLeaderboardsItemProofCountMin),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'EXCEPTION_RULE_PENDING', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING']),
+  "entries": zod.array(zod.object({
+  "registrationId": zod.string(),
+  "category": zod.string().min(1).max(getZero3RankingPublicationResponseLeaderboardsItemEntriesItemCategoryMax),
+  "laneLabel": zod.string().nullable(),
+  "teamName": zod.string().nullable(),
+  "athleteNames": zod.array(zod.string()),
+  "proofScores": zod.array(zod.object({
+  "resultId": zod.string().nullable(),
+  "proofId": zod.string(),
+  "order": zod.number().int(),
+  "name": zod.string(),
+  "unit": zod.string().nullable(),
+  "value": zod.number().nullable(),
+  "status": zod.enum(['MISSING', 'PROVISIONAL', 'PUBLICATION_PENDING', 'VALIDATED', 'DNS', 'DNF', 'CONFIGURATION_PENDING', 'TIE_RULE_PENDING']),
+  "placement": zod.number().int().min(1).nullable(),
+  "points": zod.number().int().min(1).nullable()
+})),
+  "completedProofs": zod.number().int().min(getZero3RankingPublicationResponseLeaderboardsItemEntriesItemCompletedProofsMin),
+  "proofCount": zod.number().int().min(getZero3RankingPublicationResponseLeaderboardsItemEntriesItemProofCountMin),
+  "totalPoints": zod.number().int().min(getZero3RankingPublicationResponseLeaderboardsItemEntriesItemTotalPointsMin).nullable(),
+  "overallPlace": zod.number().int().min(1).nullable(),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'PUBLICATION_PENDING', 'EXCEPTION_RULE_PENDING', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING'])
+}))
 })),
   "fingerprint": zod.string().min(getZero3RankingPublicationResponseFingerprintMin).max(getZero3RankingPublicationResponseFingerprintMax),
   "canPublish": zod.boolean()

@@ -45,6 +45,7 @@ function publicationTieBreaks(
   edits: Record<string, TieBreakEdit>,
 ): Zero3TieBreakResolution[] {
   return (preview?.ties ?? []).flatMap((tie) => {
+    if (tie.scope !== 'OVERALL' || !tie.conditionDistance) return [];
     const edit = edits[tie.key];
     const order = edit?.mode === 'SHARED'
       ? null
@@ -66,6 +67,7 @@ function hasIncompleteTieBreak(
   edits: Record<string, TieBreakEdit>,
 ) {
   return (preview?.ties ?? []).some((tie) => {
+    if (tie.scope !== 'OVERALL' || !tie.conditionDistance) return false;
     const edit = edits[tie.key];
     return edit?.mode === 'MANUAL' && (
       edit.order.length !== tie.registrationIds.length ||
@@ -87,6 +89,11 @@ const timerLabels: Record<string, string> = {
 function formatElapsed(ms: number) {
   const seconds = Math.floor(Math.max(0, ms) / 1000);
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function formatRankingValue(value: number | null | undefined, unit?: string | null) {
+  if (value === null || value === undefined) return 'Pendente';
+  return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 }).format(value)}${unit ? ` ${unit}` : ''}`;
 }
 
 function mutationMessage(error: unknown) {
@@ -241,7 +248,9 @@ export function EventResultsWorkspace({
   }, [initialProofId, selectedId]);
 
   useEffect(() => {
-    const activeTieKeys = new Set((publicationQuery.data?.ties ?? []).map((tie) => tie.key));
+    const activeTieKeys = new Set((publicationQuery.data?.ties ?? [])
+      .filter((tie) => tie.scope === 'OVERALL' && Boolean(tie.conditionDistance))
+      .map((tie) => tie.key));
     setTieBreakEdits((current) => {
       const next = Object.fromEntries(Object.entries(current).filter(([key]) => activeTieKeys.has(key)));
       return Object.keys(next).length === Object.keys(current).length ? current : next;
@@ -515,9 +524,51 @@ export function EventResultsWorkspace({
                   ))}</ul>
                 ) : <p>Nenhuma alteração revisada está elegível.</p>}
               </div>
+              <section className="erw-classification-preview" aria-label="Classificação calculada para publicação">
+                <div className="erw-classification-intro">
+                  <strong>Classificação calculada para publicar</strong>
+                  <p>Menor soma de pontos lidera. Em empate final, a maior distância válida da Prova 4 — Condition desempata sem somar pontos. Empates exatos de soma e distância continuam compartilhados e não bloqueiam a publicação.</p>
+                </div>
+                {publicationPreview.leaderboards.map((leaderboard) => (
+                  <section className="erw-classification-category" key={leaderboard.category} aria-label={`Classificação ${leaderboard.category}`}>
+                    <header>
+                      <strong>{leaderboard.category}</strong>
+                      <span>{leaderboard.status === 'FINAL' ? 'Classificação final' : 'Classificação parcial'}</span>
+                    </header>
+                    <ol>
+                      {leaderboard.entries.map((entry) => {
+                        const condition = entry.proofScores.find((score) =>
+                          score.order === 4 && score.name.trim().toLocaleLowerCase('pt-BR') === 'condition',
+                        );
+                        const unresolvedOverallTie = publicationPreview.ties.find((tie) =>
+                          tie.scope === 'OVERALL' &&
+                          tie.category === leaderboard.category &&
+                          tie.registrationIds.includes(entry.registrationId),
+                        );
+                        return (
+                          <li key={entry.registrationId}>
+                            <span className="erw-classification-place">{entry.overallPlace ? `${entry.overallPlace}º` : '—'}</span>
+                            <div className="erw-classification-entry">
+                              <strong>{entry.teamName || entry.athleteNames.join(' / ') || entry.registrationId}</strong>
+                              <div className="erw-classification-metrics">
+                                <span>Progresso <b>{entry.completedProofs}/{entry.proofCount}</b></span>
+                                <span>Condition <b>{formatRankingValue(condition?.value, condition?.unit)}</b></span>
+                                <span>Soma <b>{formatRankingValue(entry.totalPoints, 'pts')}</b></span>
+                              </div>
+                              {unresolvedOverallTie?.conditionDistance && (
+                                <small>Empate final também na distância ({unresolvedOverallTie.conditionDistance.exactValue} {unresolvedOverallTie.conditionDistance.unit}); colocação compartilhada.</small>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </section>
+                ))}
+              </section>
               {publicationPreview.ties.length > 0 && (
                 <p className="erw-tie-dialog-note" role="status">
-                  Há empate(s) exato(s). Sem decisão manual, os participantes compartilham colocação e pontos; isso não impede a publicação.
+                  Empates exatos nas provas compartilham colocação e pontos. Empates finais que persistirem após Condition também compartilham colocação; a arbitragem pode intervir opcionalmente. Esses empates não bloqueiam a publicação.
                 </p>
               )}
               {publicationPreview.issues.some((issue) => !issue.code.startsWith('TIE_')) && (
@@ -556,12 +607,13 @@ export function EventResultsWorkspace({
           </div>
           {publicationPreview?.ties.length ? (
             <section className="erw-tie-advisory" role="status" aria-label="Aviso de empates">
-              <p><CircleAlert size={15} aria-hidden="true" /> Há marcas empatadas. A arbitragem pode definir a ordem manualmente; sem decisão, os empatados compartilham colocação e pontos. A publicação permanece disponível.</p>
+                <p><CircleAlert size={15} aria-hidden="true" /> Menor soma lidera; igualdade na soma final é resolvida pela maior distância válida na Condition. Empates exatos nas provas compartilham pontos. Só o empate final que persistir após Condition pode receber intervenção manual; publicar sem decisão continua permitido.</p>
               <details>
                 <summary>Consultar {publicationPreview.ties.length} empate(s) e decisão da arbitragem</summary>
                 <div className="erw-tie-list">
                   {publicationPreview.ties.map((tie) => {
-                    const edit = tieBreakEdits[tie.key];
+                    const manualArbitrationAllowed = tie.scope === 'OVERALL' && Boolean(tie.conditionDistance);
+                    const edit = manualArbitrationAllowed ? tieBreakEdits[tie.key] : undefined;
                     const order = edit?.mode === 'MANUAL'
                       ? edit.order
                       : edit?.mode === 'SHARED'
@@ -583,6 +635,12 @@ export function EventResultsWorkspace({
                           </span>
                         </div>
                         <p>{tie.registrationIds.map(registrationName).join(' · ')}</p>
+                        {tie.conditionDistance && (
+                          <small>Condition (Prova 4) empatado em {tie.conditionDistance.exactValue} {tie.conditionDistance.unit}. A ordem manual é opcional.</small>
+                        )}
+                        {tie.scope === 'PROOF' && (
+                          <small>Empate de prova: posição e pontos compartilhados, sem escolha manual.</small>
+                        )}
                         {manualApplied && order && <small>{edit?.mode === 'MANUAL' ? 'Ordem proposta' : 'Ordem aplicada'}: {order.map(registrationName).join(' → ')}</small>}
                         {edit?.mode === 'MANUAL' && (
                           <div className="erw-tie-positions">
@@ -615,7 +673,7 @@ export function EventResultsWorkspace({
                           </div>
                         )}
                         <div className="erw-tie-actions">
-                          {edit?.mode !== 'MANUAL' && (
+                          {manualArbitrationAllowed && edit?.mode !== 'MANUAL' && (
                             <button
                               className="button small"
                               type="button"
@@ -627,7 +685,7 @@ export function EventResultsWorkspace({
                               {tie.orderedRegistrationIds ? 'Editar ordem manual' : 'Definir ordem manual'}
                             </button>
                           )}
-                          {edit?.mode === 'MANUAL' && (
+                          {manualArbitrationAllowed && edit?.mode === 'MANUAL' && (
                             <>
                               <button className="button small" type="button" onClick={() => setTieBreakEdits((current) => {
                                 const next = { ...current }; delete next[tie.key]; return next;
@@ -638,7 +696,7 @@ export function EventResultsWorkspace({
                               }))}>Usar colocação compartilhada</button>
                             </>
                           )}
-                          {edit?.mode === 'SHARED' && (
+                          {manualArbitrationAllowed && edit?.mode === 'SHARED' && (
                             tie.orderedRegistrationIds ? (
                               <button className="button small" type="button" onClick={() => setTieBreakEdits((current) => {
                                 const next = { ...current }; delete next[tie.key]; return next;

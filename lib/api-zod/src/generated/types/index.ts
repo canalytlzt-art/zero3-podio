@@ -104,6 +104,7 @@ export * from './zero3RankingPublicationResult';
 export * from './zero3RankingResultState';
 export * from './zero3RankingResultStateState';
 export * from './zero3RankingTieGroup';
+export * from './zero3RankingTieGroupConditionDistance';
 export * from './zero3RankingTieGroupScope';
 export * from './zero3Registration';
 export * from './zero3RegistrationCancelInput';

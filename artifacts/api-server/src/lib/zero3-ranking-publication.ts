@@ -134,7 +134,7 @@ export async function buildRankingPublicationPlan(input: {
         id: row.id,
         registrationId: row.registrationId,
         proofId: row.proofId,
-        rawValue: numericValue(row.publishedRawValue),
+        rawValue: numericValue(row.publishedRawValue) === null ? null : row.publishedRawValue,
         status: row.publishedStatus,
         category: row.category,
         revision: row.publishedRevision,
@@ -190,7 +190,7 @@ export async function buildRankingPublicationPlan(input: {
       id: row.id,
       registrationId: row.registrationId,
       proofId: row.proofId,
-      rawValue: numericValue(row.rawValue),
+      rawValue: numericValue(row.rawValue) === null ? null : row.rawValue,
       status: "VALIDATED",
       category: row.category,
       revision: row.revision,
@@ -259,9 +259,12 @@ export async function buildRankingPublicationPlan(input: {
       const scope = tie.scope === "OVERALL"
         ? "soma total"
         : tie.proofName || `Prova ${tie.proofOrder ?? ""}`;
+      const conditionDistance = tie.conditionDistance
+        ? ` · Condition empatado em ${tie.conditionDistance.exactValue} ${tie.conditionDistance.unit}`
+        : "";
       issues.push({
         code: tie.orderedRegistrationIds ? "TIE_MANUAL_ORDER_APPLIED" : "TIE_SHARED_PLACEMENT",
-        message: `Empate exato em ${scope} · ${tie.category} · ${tie.value}: ${tie.orderedRegistrationIds ? "ordem manual aplicada" : "participantes compartilham colocação e pontos"}. A publicação continua disponível.`,
+        message: `Empate exato em ${scope} · ${tie.category} · ${tie.value}${conditionDistance}: ${tie.orderedRegistrationIds ? "ordem manual aplicada" : "participantes compartilham colocação e pontos"}. A publicação continua disponível.`,
         blocking: false,
         resultId: null,
       });

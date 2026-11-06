@@ -480,6 +480,7 @@ function rankingPublicationPreviewDto(
     issues: plan.issues,
     resultStates: plan.resultStates,
     ties: plan.ties,
+    leaderboards: plan.leaderboards,
     fingerprint: plan.fingerprint,
     canPublish: plan.canPublish,
   });
