@@ -12,6 +12,7 @@ import { RotateCw } from 'lucide-react';
 import { liveBoardHrefForBattery, liveBoardHrefForEvent } from '@/lib/live-board-navigation';
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
+import { inspectPublicBoardPayload, isPublicBoardJsonParseError } from '@/lib/public-board-response';
 import { publicBatteryOperationalLabel, publicBatteryOperationalState } from '@/lib/public-battery-status';
 import { formatBrasiliaDateTime as formatScheduledBrasiliaDateTime } from '@/lib/brasilia-schedule';
 import { RulesDialog } from '@/components/public/RulesDialog';
@@ -318,13 +319,17 @@ export function PublicTV(){
   const requestedEventId=new URLSearchParams(search).get('eventId')||undefined;
   const boardParams=requestedEventId?{eventId:requestedEventId}:undefined;
   const boardQuery=useGetZero3PublicBoard(boardParams,{query:{queryKey:boardParams?getGetZero3PublicBoardQueryKey(boardParams):getGetZero3PublicBoardQueryKey(),refetchInterval:2000,refetchOnWindowFocus:true,retry:2}});
-  const board=boardQuery.data;
+  const boardPayload=boardQuery.data===undefined?undefined:inspectPublicBoardPayload(boardQuery.data);
+  const board=boardPayload?.kind==='valid'?boardPayload.board:undefined;
+  const invalidBoardResponse=boardPayload?.kind==='invalid'||
+    (boardQuery.data===undefined&&isPublicBoardJsonParseError(boardQuery.error));
   const connected=boardQuery.isSuccess&&!boardQuery.isError;
   const connectionLabel=boardQuery.isError
     ?boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO · DADOS CONFIRMADOS'
     :connected?'AO VIVO':'SINCRONIZANDO';
   if(boardQuery.isLoading&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status="SINCRONIZANDO"/><div className="public-empty"><h1>Conectando à transmissão</h1><p>Carregando o placar oficial do evento.</p><RulesDialog/></div></div></main>;
-  if(boardQuery.isError&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status={boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'} offline/><div className="public-empty"><h1>Transmissão indisponível</h1><p>Não foi possível carregar dados oficiais.</p><div className="tv-public-empty-actions"><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button><RulesDialog/></div></div></div></main>;
+  if(invalidBoardResponse)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status="RESPOSTA INVÁLIDA" offline/><div className="public-empty" role="alert" data-testid="error-public-board-invalid"><h1>Resposta inválida do placar</h1><p>A API respondeu com dados incompletos ou malformados. Tente novamente.</p><div className="tv-public-empty-actions"><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Tentar novamente</button><RulesDialog/></div></div></div></main>;
+  if(boardQuery.isError&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status={boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'} offline/><div className="public-empty" role="alert" data-testid="error-public-board-connection"><h1>Transmissão indisponível</h1><p>Falha de conexão ou HTTP ao carregar os dados oficiais.</p><div className="tv-public-empty-actions"><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button><RulesDialog/></div></div></div></main>;
   if(!board?.event)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status={connected?'CONECTADO':'AGUARDANDO EVENTO'} offline={!connected}/><div className="public-empty"><h1>Aguardando evento</h1><p>A transmissão será atualizada quando um evento estiver disponível.</p><RulesDialog/></div></div></main>;
   return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board">
      <TvPageHeader now={now} eventLabel={`${board.event.name} · ${board.event.proofName}`} status={connectionLabel} offline={!connected}/>

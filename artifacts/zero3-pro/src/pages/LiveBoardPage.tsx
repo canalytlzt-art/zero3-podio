@@ -17,6 +17,7 @@ import type {
   Zero3PublicResult,
 } from '@workspace/api-client-react';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
+import { inspectPublicBoardPayload, isPublicBoardJsonParseError } from '@/lib/public-board-response';
 import { eventBatteryCode } from '@/lib/event-battery-code';
 import {
   formatBrasiliaDateTime,
@@ -503,7 +504,12 @@ export function LiveBoardPage() {
       refetchOnWindowFocus: true,
     },
   });
-  const board = boardQuery.data;
+  const boardPayload = boardQuery.data === undefined
+    ? undefined
+    : inspectPublicBoardPayload(boardQuery.data);
+  const board = boardPayload?.kind === 'valid' ? boardPayload.board : undefined;
+  const invalidBoardResponse = boardPayload?.kind === 'invalid' ||
+    (boardQuery.data === undefined && isPublicBoardJsonParseError(boardQuery.error));
   const eventBatteryOptions = useMemo(() => {
     if (board?.batteryModel !== 'EVENT') return [];
     if (Array.isArray(board.eventBatteries)) {
@@ -608,10 +614,17 @@ export function LiveBoardPage() {
         </section>
 
         {boardQuery.isLoading && !board ? <LoadingBoard /> : null}
-        {boardQuery.isError && !board ? (
+        {invalidBoardResponse ? (
+          <section className="lb-message lb-error" role="alert" data-testid="error-live-board-invalid">
+            <div className="lb-message-symbol"><RotateCw size={18} aria-hidden="true" /></div>
+            <div><h2>Resposta inválida do placar</h2><p>A API respondeu com dados incompletos ou malformados. Tente novamente.</p></div>
+            <button type="button" onClick={() => void boardQuery.refetch()} data-testid="button-retry-live-board-invalid">Tentar novamente</button>
+          </section>
+        ) : null}
+        {boardQuery.isError && !board && !invalidBoardResponse ? (
           <section className="lb-message lb-error" role="alert" data-testid="error-live-board">
             <div className="lb-message-symbol"><RotateCw size={18} aria-hidden="true" /></div>
-            <div><h2>Placar temporariamente indisponível</h2><p>Não foi possível consultar a publicação do evento. Tente novamente.</p></div>
+            <div><h2>Placar temporariamente indisponível</h2><p>Falha de conexão ou HTTP ao consultar a publicação do evento. Tente novamente.</p></div>
             <button type="button" onClick={() => void boardQuery.refetch()} data-testid="button-retry-live-board">Tentar novamente</button>
           </section>
         ) : null}
