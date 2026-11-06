@@ -18,10 +18,12 @@ import {
   d1IsoNow,
   d1JsonArray,
   newD1Id,
+  respondD1Failure,
   requireD1Member,
 } from "./d1-staging-shared";
 import { readD1ActiveBattery } from "./d1-staging-batteries";
 import { handleD1BatteryFinalization } from "./d1-staging-finalization";
+import { D1PodiumDraftVersionConflict, saveD1PodiumDraft } from "./d1-staging-podium-draft";
 import { advanceD1TimerPreparation, d1TimerDto, type D1HeatRunRow } from "./d1-staging-timer";
 import {
   encodePodiumPlaceObservations,
@@ -194,7 +196,10 @@ export async function handleD1StagingControls(
       const draft = rows.results.find((row) => row.published === 0) ?? null;
       const published = rows.results.find((row) => row.published === 1) ?? null;
       res.json(GetZero3PodiumStateResponse.parse({ draft: podiumDto(draft), published: podiumDto(published) }));
-    } catch { d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível consultar o estado do pódio."); }
+    } catch (error) {
+      respondD1Failure(req, res, error, "podium_state_read",
+        "Não foi possível consultar o estado do pódio.");
+    }
     return true;
   }
 
@@ -227,31 +232,24 @@ export async function handleD1StagingControls(
           res.status(400).json({ error: "Pódio deve usar inscrições desta categoria." }); return true;
         }
       }
-      const latest = await DB.prepare(`SELECT * FROM zero3_podium_versions
-        WHERE event_id=? AND category=? ORDER BY version DESC LIMIT 1`)
-        .bind(params.data.eventId, params.data.category).first<PodiumRow>();
       const stamp = d1IsoNow();
-      if (latest && latest.published === 0) {
-        const result = await DB.prepare(`UPDATE zero3_podium_versions SET registration_ids=?,arbitration_note=?,updated_at=?
-          WHERE event_id=? AND category=? AND version=? AND published=0`)
-          .bind(JSON.stringify(body.data.registrationIds), arbitrationNote, stamp, params.data.eventId, params.data.category, latest.version).run();
-        if ((result.meta.changes ?? 0) !== 1) { d1ApiError(req, res, 409, "PODIUM_CONFLICT", "O rascunho mudou em outra operação. Atualize e tente novamente."); return true; }
-        const saved = await DB.prepare(`SELECT * FROM zero3_podium_versions
-          WHERE event_id=? AND category=? AND version=?`)
-          .bind(params.data.eventId, params.data.category, latest.version).first<PodiumRow>();
-        res.json(SaveZero3PodiumDraftResponse.parse(podiumDto(saved)));
-      } else {
-        const version = (latest?.version ?? 0) + 1;
-        await DB.prepare(`INSERT INTO zero3_podium_versions
-          (event_id,category,registration_ids,arbitration_note,published,published_by,published_at,publish_reason,version,updated_at)
-          VALUES(?,?,?,?,0,NULL,NULL,NULL,?,?)`)
-          .bind(params.data.eventId, params.data.category, JSON.stringify(body.data.registrationIds), arbitrationNote, version, stamp).run();
-        const saved = await DB.prepare(`SELECT * FROM zero3_podium_versions
-          WHERE event_id=? AND category=? AND version=?`)
-          .bind(params.data.eventId, params.data.category, version).first<PodiumRow>();
-        res.json(SaveZero3PodiumDraftResponse.parse(podiumDto(saved)));
+      const saved = await saveD1PodiumDraft(DB, {
+        eventId: params.data.eventId,
+        category: params.data.category,
+        registrationIds: body.data.registrationIds,
+        arbitrationNote,
+        updatedAt: stamp,
+      });
+      res.json(SaveZero3PodiumDraftResponse.parse(podiumDto(saved)));
+    } catch (error) {
+      if (error instanceof D1PodiumDraftVersionConflict) {
+        d1ApiError(req, res, 409, "PODIUM_VERSION_CONFLICT",
+          "O rascunho do pódio foi alterado em outra operação. Atualize antes de salvar novamente.");
+        return true;
       }
-    } catch { d1ApiError(req, res, 409, "PODIUM_CONFLICT", "Não foi possível salvar o rascunho do pódio."); }
+      respondD1Failure(req, res, error, "podium_draft_save",
+        "Não foi possível salvar o rascunho do pódio.");
+    }
     return true;
   }
 
@@ -303,7 +301,10 @@ export async function handleD1StagingControls(
         WHERE event_id=? AND category=? AND version=?`)
         .bind(params.data.eventId, params.data.category, draft.version).first<PodiumRow>();
       res.json(PublishZero3PodiumResponse.parse(podiumDto(published)));
-    } catch { d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível publicar o pódio."); }
+    } catch (error) {
+      respondD1Failure(req, res, error, "podium_publish",
+        "Não foi possível publicar o pódio.");
+    }
     return true;
   }
 

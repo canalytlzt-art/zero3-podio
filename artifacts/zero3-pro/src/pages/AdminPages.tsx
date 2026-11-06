@@ -1091,8 +1091,8 @@ function PodiumEditor({eventId}:{eventId:string}) {
     registrationIds:Array<string|null>;
     placeObservations:PodiumEditorPlaceObservation[];
   };
-  const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId),refetchInterval:10000}});
-  const board=useGetZero3PublicBoard({eventId},{query:{queryKey:getGetZero3PublicBoardQueryKey({eventId}),refetchInterval:5000}});
+  const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId)}});
+  const board=useGetZero3PublicBoard({eventId},{query:{queryKey:getGetZero3PublicBoardQueryKey({eventId})}});
   const save=useSaveZero3PodiumDraft();
   const publish=usePublishZero3Podium();
   const qc=useQueryClient();
@@ -1103,7 +1103,7 @@ function PodiumEditor({eventId}:{eventId:string}) {
   const [confirmPublishing,setConfirmPublishing]=useState(false);
   const [publishReason,setPublishReason]=useState('');
   const podiumState=useGetZero3PodiumState(eventId,category,{
-    query:{queryKey:getGetZero3PodiumStateQueryKey(eventId,category),refetchInterval:10000},
+    query:{queryKey:getGetZero3PodiumStateQueryKey(eventId,category)},
   });
   const availableCategories=board.data?.event?.categories||['SC','RX'];
   useEffect(()=>{
