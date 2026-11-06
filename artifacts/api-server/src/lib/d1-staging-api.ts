@@ -46,6 +46,7 @@ import {
 import { advanceD1TimerPreparation, d1TimerDto } from "./d1-staging-timer";
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 import { buildRankingPublicationPlan } from "./zero3-ranking-publication";
+import { visiblePodiumArbitrationNote } from "./zero3-podium";
 
 type D1Env = { DB: D1Database };
 type Member = { clerk_user_id: string; email: string; role: string; active: number };
@@ -197,7 +198,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     DB.prepare("SELECT * FROM zero3_results WHERE event_id = ? ORDER BY captured_at DESC").bind(event.id).all<ResultRow>(),
     DB.prepare("SELECT id, full_name FROM zero3_athletes").all<{id: string; full_name: string}>(),
     DB.prepare("SELECT * FROM zero3_podium_versions WHERE event_id = ? AND published = 1 ORDER BY version DESC").bind(event.id).all<{
-      category: string; registration_ids: string;
+      category: string; registration_ids: string; arbitration_note: string | null; published: number;
     }>(),
     DB.prepare(`SELECT ah.category,ah.heat_id,ah.updated_at,h.name AS heat_name,
       h.proof_id,h.battery_order,h."order" AS heat_order,p.proof_order,p.name AS proof_name
@@ -351,12 +352,19 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       heatName: row.heat_id ? heatNames.get(row.heat_id) ?? null : null,
     };
   });
-  const latestPodium = new Map<string, string>();
+  const latestPodium = new Map<string, { registrationIds: string; arbitrationNote: string | null }>();
   for (const podium of podiumResult.results) {
-    if (!latestPodium.has(podium.category)) latestPodium.set(podium.category, podium.registration_ids);
+    if (!latestPodium.has(podium.category)) {
+      latestPodium.set(podium.category, {
+        registrationIds: podium.registration_ids,
+        arbitrationNote: visiblePodiumArbitrationNote(podium.published === 1, podium.arbitration_note),
+      });
+    }
   }
-  const manuallyPublishedPodiums = [...latestPodium].map(([category, json]) => ({
-    category, places: nullableStringArray(json).flatMap((registrationId, index) => {
+  const manuallyPublishedPodiums = [...latestPodium].map(([category, podium]) => ({
+    category,
+    arbitrationNote: podium.arbitrationNote,
+    places: nullableStringArray(podium.registrationIds).flatMap((registrationId, index) => {
       if (!registrationId) return [];
       const reg = registrationsById.get(registrationId);
       return !reg || reg.category !== category ? [] : [{

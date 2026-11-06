@@ -508,6 +508,43 @@ paths:
           description: Timer state, version or recorded duration changed
         "503":
           description: D1 schema or database unavailable
+  /zero3/events/{eventId}/batteries/{batteryId}/time-adjustment:
+    patch:
+      operationId: addZero3EventBatteryTime
+      tags: [zero3]
+      summary: Add elapsed time to a running, paused, or finished battery
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: batteryId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zero3BatteryTimeAdjustmentInput" }
+      responses:
+        "200":
+          description: Battery timer after adding elapsed time
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zero3EventBattery" }
+        "400":
+          description: Invalid adjustment
+        "401":
+          description: Authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Battery or timer not found
+        "409":
+          description: Timer state or version changed
+        "503":
+          description: D1 schema or database unavailable
   /zero3/events/{eventId}/active-event-battery:
     patch:
       operationId: setZero3ActiveEventBattery
@@ -1937,6 +1974,13 @@ components:
         expectedTimerVersion: { type: integer, minimum: 0 }
         commandId: { type: string, minLength: 1 }
       required: [durationMs, expectedDurationMs, expectedTimerVersion, commandId]
+    Zero3BatteryTimeAdjustmentInput:
+      type: object
+      properties:
+        additionalMs: { type: integer, minimum: 1000, maximum: 9007199254740991, multipleOf: 1000 }
+        expectedTimerVersion: { type: integer, minimum: 0 }
+        commandId: { type: string, minLength: 1 }
+      required: [additionalMs, expectedTimerVersion, commandId]
     Zero3ProofLeaderboards:
       type: object
       properties:
@@ -2182,6 +2226,7 @@ components:
         publishedBy: { type: ["string", "null"] }
         publishedAt: { type: ["string", "null"], format: date-time }
         publishReason: { type: ["string", "null"] }
+        arbitrationNote: { type: ["string", "null"], maxLength: 2000 }
         version: { type: integer }
         updatedAt: { type: string, format: date-time }
       required: [eventId, category, registrationIds, published, publishedBy, publishedAt, publishReason, version, updatedAt]
@@ -2199,6 +2244,7 @@ components:
           items: { type: ["string", "null"] }
           minItems: 3
           maxItems: 3
+        arbitrationNote: { type: ["string", "null"], maxLength: 2000 }
       required: [registrationIds]
     Zero3PodiumPublishInput:
       type: object
@@ -2237,6 +2283,7 @@ components:
       type: object
       properties:
         category: { $ref: "#/components/schemas/Zero3Category" }
+        arbitrationNote: { type: ["string", "null"], maxLength: 2000 }
         places:
           type: array
           items:

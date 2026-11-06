@@ -23,13 +23,14 @@ import {
 import { readD1ActiveBattery } from "./d1-staging-batteries";
 import { handleD1BatteryFinalization } from "./d1-staging-finalization";
 import { advanceD1TimerPreparation, d1TimerDto, type D1HeatRunRow } from "./d1-staging-timer";
+import { hasUniquePodiumRegistrations, normalizePodiumArbitrationNote } from "./zero3-podium";
 
 type TimerRow = D1HeatRunRow;
 type EventRow = { id: string; preparation_seconds: number };
 type PodiumRow = {
   event_id: string; category: string; registration_ids: string; published: number;
   published_by: string | null; published_at: string | null; publish_reason: string | null;
-  version: number; updated_at: string;
+  arbitration_note: string | null; version: number; updated_at: string;
 };
 
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
@@ -52,6 +53,7 @@ function podiumDto(row: PodiumRow | null) {
     publishedBy: row.published_by,
     publishedAt: d1Date(row.published_at),
     publishReason: row.publish_reason,
+    arbitrationNote: row.arbitration_note ?? null,
     version: row.version,
     updatedAt: d1Date(row.updated_at),
   };
@@ -199,7 +201,8 @@ export async function handleD1StagingControls(
       return true;
     }
     const selected = body.data.registrationIds.filter((id): id is string => id !== null);
-    if (new Set(selected).size !== selected.length) { res.status(400).json({ error: "Cada posição do pódio deve ser única." }); return true; }
+    if (!hasUniquePodiumRegistrations(body.data.registrationIds)) { res.status(400).json({ error: "Cada posição do pódio deve ser única." }); return true; }
+    const arbitrationNote = normalizePodiumArbitrationNote(body.data.arbitrationNote);
     try {
       if (selected.length) {
         const registrations = await DB.prepare(`SELECT id,category FROM zero3_registrations
@@ -215,9 +218,9 @@ export async function handleD1StagingControls(
         .bind(params.data.eventId, params.data.category).first<PodiumRow>();
       const stamp = d1IsoNow();
       if (latest && latest.published === 0) {
-        const result = await DB.prepare(`UPDATE zero3_podium_versions SET registration_ids=?,updated_at=?
+        const result = await DB.prepare(`UPDATE zero3_podium_versions SET registration_ids=?,arbitration_note=?,updated_at=?
           WHERE event_id=? AND category=? AND version=? AND published=0`)
-          .bind(JSON.stringify(body.data.registrationIds), stamp, params.data.eventId, params.data.category, latest.version).run();
+          .bind(JSON.stringify(body.data.registrationIds), arbitrationNote, stamp, params.data.eventId, params.data.category, latest.version).run();
         if ((result.meta.changes ?? 0) !== 1) { d1ApiError(req, res, 409, "PODIUM_CONFLICT", "O rascunho mudou em outra operação. Atualize e tente novamente."); return true; }
         const saved = await DB.prepare(`SELECT * FROM zero3_podium_versions
           WHERE event_id=? AND category=? AND version=?`)
@@ -226,9 +229,9 @@ export async function handleD1StagingControls(
       } else {
         const version = (latest?.version ?? 0) + 1;
         await DB.prepare(`INSERT INTO zero3_podium_versions
-          (event_id,category,registration_ids,published,published_by,published_at,publish_reason,version,updated_at)
-          VALUES(?,?,?,0,NULL,NULL,NULL,?,?)`)
-          .bind(params.data.eventId, params.data.category, JSON.stringify(body.data.registrationIds), version, stamp).run();
+          (event_id,category,registration_ids,arbitration_note,published,published_by,published_at,publish_reason,version,updated_at)
+          VALUES(?,?,?,?,0,NULL,NULL,NULL,?,?)`)
+          .bind(params.data.eventId, params.data.category, JSON.stringify(body.data.registrationIds), arbitrationNote, version, stamp).run();
         const saved = await DB.prepare(`SELECT * FROM zero3_podium_versions
           WHERE event_id=? AND category=? AND version=?`)
           .bind(params.data.eventId, params.data.category, version).first<PodiumRow>();

@@ -10,5 +10,10 @@ import type { Zero3PublicPodiumPlacesItem } from './zero3PublicPodiumPlacesItem'
 
 export interface Zero3PublicPodium {
   category: Zero3Category;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  arbitrationNote?: string | null;
   places: Zero3PublicPodiumPlacesItem[];
 }

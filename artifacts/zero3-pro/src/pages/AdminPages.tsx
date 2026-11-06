@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useSearch } from 'wouter';
 import { ArrowLeft, Plus, Radio, RotateCw, Save, Trophy, Users, Play, Square, Pencil, Trash2, X } from 'lucide-react';
 import {
@@ -7,7 +7,7 @@ import {
   Zero3RegistrationConfirmationStatus, Zero3RegistrationPaymentStatus,
   getGetZero3DashboardQueryKey, getGetZero3MeQueryKey, getListZero3EventsQueryKey, getListZero3AthletesQueryKey,
   getListZero3MembersQueryKey, getListZero3HeatsQueryKey, getListZero3RegistrationsQueryKey, getListZero3ProofsQueryKey,
-  getGetZero3PublicBoardQueryKey, getGetZero3PodiumStateQueryKey, getGetZero3RosterManagementQueryKey,
+  getGetZero3PublicBoardQueryKey, getGetZero3PodiumStateQueryKey, getGetZero3PodiumStateQueryOptions, getGetZero3RosterManagementQueryKey,
   getListZero3EventBatteriesQueryKey,
   useGetZero3RosterManagement, useGetZero3PodiumState,
   useHealthCheck, useGetZero3Me, useGetZero3Dashboard, useListZero3Events, useCreateZero3Event,
@@ -30,6 +30,7 @@ import { BatteryRegistrationPicker } from '@/components/BatteryRegistrationPicke
 import { EventBatteryResultsPanel } from '@/components/EventBatteryResultsPanel';
 import { EventBatteryTimerPanel } from '@/components/EventBatteryTimerPanel';
 import { EventResultsWorkspace } from '@/components/EventResultsWorkspace';
+import { PodiumAwards, type PodiumAwardPlace } from '@/components/public/PodiumAwards';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { liveBoardHrefForBattery } from '@/lib/live-board-navigation';
 import { pollingIntervalAfterError, shouldRefetchAfterError, shouldRetryZero3Query } from '@/lib/api-error-policy';
@@ -93,9 +94,99 @@ export function DashboardPage() {
 }
 
 function EventSummary({event}:{event:Zero3Event}) {
-  const qc=useQueryClient(); const update=useUpdateZero3Event();
-  const next=event.status==='ACTIVE'?'FINISHED':'ACTIVE';
-  return <div className="panel-pad" style={{paddingTop:0}}><div style={{fontSize:18,fontWeight:800,letterSpacing:'-.04em'}}>{event.name}</div><p className="lede" style={{margin:'5px 0 16px'}}>{event.proofName} · preparação {event.preparationSeconds}s</p><div className="toolbar"><span className="pill">{pretty(event.status)}</span><Link href={`/admin/events/${event.id}`} className="button small">Abrir operação</Link><button className="button small" disabled={update.isPending} onClick={()=>update.mutate({eventId:event.id,data:{status:next as typeof Zero3EventStatus[keyof typeof Zero3EventStatus]}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});}})}>{event.status==='ACTIVE'?'Finalizar evento':'Ativar evento'}</button></div></div>;
+  return <div className="panel-pad" style={{paddingTop:0}}><div style={{fontSize:18,fontWeight:800,letterSpacing:'-.04em'}}>{event.name}</div><p className="lede" style={{margin:'5px 0 16px'}}>{event.proofName} · preparação {event.preparationSeconds}s</p><div className="toolbar"><span className="pill">{pretty(event.status)}</span><Link href={`/admin/events/${event.id}`} className="button small">Abrir operação</Link><EventStatusButton event={event}/></div></div>;
+}
+
+function EventStatusButton({event}:{event:Zero3Event}) {
+  const update=useUpdateZero3Event();
+  const qc=useQueryClient();
+  const [confirmingFinish,setConfirmingFinish]=useState(false);
+  const [error,setError]=useState('');
+  const registrations=useListZero3Registrations(event.id,{
+    query:{
+      queryKey:getListZero3RegistrationsQueryKey(event.id),
+      enabled:confirmingFinish&&event.status==='ACTIVE',
+      refetchInterval:10000,
+    },
+  });
+  const participantCategories=useMemo(()=>{
+    const registered=new Set((registrations.data||[]).map(reg=>reg.category));
+    return event.categories.filter(category=>registered.has(category));
+  },[event.categories,registrations.data]);
+  const categoryStates=useQueries({
+    queries:confirmingFinish&&event.status==='ACTIVE'
+      ?participantCategories.map(category=>getGetZero3PodiumStateQueryOptions(event.id,category,{query:{refetchInterval:10000}}))
+      :[],
+  });
+  const stateLoading=confirmingFinish&&event.status==='ACTIVE'&&(
+    registrations.isLoading||categoryStates.some(query=>query.isLoading)
+  );
+  const stateError=confirmingFinish&&event.status==='ACTIVE'&&(
+    registrations.isError||categoryStates.some(query=>query.isError)
+  );
+  const pendingCategories=participantCategories.filter((_,index)=>!categoryStates[index]?.data?.published);
+  const finish=()=>{
+    setError('');
+    update.mutate(
+      {eventId:event.id,data:{status:Zero3EventStatus.FINISHED}},
+      {onSuccess:()=>{
+        setConfirmingFinish(false);
+        qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});
+        qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});
+        qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId:event.id})});
+      },onError:err=>setError(feedback(err))},
+    );
+  };
+  const activate=()=>{
+    setError('');
+    update.mutate(
+      {eventId:event.id,data:{status:Zero3EventStatus.ACTIVE}},
+      {onSuccess:()=>{
+        qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});
+        qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});
+      },onError:err=>setError(feedback(err))},
+    );
+  };
+  const statusButtonLabel=event.status==='ACTIVE'?'Finalizar evento':event.status==='PLANNED'?'Ativar evento':'Ativar novamente';
+  return <>
+    <button className="button small" disabled={update.isPending} data-testid={`button-event-status-${event.id}`}
+      onClick={()=>event.status==='ACTIVE'?(setError(''),setConfirmingFinish(true)):activate()}>
+      {update.isPending?'Salvando…':statusButtonLabel}
+    </button>
+    {error&&!confirmingFinish&&<span role="alert" style={{color:'#a34238',fontSize:11}}>{error}</span>}
+    {confirmingFinish&&<div role="presentation"
+      onMouseDown={event=>{if(event.target===event.currentTarget&&!update.isPending)setConfirmingFinish(false);}}
+      style={{position:'fixed',inset:0,zIndex:1100,background:'rgba(5,8,12,.72)',display:'grid',placeItems:'center',padding:16}}>
+      <section className="panel panel-pad" role="alertdialog" aria-modal="true"
+        aria-labelledby={`finish-event-title-${event.id}`} aria-describedby={`finish-event-description-${event.id}`}
+        style={{width:'min(600px,100%)',maxHeight:'90vh',overflow:'auto',boxShadow:'0 24px 90px rgba(0,0,0,.45)'}}>
+        <h2 className="panel-title" id={`finish-event-title-${event.id}`}>Concluir evento?</h2>
+        <p id={`finish-event-description-${event.id}`}><strong>{event.name}</strong>. A conclusão usa o comando existente e não publica resultados nem pódios. O que já foi publicado continua acessível.</p>
+        <h3 style={{fontSize:13,margin:'16px 0 8px'}}>Categorias participantes e estado do pódio</h3>
+        {registrations.isError?<p role="alert" className="error-box">Não foi possível carregar as inscrições para identificar as categorias pendentes.</p>
+          :registrations.isLoading?<LoadingRows/>
+          :participantCategories.length===0?<p className="field-help">Nenhuma categoria possui inscrição ativa.</p>
+          :<div className="lane-list">{participantCategories.map((category,index)=>{
+            const query=categoryStates[index];
+            const status=registrations.isError?'Indisponível':query?.isLoading?'Consultando…':query?.isError?'Indisponível':query?.data?.published?'Pódio publicado':'Pendente';
+            return <div className="lane-card" key={category}><span className="lane-name">{categoryName(category)}</span><span className={`pill ${status==='Pódio publicado'?'':'warn'}`}>{status}</span></div>;
+          })}</div>}
+        {!stateLoading&&!stateError&&pendingCategories.length>0&&<p className="field-help">Pódio ainda pendente: {pendingCategories.map(categoryName).join(', ')}. A conclusão do evento não publica nem altera esses pódios.</p>}
+        {!stateLoading&&!stateError&&participantCategories.length>0&&pendingCategories.length===0&&<p className="field-help">Todas as categorias participantes têm pódio publicado.</p>}
+        {stateLoading&&<p className="field-help">Consultando pódios por categoria…</p>}
+        {stateError&&<p role="alert" className="error-box">Não foi possível consultar todas as categorias. Atualize os dados antes de concluir.</p>}
+        {error&&<p role="alert" className="error-box">{error}</p>}
+        <div className="toolbar">
+          <button type="button" className="button" disabled={update.isPending} onClick={()=>setConfirmingFinish(false)}>Voltar</button>
+          {stateError&&<button type="button" className="button" disabled={stateLoading} onClick={()=>{void registrations.refetch();categoryStates.forEach(query=>void query.refetch());}}>Tentar novamente</button>}
+          <button type="button" className="button primary" data-testid={`button-confirm-event-finish-${event.id}`}
+            disabled={update.isPending||stateLoading||stateError} onClick={finish}>
+            {update.isPending?'Concluindo…':'Confirmar conclusão'}
+          </button>
+        </div>
+      </section>
+    </div>}
+  </>;
 }
 
 function EventRow({event,isAdmin=false}:{event:Zero3Event;isAdmin?:boolean}) {
@@ -131,7 +222,7 @@ function EventRow({event,isAdmin=false}:{event:Zero3Event;isAdmin?:boolean}) {
     <Link href={`/admin/events/${event.id}`} className="event-row-link"><div><div className="event-name">{event.name}</div><div className="event-sub">{event.proofName} · {event.preparationSeconds}s de preparação · Categorias: {event.categories.map(categoryName).join(', ')}</div></div></Link>
     <div className="event-actions"><span className={`pill ${pillTone(event.status)}`}>{pretty(event.status)}</span>
      <button className="button small" onClick={()=>{setCategories(event.categories);setEditingCategories(value=>!value);setCategoryError('');}}>Categorias</button>
-     {next&&<button className="button small" disabled={update.isPending} data-testid={`button-event-status-${event.id}`} onClick={()=>update.mutate({eventId:event.id,data:{status:next as typeof Zero3EventStatus[keyof typeof Zero3EventStatus]}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListZero3EventsQueryKey()});qc.invalidateQueries({queryKey:getGetZero3DashboardQueryKey()});}})}>{next==='ACTIVE'?'Ativar':'Finalizar'}</button>}
+      {next&&<EventStatusButton event={event}/>}
      <Link href={`/admin/events/${event.id}`} className="button small">Abrir <span aria-hidden>↗</span></Link>
      {isAdmin&&<button type="button" className="button small" onClick={startDelete} aria-label={`Excluir evento ${event.name}`}><Trash2 size={13}/> Excluir Evento</button>}
     </div>
@@ -778,6 +869,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
        <EventBatteryTimerPanel
         battery={battery}
         eventName={batteryModel.event?.name||'Evento'}
+        allowDurationCorrection={isAdmin}
         timer={batteryTimer}
         batteryTimers={batteryModel.batteryTimers}
         serverTime={batteryModel.serverTime}
@@ -988,33 +1080,223 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
 }
 
 function PodiumEditor({eventId}:{eventId:string}) {
-  const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId),refetchInterval:10000}});const board=useGetZero3PublicBoard({eventId},{query:{queryKey:getGetZero3PublicBoardQueryKey({eventId}),refetchInterval:5000}});const save=useSaveZero3PodiumDraft();const publish=usePublishZero3Podium();const qc=useQueryClient();const [category,setCategory]=useState<string>('SC');const [error,setError]=useState('');const [draft,setDraft]=useState<Zero3Podium|null>(null);const [confirmPublishing,setConfirmPublishing]=useState(false);const [publishReason,setPublishReason]=useState('');const podiumState=useGetZero3PodiumState(eventId,category,{query:{queryKey:getGetZero3PodiumStateQueryKey(eventId,category),refetchInterval:10000}});
+  type PodiumFormState={sourceKey:string;registrationIds:Array<string|null>;arbitrationNote:string};
+  const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId),refetchInterval:10000}});
+  const board=useGetZero3PublicBoard({eventId},{query:{queryKey:getGetZero3PublicBoardQueryKey({eventId}),refetchInterval:5000}});
+  const save=useSaveZero3PodiumDraft();
+  const publish=usePublishZero3Podium();
+  const qc=useQueryClient();
+  const [category,setCategory]=useState<string>('SC');
+  const [error,setError]=useState('');
+  const [draft,setDraft]=useState<Zero3Podium|null>(null);
+  const [categoryForms,setCategoryForms]=useState<Record<string,PodiumFormState>>({});
+  const [confirmPublishing,setConfirmPublishing]=useState(false);
+  const [publishReason,setPublishReason]=useState('');
+  const podiumState=useGetZero3PodiumState(eventId,category,{
+    query:{queryKey:getGetZero3PodiumStateQueryKey(eventId,category),refetchInterval:10000},
+  });
   const availableCategories=board.data?.event?.categories||['SC','RX'];
-  useEffect(()=>{if(availableCategories.length&&!availableCategories.includes(category))setCategory(availableCategories[0]);},[availableCategories,category]);
-  useEffect(()=>{if(!availableCategories.includes(category))setCategory(availableCategories[0]||'SC');},[availableCategories,category]);
-  const options=useMemo(()=>registrations.data?.filter(r=>r.category===category)||[],[registrations.data,category]);const podium=board.data?.podiums?.find(p=>p.category===category);const localDraft=draft?.category===category?draft:(podiumState.data?.draft?.category===category?podiumState.data.draft:null);
-  const saveDraft=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();setError('');const f=new FormData(e.currentTarget);const ids=[0,1,2].map(i=>String(f.get(`place${i}`)||'')||null);save.mutate({eventId,category,data:{registrationIds:ids}},{onSuccess:(saved)=>{setDraft(saved);qc.invalidateQueries({queryKey:getGetZero3PodiumStateQueryKey(eventId,category)});},onError:err=>setError(feedback(err))});};
-  const confirmPublish=()=>{if(!localDraft||publishReason.trim().length<3)return;publish.mutate({eventId,category,data:{reason:publishReason.trim()}},{onSuccess:()=>{setDraft(null);setConfirmPublishing(false);setPublishReason('');qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})});qc.invalidateQueries({queryKey:getGetZero3PodiumStateQueryKey(eventId,category)});},onError:err=>setError(feedback(err))});};
-  const savedIds=localDraft?.registrationIds;
-  const draftPreview=savedIds?.flatMap((id,index)=>{const r=registrations.data?.find(item=>item.id===id);return r?[{place:index+1,registrationId:r.id,teamName:r.teamName,athleteNames:r.athleteNames}]:[]})||[];
-  const preview=localDraft?draftPreview:(podium?.places||[]);
-     return <div className="grid-two">
-       <form className="panel panel-pad" onSubmit={saveDraft}>
-         <h2 className="panel-title">Montar pódio</h2>
-         <div className="field"><label htmlFor="podium-category">Categoria</label><select id="podium-category" value={category} onChange={e=>{setCategory(e.target.value);setConfirmPublishing(false);setPublishReason('');}}>{availableCategories.map(value=><option key={value} value={value}>{categoryName(value)}</option>)}</select></div>
-         {[0,1,2].map(i=><div className="field" key={`${category}-${i}`}><label htmlFor={`place${i}`}>{['1º lugar','2º lugar','3º lugar'][i]}</label><select name={`place${i}`} id={`place${i}`} defaultValue={savedIds?.[i]||podium?.places.find(p=>p.place===i+1)?.registrationId||''}><option value="">Sem colocação</option>{options.map(r=><option key={r.id} value={r.id}>{r.teamName||`Equipe ${r.laneLabel||r.id.slice(0,6).toUpperCase()} — nome pendente`} · {r.athleteNames.join(' / ')}</option>)}</select></div>)}
-         <div className="toolbar"><button className="button primary" disabled={save.isPending}><Save size={14}/> Salvar rascunho</button><button type="button" className="button dark" disabled={!localDraft||publish.isPending||preview.length!==3} onClick={()=>setConfirmPublishing(true)}><Trophy size={14}/> Publicar pódio</button></div>
-         {confirmPublishing&&<div className="inline-confirm" role="alert"><strong>{podiumState.data?.published?'Atualizar pódio publicado':'Confirmar publicação'}</strong><p>Esta versão só será exibida na TV após a confirmação.</p><label>Motivo da publicação ou retificação<input value={publishReason} onChange={e=>setPublishReason(e.target.value)} minLength={3} placeholder={podiumState.data?.published?'Descreva a retificação':'Publicação inicial'} /></label><div className="toolbar"><button type="button" className="button dark" disabled={publish.isPending||publishReason.trim().length<3} onClick={confirmPublish}>Confirmar publicação</button><button type="button" className="button" onClick={()=>setConfirmPublishing(false)}>Voltar</button></div></div>}
-         {error&&<p style={{color:'#a34238',fontSize:11,marginTop:12}}>{error}</p>}
-       </form>
-       <section className="panel panel-pad">
-         <h2 className="panel-title">Pódio exibido na TV</h2>
-         {board.isLoading||podiumState.isLoading?<LoadingRows/>:board.isError||podiumState.isError?<QueryError retry={()=>{board.refetch();podiumState.refetch();}}/>:<>
-           <div className={`pill ${localDraft?'warn':podium?'neutral':'warn'}`}>{localDraft?'Rascunho privado · TV mantém a versão publicada':podium?'Publicado na TV':'Aguardando publicação dos resultados finais'}</div>
-           <div className="lane-list" style={{marginTop:14}}>{[1,2,3].map(place=>{const item=preview.find(p=>p.place===place);return <div className="lane-card" key={place}><span className="lane-tag">{place}º</span><div><div className="lane-name">{item?.teamName||item?.athleteNames.join(' · ')||'Posição pendente'}</div><div className="lane-meta">{item?.athleteNames.join(' · ')||'Aguardando indicação manual'}</div></div></div>})}</div>
-         </>}
-       </section>
-     </div>;
+  useEffect(()=>{
+    if(availableCategories.length&&!availableCategories.includes(category))setCategory(availableCategories[0]);
+  },[availableCategories,category]);
+  const registrationsInCategory=useMemo(
+    ()=>registrations.data?.filter(reg=>reg.category===category)||[],
+    [registrations.data,category],
+  );
+  const publicPodium=board.data?.podiums?.find(item=>item.category===category);
+  const localDraft=draft?.category===category
+    ?draft
+    :podiumState.data?.draft?.category===category
+      ?podiumState.data.draft
+      :null;
+  const publishedManual=podiumState.data?.published??null;
+  const publicReferenceIds=[1,2,3].map(place=>
+    publicPodium?.places.find(item=>item.place===place)?.registrationId??null,
+  );
+  const sourceIds=localDraft
+    ?localDraft.registrationIds
+    :publishedManual
+      ?publishedManual.registrationIds
+      :publicReferenceIds;
+  const sourceNote=localDraft
+    ?localDraft.arbitrationNote??''
+    :publishedManual
+      ?publishedManual.arbitrationNote??''
+      :publicPodium?.arbitrationNote??'';
+  const formKey=`${eventId}:${category}`;
+  const sourceIdsKey=sourceIds.join('|');
+  const sourceKey=`${localDraft?.version??publishedManual?.version??0}:${localDraft?.updatedAt??publishedManual?.updatedAt??''}:${sourceIdsKey}:${sourceNote}`;
+  const storedForm=categoryForms[formKey];
+  const formState=storedForm?.sourceKey===sourceKey
+    ?storedForm
+    :{sourceKey,registrationIds:sourceIds,arbitrationNote:sourceNote};
+  useEffect(()=>{
+    setCategoryForms(current=>current[formKey]?.sourceKey===sourceKey
+      ?current
+      :{...current,[formKey]:{sourceKey,registrationIds:sourceIds,arbitrationNote:sourceNote}});
+  },[formKey,sourceKey,sourceIdsKey,sourceNote]);
+  const updateForm=(patch:Partial<Pick<PodiumFormState,'registrationIds'|'arbitrationNote'>>)=>{
+    setCategoryForms(current=>({
+      ...current,
+      [formKey]:{
+        sourceKey,
+        registrationIds:patch.registrationIds??formState.registrationIds,
+        arbitrationNote:patch.arbitrationNote??formState.arbitrationNote,
+      },
+    }));
+  };
+  const saveDraft=(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    setError('');
+    const ids=formState.registrationIds;
+    const selected=ids.filter((id):id is string=>Boolean(id));
+    if(new Set(selected).size!==selected.length){
+      setError('Cada participação só pode ocupar uma posição do pódio.');
+      return;
+    }
+    save.mutate({
+      eventId,
+      category,
+      data:{
+        registrationIds:ids,
+        arbitrationNote:formState.arbitrationNote.trim()||null,
+      },
+    },{
+      onSuccess:saved=>{
+        setDraft(saved);
+        setError('');
+        qc.invalidateQueries({queryKey:getGetZero3PodiumStateQueryKey(eventId,category)});
+      },
+      onError:err=>setError(feedback(err)),
+    });
+  };
+  const confirmPublish=()=>{
+    if(!localDraft||publishReason.trim().length<3)return;
+    publish.mutate({eventId,category,data:{reason:publishReason.trim()}},{
+      onSuccess:()=>{
+        setDraft(null);
+        setConfirmPublishing(false);
+        setPublishReason('');
+        setError('');
+        qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})});
+        qc.invalidateQueries({queryKey:getGetZero3PodiumStateQueryKey(eventId,category)});
+      },
+      onError:err=>setError(feedback(err)),
+    });
+  };
+  const draftPreview:PodiumAwardPlace[]=localDraft?.registrationIds.flatMap((id,index)=>{
+    const registration=registrations.data?.find(item=>item.id===id);
+    return registration?[{
+      place:index+1,
+      registrationId:registration.id,
+      teamName:registration.teamName,
+      athleteNames:registration.athleteNames,
+    }]:[];
+  })||[];
+  const publishedPreview:PodiumAwardPlace[]=publicPodium?.places||[];
+  const draftHasThreeDistinctPlaces=Boolean(localDraft)&&
+    localDraft!.registrationIds.length===3&&localDraft!.registrationIds.every(Boolean)&&
+    new Set(localDraft!.registrationIds).size===3;
+  const draftMatchesForm=Boolean(localDraft)&&
+    localDraft!.registrationIds.every((id,index)=>id===formState.registrationIds[index])&&
+    (localDraft!.arbitrationNote??'')===formState.arbitrationNote.trim();
+  const canPublishDraft=draftHasThreeDistinctPlaces&&draftMatchesForm;
+  const publishedLabel=publishedManual
+    ?'Pódio da arbitragem publicado'
+    :publicPodium?.places.length
+      ?'Classificação pública do ranking'
+      :'Nenhum pódio público disponível';
+
+  return <div className="grid-two">
+    <form className="panel panel-pad" onSubmit={saveDraft}>
+      <h2 className="panel-title">Montar pódio final do evento</h2>
+      <p className="field-help">Selecione participações de toda a categoria, sem limitar a bateria. O pódio não altera marcas nem pontos.</p>
+      <div className="field">
+        <label htmlFor="podium-category">Categoria</label>
+        <select id="podium-category" value={category} onChange={event=>{
+          setCategory(event.target.value);
+          setDraft(null);
+          setConfirmPublishing(false);
+          setPublishReason('');
+          setError('');
+        }}>
+          {availableCategories.map(value=><option key={value} value={value}>{categoryName(value)}</option>)}
+        </select>
+      </div>
+      {[0,1,2].map(index=><div className="field" key={`${category}-${index}`}>
+        <label htmlFor={`place${index}`}>{['1º lugar','2º lugar','3º lugar'][index]}</label>
+          <select id={`place${index}`} value={formState.registrationIds[index]||''}
+            disabled={confirmPublishing||save.isPending||publish.isPending}
+          onChange={event=>{
+            const registrationIds=[...formState.registrationIds];
+            registrationIds[index]=event.target.value||null;
+            updateForm({registrationIds});
+          }}>
+          <option value="">Sem colocação</option>
+          {registrationsInCategory.map(registration=>{
+            const alreadySelected=formState.registrationIds.some((id,otherIndex)=>otherIndex!==index&&id===registration.id);
+            return <option key={registration.id} value={registration.id} disabled={alreadySelected}>
+              {registration.teamName||`Equipe ${registration.laneLabel||registration.id.slice(0,6).toUpperCase()} — nome pendente`}
+              {registration.athleteNames.length?` · ${registration.athleteNames.join(' / ')}`:''}
+              {alreadySelected?' · já selecionada':''}
+            </option>;
+          })}
+        </select>
+      </div>)}
+      <div className="field">
+        <label htmlFor="podium-arbitration-note">Observação da arbitragem (opcional)</label>
+        <textarea id="podium-arbitration-note" value={formState.arbitrationNote}
+          onChange={event=>updateForm({arbitrationNote:event.target.value})}
+          disabled={confirmPublishing||save.isPending||publish.isPending}
+          maxLength={2000} rows={3} placeholder="Observação interna desta categoria; só aparece após publicar."/>
+        <span className="field-help">Texto simples. Uma observação vazia não será exibida.</span>
+      </div>
+      <div className="toolbar">
+        <button className="button primary" disabled={save.isPending||registrations.isError}>
+          <Save size={14}/> {save.isPending?'Salvando…':'Salvar rascunho'}
+        </button>
+        <button type="button" className="button dark" disabled={!canPublishDraft||publish.isPending}
+          onClick={()=>setConfirmPublishing(true)}>
+          <Trophy size={14}/> Publicar pódio
+        </button>
+      </div>
+      {localDraft&&draftHasThreeDistinctPlaces&&!draftMatchesForm&&<p className="field-help">Há alterações sem salvar. Salve o rascunho antes de publicar para que as colocações e a observação correspondam.</p>}
+      {confirmPublishing&&<div className="inline-confirm" role="alert">
+        <strong>{publishedManual?'Atualizar pódio publicado':'Confirmar publicação'}</strong>
+        <p>O rascunho e sua observação só serão exibidos ao público após a confirmação. Publicar o pódio não publica resultados nem encerra o evento.</p>
+        <label htmlFor="podium-publish-reason">Motivo da publicação ou retificação
+          <input id="podium-publish-reason" value={publishReason}
+            onChange={event=>setPublishReason(event.target.value)} minLength={3}
+            placeholder={publishedManual?'Descreva a retificação':'Publicação inicial'}/>
+        </label>
+        <div className="toolbar">
+          <button type="button" className="button dark" disabled={publish.isPending||publishReason.trim().length<3}
+            onClick={confirmPublish}>{publish.isPending?'Publicando…':'Confirmar publicação'}</button>
+          <button type="button" className="button" onClick={()=>setConfirmPublishing(false)}>Voltar</button>
+        </div>
+      </div>}
+      {error&&<p role="alert" className="error-box" style={{marginTop:12}}>{error}</p>}
+    </form>
+    <section className="panel panel-pad">
+      <h2 className="panel-title">Pódio exibido na TV e no placar</h2>
+      {board.isLoading||podiumState.isLoading||registrations.isLoading?<LoadingRows/>
+        :board.isError||podiumState.isError||registrations.isError?<QueryError retry={()=>{board.refetch();podiumState.refetch();registrations.refetch();}}/>
+        :<>
+          <div className={`pill ${publishedManual?'':'neutral'}`} data-testid="podium-publication-state">{publishedLabel}</div>
+          {publishedPreview.length
+            ?<div style={{marginTop:12}}><PodiumAwards places={publishedPreview}
+              arbitrationNote={publicPodium?.arbitrationNote} label={`Pódio público de ${categoryName(category)}`}/></div>
+            :<p className="field-help" style={{marginTop:12}}>Ainda não há pódio publicado para esta categoria.</p>}
+          <section className="podium-editor-preview" aria-label="Prévia privada do rascunho">
+            <h3>Rascunho privado · não publicado</h3>
+            {localDraft
+              ?<PodiumAwards places={draftPreview} arbitrationNote={localDraft.arbitrationNote}
+                showEmptyPositions label={`Rascunho privado de ${categoryName(category)}`}/>
+              :<p className="field-help">Nenhum rascunho salvo para esta categoria. O que está no formulário ainda não foi salvo.</p>}
+          </section>
+        </>}
+    </section>
+  </div>;
 }
 
 export function RosterPage() {

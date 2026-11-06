@@ -41,6 +41,7 @@ test("exposes pause and stop as separate commands while running", () => {
   assert.deepEqual(eventBatteryTimerActions("RUNNING"), [
     { action: "pause", label: "Pausar" },
     { action: "finish", label: "Parar" },
+    { action: "reset", label: "Voltar para Não iniciada" },
     { action: "cancel", label: "Cancelar bateria" },
   ]);
 });
@@ -55,6 +56,12 @@ test("exposes resume and stop separately after a pause", () => {
 });
 
 test("finished and cancelled clocks can be explicitly reset without touching results", () => {
+  assert.deepEqual(eventBatteryTimerActions("RUNNING").map((item) => item.action), [
+    "pause", "finish", "reset", "cancel",
+  ]);
+  assert.deepEqual(eventBatteryTimerActions("PAUSED").map((item) => item.action), [
+    "resume", "finish", "reset", "cancel",
+  ]);
   assert.deepEqual(eventBatteryTimerActions("FINISHED"), [
     { action: "reset", label: "Voltar para Não iniciada" },
   ]);
@@ -73,9 +80,14 @@ test("status choices route operational finalization separately from stopping a t
   assert.equal(eventBatteryTimerStatusAction("PAUSED", "FINISHED"), "finalize");
   assert.equal(eventBatteryTimerStatusAction("RUNNING", "CANCELLED"), "cancel");
   assert.equal(eventBatteryTimerStatusAction("FINISHED", "IDLE"), "reset");
-  assert.equal(eventBatteryTimerStatusAction("RUNNING", "IDLE"), null);
+  assert.equal(eventBatteryTimerStatusAction("RUNNING", "IDLE"), "reset");
+  assert.equal(eventBatteryTimerStatusAction("CANCELLED", "IDLE"), "reset");
+  assert.equal(eventBatteryTimerStatusAction("PREPARATION", "IDLE"), "reset");
+  for (const state of ["PREPARATION", "RUNNING", "PAUSED", "FINISHED", "CANCELLED"] as const) {
+    assert.ok(eventBatteryTimerStatusChoices(state).some((choice) => choice.state === "IDLE"));
+  }
   assert.deepEqual(
     eventBatteryTimerStatusChoices("RUNNING").map((choice) => choice.label),
-    ["Em andamento", "Pausada", "Finalizada", "Cancelada"],
+    ["Em andamento", "Não iniciada", "Pausada", "Finalizada", "Cancelada"],
   );
 });

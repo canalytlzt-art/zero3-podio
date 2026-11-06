@@ -1,0 +1,73 @@
+.zero3-podium-awards { display: grid; gap: 10px; min-width: 0; }
+.zero3-podium-awards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.zero3-podium-award {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e8e4ed;
+  border-radius: 6px;
+  background: #fff;
+}
+.zero3-podium-award-icon { margin-top: 1px; }
+.zero3-podium-award.place-1 .zero3-podium-award-icon { color: #b98c19; }
+.zero3-podium-award.place-2 .zero3-podium-award-icon { color: #8c929b; }
+.zero3-podium-award.place-3 .zero3-podium-award-icon { color: #a86742; }
+.zero3-podium-award-copy { display: grid; gap: 3px; min-width: 0; }
+.zero3-podium-award-copy > span {
+  color: #706a77;
+  font: 700 9px/1.3 var(--font-data, Consolas, monospace);
+  text-transform: uppercase;
+}
+.zero3-podium-award-copy strong,
+.zero3-podium-award-copy small {
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+.zero3-podium-award-copy strong { color: #29252f; font-size: 11px; }
+.zero3-podium-award-copy small { color: #77727e; font-size: 9px; }
+.zero3-podium-observation {
+  padding: 9px 11px;
+  border-left: 3px solid #7560a1;
+  border-radius: 0 4px 4px 0;
+  background: #f5f2fa;
+}
+.zero3-podium-observation strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #57467d;
+  font: 700 8px/1.4 var(--font-data, Consolas, monospace);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.zero3-podium-observation p {
+  margin: 0;
+  color: #403a4a;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.podium-editor-preview {
+  display: grid;
+  gap: 9px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #e6e2eb;
+}
+.podium-editor-preview h3 {
+  margin: 0;
+  color: #625d6a;
+  font: 700 9px/1.4 var(--font-data, Consolas, monospace);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+@media (max-width: 540px) {
+  .zero3-podium-awards-grid { grid-template-columns: 1fr; }
+}

@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS zero3_battery_duration_audit (
   command_id TEXT NOT NULL,
   clerk_user_id TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role = 'ADMIN'),
+  change_type TEXT NOT NULL DEFAULT 'SET' CHECK (change_type IN ('SET', 'ADD')),
+  additional_ms INTEGER NOT NULL DEFAULT 0 CHECK (additional_ms >= 0),
   old_elapsed_ms INTEGER NOT NULL CHECK (old_elapsed_ms >= 0),
   new_elapsed_ms INTEGER NOT NULL CHECK (new_elapsed_ms >= 0),
   changed_at TEXT NOT NULL,

@@ -400,6 +400,7 @@ export const zero3PodiumsTable = pgTable(
     publishedBy: text("published_by"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     publishReason: text("publish_reason"),
+    arbitrationNote: text("arbitration_note"),
     version: integer("version").notNull().default(1),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

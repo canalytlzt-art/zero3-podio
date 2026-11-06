@@ -710,11 +710,13 @@ test("manually published podium overrides only its event category presentation",
   const manual = [{
     category: "SC",
     places: [{ place: 1, registrationId: "sc-manual", teamName: "Indicação manual", athleteNames: ["Atleta 2"] }],
+    arbitrationNote: "Homologado pela arbitragem.",
   }];
   assert.deepEqual(mergeRankingPodiums(calculated, manual), [
     ...manual,
     calculated[1],
   ]);
+  assert.equal(mergeRankingPodiums(calculated, manual)[0]?.arbitrationNote, "Homologado pela arbitragem.");
   assert.equal(calculated[0]?.places[0]?.registrationId, "sc-rank");
 });
 

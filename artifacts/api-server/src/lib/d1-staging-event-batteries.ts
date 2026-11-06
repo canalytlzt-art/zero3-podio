@@ -11,6 +11,9 @@ import {
   UpdateZero3EventBatteryDurationBody,
   UpdateZero3EventBatteryDurationParams,
   UpdateZero3EventBatteryDurationResponse,
+  AddZero3EventBatteryTimeBody,
+  AddZero3EventBatteryTimeParams,
+  AddZero3EventBatteryTimeResponse,
   FinalizeZero3EventBatteryBody,
   FinalizeZero3EventBatteryParams,
   FinalizeZero3EventBatteryResponse,
@@ -42,6 +45,7 @@ import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 import { workerLogger } from "./worker-logger";
 import { computeBatteryCapStop } from "./battery-time-cap";
 import { batteryEventDurationMs } from "./battery-event-duration";
+import { computeBatteryTimeAdjustment } from "./battery-time-adjustment";
 
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
 const ACCESS_ROLES = ["ADMIN", "JUIZ_CHEFE", "JUIZ"] as const;
@@ -540,6 +544,112 @@ export async function handleD1StagingEventBatteries(
     return true;
   }
 
+  const timeAdjustmentMatch = route.match(/^\/events\/([^/]+)\/batteries\/([^/]+)\/time-adjustment$/);
+  if (timeAdjustmentMatch && req.method === "PATCH") {
+    const member = await requireD1Member(req, res, DB, EVENT_ROLES);
+    if (!member) return true;
+    if (member.role !== "ADMIN") {
+      d1ApiError(req, res, 403, "TIME_ADJUSTMENT_ADMIN_REQUIRED", "Somente ADMIN pode adicionar tempo ao cronômetro.");
+      return true;
+    }
+    const params = AddZero3EventBatteryTimeParams.safeParse({
+      eventId: timeAdjustmentMatch[1], batteryId: timeAdjustmentMatch[2],
+    });
+    const body = AddZero3EventBatteryTimeBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({
+        error: !params.success ? params.error.message : !body.success ? body.error.message : "Dados inválidos.",
+      });
+      return true;
+    }
+    const { eventId, batteryId } = params.data;
+    const { additionalMs, expectedTimerVersion, commandId } = body.data;
+    const now = new Date();
+    const nowIso = now.toISOString();
+    try {
+      const prior = await DB.prepare(`SELECT battery_id_snapshot,change_type,additional_ms
+        FROM zero3_battery_duration_audit WHERE event_id=? AND command_id=?`)
+        .bind(eventId, commandId).first<{
+          battery_id_snapshot: string; change_type: string; additional_ms: number;
+        }>();
+      if (prior) {
+        if (prior.battery_id_snapshot !== batteryId ||
+            prior.change_type !== "ADD" || prior.additional_ms !== additionalMs) {
+          d1ApiError(req, res, 409, "TIME_ADJUSTMENT_COMMAND_CONFLICT", "Este identificador de comando já foi usado para outra operação.");
+          return true;
+        }
+        const saved = (await listD1EventBatteries(DB, eventId, now))
+          ?.find((item) => item.id === batteryId);
+        if (!saved) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
+        res.json(AddZero3EventBatteryTimeResponse.parse(saved));
+        return true;
+      }
+
+      const run = await DB.prepare(`SELECT state,elapsed_ms,started_at,stopped_at,version
+        FROM zero3_battery_runs WHERE battery_id=? AND event_id=?`)
+        .bind(batteryId, eventId).first<Pick<
+          RunRow, "state" | "elapsed_ms" | "started_at" | "stopped_at" | "version"
+        >>();
+      if (!run) { d1ApiError(req, res, 404, "BATTERY_TIMER_NOT_FOUND", "O cronômetro desta bateria não existe."); return true; }
+      if (run.version !== expectedTimerVersion) {
+        d1ApiError(req, res, 409, "TIMER_ADJUSTMENT_VERSION_CONFLICT", "O cronômetro mudou em outra tela. Atualize antes de adicionar tempo.");
+        return true;
+      }
+      const battery = await DB.prepare(`SELECT time_cap_ms FROM zero3_batteries
+        WHERE id=? AND event_id=?`)
+        .bind(batteryId, eventId).first<{ time_cap_ms: number }>();
+      if (!battery) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
+      const adjustment = computeBatteryTimeAdjustment({
+        state: run.state,
+        elapsedMs: run.elapsed_ms,
+        startedAt: run.started_at,
+        stoppedAt: run.stopped_at,
+        timeCapMs: battery.time_cap_ms,
+        nowMs: now.getTime(),
+        additionalMs,
+      });
+      if (!adjustment) {
+        d1ApiError(req, res, 409, "TIMER_ADJUSTMENT_STATE_CONFLICT", "Adicione tempo somente a uma bateria em andamento, pausada ou finalizada.");
+        return true;
+      }
+
+      const batch = await DB.batch([
+        DB.prepare(`UPDATE zero3_battery_runs
+          SET state=?,elapsed_ms=?,started_at=?,stopped_at=?,version=version+1,
+              last_command_id=?,updated_at=?
+          WHERE battery_id=? AND event_id=? AND state=? AND version=? AND elapsed_ms=?
+            AND started_at IS ?`)
+          .bind(adjustment.state, adjustment.elapsedMs, adjustment.startedAt,
+            adjustment.stoppedAt, commandId, nowIso, batteryId, eventId, run.state,
+            expectedTimerVersion, run.elapsed_ms, run.started_at),
+        DB.prepare(`INSERT INTO zero3_battery_duration_audit(
+            id,event_id,battery_id,battery_id_snapshot,command_id,clerk_user_id,role,
+            change_type,additional_ms,old_elapsed_ms,new_elapsed_ms,changed_at
+          )
+          SELECT ?,?,?,?,?,?,?,'ADD',?,?,?,? WHERE changes()=1`)
+          .bind(newD1Id(), eventId, batteryId, batteryId, commandId, member.clerk_user_id,
+            member.role, additionalMs, adjustment.previousElapsedMs,
+            adjustment.newElapsedMs, nowIso),
+        changedRowsGuard(DB, eventId),
+      ]);
+      if ((batch[0]?.meta.changes ?? 0) !== 1 || (batch[1]?.meta.changes ?? 0) !== 1) {
+        d1ApiError(req, res, 409, "TIMER_ADJUSTMENT_VERSION_CONFLICT", "O cronômetro mudou antes de salvar. Atualize e tente novamente.");
+        return true;
+      }
+      const saved = (await listD1EventBatteries(DB, eventId, now))
+        ?.find((item) => item.id === batteryId);
+      if (!saved) { d1ApiError(req, res, 500, "API_INTERNAL_ERROR", "O tempo foi atualizado, mas não foi possível reler a bateria."); return true; }
+      res.json(AddZero3EventBatteryTimeResponse.parse(saved));
+    } catch (error) {
+      if (isBatteryConstraintConflict(error)) {
+        d1ApiError(req, res, 409, "TIME_ADJUSTMENT_COMMAND_CONFLICT", "A adição de tempo entrou em conflito com outra alteração.");
+      } else {
+        d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível adicionar tempo ao cronômetro.");
+      }
+    }
+    return true;
+  }
+
   const durationMatch = route.match(/^\/events\/([^/]+)\/batteries\/([^/]+)\/duration$/);
   if (durationMatch && req.method === "PATCH") {
     const member = await requireD1Member(req, res, DB, EVENT_ROLES);
@@ -563,13 +673,15 @@ export async function handleD1StagingEventBatteries(
     const now = new Date();
     const nowIso = now.toISOString();
     try {
-      const prior = await DB.prepare(`SELECT battery_id_snapshot,old_elapsed_ms,new_elapsed_ms
+      const prior = await DB.prepare(`SELECT battery_id_snapshot,change_type,additional_ms,old_elapsed_ms,new_elapsed_ms
         FROM zero3_battery_duration_audit WHERE event_id=? AND command_id=?`)
         .bind(eventId, commandId).first<{
-          battery_id_snapshot: string; old_elapsed_ms: number; new_elapsed_ms: number;
+          battery_id_snapshot: string; change_type: string; additional_ms: number;
+          old_elapsed_ms: number; new_elapsed_ms: number;
         }>();
       if (prior) {
         if (prior.battery_id_snapshot !== batteryId ||
+            prior.change_type !== "SET" || prior.additional_ms !== 0 ||
             prior.old_elapsed_ms !== expectedDurationMs || prior.new_elapsed_ms !== durationMs) {
           d1ApiError(req, res, 409, "BATTERY_DURATION_COMMAND_CONFLICT", "Este identificador de comando já foi usado para outra correção.");
           return true;
@@ -608,9 +720,9 @@ export async function handleD1StagingEventBatteries(
           .bind(durationMs, nowIso, batteryId, eventId, expectedDurationMs, expectedTimerVersion),
         DB.prepare(`INSERT INTO zero3_battery_duration_audit(
             id,event_id,battery_id,battery_id_snapshot,command_id,clerk_user_id,role,
-            old_elapsed_ms,new_elapsed_ms,changed_at
+            change_type,additional_ms,old_elapsed_ms,new_elapsed_ms,changed_at
           )
-          SELECT ?,?,?,?,?,?,?,?,?,? WHERE changes()=1`)
+          SELECT ?,?,?,?,?,?,?,'SET',0,?,?,? WHERE changes()=1`)
           .bind(newD1Id(), eventId, batteryId, batteryId, commandId, member.clerk_user_id,
             member.role, expectedDurationMs, durationMs, nowIso),
         changedRowsGuard(DB, eventId),
@@ -654,14 +766,16 @@ export async function handleD1StagingEventBatteries(
       const battery = await DB.prepare("SELECT id,operational_finalized_at FROM zero3_batteries WHERE id=? AND event_id=?")
         .bind(batteryId, eventId).first<{ id: string; operational_finalized_at: string | null }>();
       if (!battery) { d1ApiError(req, res, 409, "BATTERY_SELECTION_CONFLICT", "A bateria não pertence a este evento."); return true; }
-      if (battery.operational_finalized_at) {
+      if (battery.operational_finalized_at && parsed.data.action !== "reset") {
         d1ApiError(req, res, 409, "BATTERY_OPERATIONAL_FINALIZED", "Esta bateria já foi finalizada e não pode reiniciar o cronômetro.");
         return true;
       }
       await DB.prepare("INSERT OR IGNORE INTO zero3_battery_runs(battery_id,event_id) VALUES(?,?)")
         .bind(batteryId, eventId).run();
-      await advanceDuePreparations(DB, eventId, now);
-      await advanceReachedBatteryCaps(DB, eventId, now);
+      if (parsed.data.action !== "reset") {
+        await advanceDuePreparations(DB, eventId, now);
+        await advanceReachedBatteryCaps(DB, eventId, now);
+      }
       let run = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE battery_id=? AND event_id=?")
         .bind(batteryId, eventId).first<RunRow>();
       if (!run) { d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível consultar o cronômetro da bateria."); return true; }
@@ -767,10 +881,6 @@ export async function handleD1StagingEventBatteries(
           };
           break;
         case "reset":
-          if (!["IDLE", "PREPARATION", "PAUSED", "FINISHED", "CANCELLED"].includes(run.state)) {
-            res.status(409).json({ error: "Pause, finalize ou cancele a bateria antes de voltar para Não iniciada." });
-            return true;
-          }
           next = { state: "IDLE", elapsed_ms: 0, started_at: null, preparation_ends_at: null,
             preparation_started_at:null,first_started_at:run.first_started_at,stopped_at:nowIso };
           break;
@@ -781,12 +891,12 @@ export async function handleD1StagingEventBatteries(
             last_command_id=?,updated_at=?
         WHERE battery_id=? AND event_id=? AND version=?
           AND (last_command_id IS NULL OR last_command_id<>?)
-          AND EXISTS(SELECT 1 FROM zero3_batteries
-            WHERE id=? AND event_id=? AND operational_finalized_at IS NULL)`)
+          AND (?='reset' OR EXISTS(SELECT 1 FROM zero3_batteries
+            WHERE id=? AND event_id=? AND operational_finalized_at IS NULL))`)
         .bind(next.state, next.elapsed_ms, next.started_at, next.preparation_ends_at,
           next.preparation_started_at,next.first_started_at,next.stopped_at,
           parsed.data.commandId, nowIso, batteryId, eventId, parsed.data.expectedVersion,
-          parsed.data.commandId,batteryId,eventId).run();
+          parsed.data.commandId,parsed.data.action,batteryId,eventId).run();
       run = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE battery_id=? AND event_id=?")
         .bind(batteryId, eventId).first<RunRow>();
       if ((saved.meta.changes ?? 0) !== 1) {

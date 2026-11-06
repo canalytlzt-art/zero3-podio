@@ -12,3 +12,13 @@ export function parseBatteryDuration(input: string): number | null {
   const value = minutes * 60_000 + seconds * 1_000 + centiseconds * 10;
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
+
+export function parseBatteryTimeAddition(minutesInput: string, secondsInput: string): number | null {
+  if (!/^\d+$/.test(minutesInput.trim()) || !/^\d+$/.test(secondsInput.trim())) return null;
+  const minutes = Number(minutesInput);
+  const seconds = Number(secondsInput);
+  if (!Number.isSafeInteger(minutes) || minutes < 0 ||
+      !Number.isSafeInteger(seconds) || seconds < 0 || seconds > 59) return null;
+  const value = minutes * 60_000 + seconds * 1_000;
+  return Number.isSafeInteger(value) && value >= 1_000 ? value : null;
+}

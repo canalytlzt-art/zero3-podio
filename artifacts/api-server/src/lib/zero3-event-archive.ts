@@ -275,7 +275,13 @@ export async function validateZero3EventBackup(
     batteryPublications: versionNumber >= 4 ? normalizedSource.batteryPublications : [],
     rankingPublications: versionNumber >= 5 ? normalizedSource.rankingPublications : [],
     batteryTimeCapAudit: versionNumber >= 7 ? normalizedSource.batteryTimeCapAudit : [],
-    batteryDurationAudit: versionNumber >= 8 ? normalizedSource.batteryDurationAudit : [],
+    batteryDurationAudit: versionNumber >= 8
+      ? (normalizedSource.batteryDurationAudit as EventBackupRow[]).map((row) => ({
+        ...row,
+        change_type: row.change_type ?? "SET",
+        additional_ms: row.additional_ms ?? 0,
+      }))
+      : [],
   },ZERO3_EVENT_BACKUP_COLLECTIONS) as unknown as Zero3EventBackupData;
   const counts = {
     event:1,

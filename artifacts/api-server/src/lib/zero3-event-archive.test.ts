@@ -4,6 +4,7 @@ import {
   createZero3EventBackup,
   stableZero3Json,
   validateZero3EventBackup,
+  ZERO3_EVENT_BACKUP_VERSION,
   type Zero3EventBackupData,
 } from "./zero3-event-archive";
 
@@ -30,6 +31,7 @@ const emptyCollections = {
   activeBatteries: [],
   batteryRuns: [],
   batteryPublications: [],
+  batteryDurationAudit: [],
 };
 
 test("event backup digest is stable across object keys and row ordering", async () => {
@@ -73,7 +75,11 @@ test("event backup normalizes PostgreSQL and D1 JSON/date values for restore", a
       athlete_ids: '["athlete-1","athlete-2"]',
     }],
     athletes: [{ id: "athlete-1", full_name: "Atleta Fictício" }],
-    podiumVersions: [{ event_id: "event-roundtrip", published: 1 }],
+    podiumVersions: [{
+      event_id: "event-roundtrip",
+      published: 1,
+      arbitration_note: "Observação de teste preservada.",
+    }],
   } as unknown as Zero3EventBackupData;
 
   const backup = await createZero3EventBackup(data.event, data);
@@ -83,6 +89,7 @@ test("event backup normalizes PostgreSQL and D1 JSON/date values for restore", a
   if (checked.ok) {
     assert.deepEqual(checked.backup.data.registrations[0].athlete_ids, ["athlete-1", "athlete-2"]);
     assert.equal(checked.backup.data.podiumVersions[0].published, 1);
+    assert.equal(checked.backup.data.podiumVersions[0].arbitration_note, "Observação de teste preservada.");
     assert.deepEqual(checked.backup.data.heatPublications[0].results_json, [{ id: "result-1" }]);
     assert.deepEqual(checked.backup.data.heatPublications[0].leaderboards_json, [{ category: "RX" }]);
     assert.deepEqual(checked.backup.data.batteryPublications[0].results_json, [{ id: "event-result-1" }]);
@@ -131,6 +138,14 @@ test("legacy backup versions remain restorable after adding ranking publication 
       delete legacy.data.rankingPublications;
       delete legacy.counts.rankingPublications;
     }
+    if(version<6){
+      delete legacy.data.batteryTimeCapAudit;
+      delete legacy.counts.batteryTimeCapAudit;
+    }
+    if(version<8){
+      delete legacy.data.batteryDurationAudit;
+      delete legacy.counts.batteryDurationAudit;
+    }
     const payload={
       format:legacy.format,version:legacy.version,eventId:legacy.eventId,eventName:legacy.eventName,
       counts:legacy.counts,data:legacy.data,
@@ -140,7 +155,7 @@ test("legacy backup versions remain restorable after adding ranking publication 
     const checked=await validateZero3EventBackup(legacy);
     assert.equal(checked.ok,true);
     if(checked.ok){
-      assert.equal(checked.backup.version,6);
+      assert.equal(checked.backup.version,ZERO3_EVENT_BACKUP_VERSION);
       assert.deepEqual(checked.backup.data.heatRuns,[]);
       if(version<3) assert.deepEqual(checked.backup.data.heatPublications,[]);
       assert.deepEqual(checked.backup.data.batteries,[]);
@@ -162,6 +177,10 @@ test("version 5 battery backups restore with nullable operational finalization f
   const current=await createZero3EventBackup(data.event,data);
   const legacy=structuredClone(current) as unknown as Record<string,any>;
   legacy.version=5;
+  delete legacy.data.batteryTimeCapAudit;
+  delete legacy.counts.batteryTimeCapAudit;
+  delete legacy.data.batteryDurationAudit;
+  delete legacy.counts.batteryDurationAudit;
   for(const row of legacy.data.batteries) {
     delete row.operational_finalized_at;
     delete row.operational_finalized_by;
@@ -175,8 +194,40 @@ test("version 5 battery backups restore with nullable operational finalization f
   const checked=await validateZero3EventBackup(legacy);
   assert.equal(checked.ok,true);
   if(checked.ok) {
-    assert.equal(checked.backup.version,6);
+    assert.equal(checked.backup.version,ZERO3_EVENT_BACKUP_VERSION);
     assert.equal(checked.backup.data.batteries[0].operational_finalized_at,null);
     assert.equal(checked.backup.data.batteries[0].operational_finalized_by,null);
+  }
+});
+
+test("version 8 duration audit backups preserve add metadata and default old correction rows",async()=>{
+  const data={
+    event:{id:"duration-audit-event",name:"Auditoria de duração"},
+    ...emptyCollections,
+    batteryDurationAudit:[{
+      id:"audit-add",event_id:"duration-audit-event",battery_id:"battery-1",
+      battery_id_snapshot:"battery-1",command_id:"add-1",clerk_user_id:"clerk-admin",
+      role:"ADMIN",change_type:"ADD",additional_ms:1500000,
+      old_elapsed_ms:600000,new_elapsed_ms:2100000,changed_at:"2026-11-05T12:10:00.000Z",
+    }],
+  } as unknown as Zero3EventBackupData;
+  const current=await createZero3EventBackup(data.event,data);
+  assert.equal(current.data.batteryDurationAudit[0]?.change_type,"ADD");
+  assert.equal(current.data.batteryDurationAudit[0]?.additional_ms,1500000);
+
+  const legacy=structuredClone(current) as unknown as Record<string,any>;
+  delete legacy.data.batteryDurationAudit[0].change_type;
+  delete legacy.data.batteryDurationAudit[0].additional_ms;
+  const payload={
+    format:legacy.format,version:legacy.version,eventId:legacy.eventId,eventName:legacy.eventName,
+    counts:legacy.counts,data:legacy.data,
+  };
+  const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(stableZero3Json(payload)));
+  legacy.digest=Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,"0")).join("");
+  const checked=await validateZero3EventBackup(legacy);
+  assert.equal(checked.ok,true);
+  if(checked.ok) {
+    assert.equal(checked.backup.data.batteryDurationAudit[0]?.change_type,"SET");
+    assert.equal(checked.backup.data.batteryDurationAudit[0]?.additional_ms,0);
   }
 });

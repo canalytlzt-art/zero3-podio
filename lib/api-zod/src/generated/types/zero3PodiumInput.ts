@@ -12,4 +12,9 @@ export interface Zero3PodiumInput {
      * @maxItems 3
      */
   registrationIds: (string | null)[];
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  arbitrationNote?: string | null;
 }

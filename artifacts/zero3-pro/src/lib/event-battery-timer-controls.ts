@@ -37,7 +37,7 @@ export function eventBatteryTimerStatusChoices(
   const transitions: Partial<Record<EventBatteryTimerState, Partial<Record<EventBatteryTimerState, EventBatteryTimerCommand | "finalize">>>> = {
     IDLE: { RUNNING: "prepare", FINISHED: "finalize", CANCELLED: "cancel" },
     PREPARATION: { IDLE: "reset", FINISHED: "finalize", CANCELLED: "cancel" },
-    RUNNING: { PAUSED: "pause", FINISHED: "finalize", CANCELLED: "cancel" },
+    RUNNING: { IDLE: "reset", PAUSED: "pause", FINISHED: "finalize", CANCELLED: "cancel" },
     PAUSED: { IDLE: "reset", RUNNING: "resume", FINISHED: "finalize", CANCELLED: "cancel" },
     FINISHED: { IDLE: "reset" },
     CANCELLED: { IDLE: "reset", FINISHED: "finalize" },
@@ -82,6 +82,7 @@ export function eventBatteryTimerActions(state?: string | null): Array<{
       return [
         { action: "pause", label: "Pausar" },
         { action: "finish", label: "Parar" },
+        { action: "reset", label: "Voltar para Não iniciada" },
         { action: "cancel", label: "Cancelar bateria" },
       ];
     case "PAUSED":

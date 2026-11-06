@@ -29,6 +29,12 @@ An ADMIN may correct a finished battery's recorded duration without changing its
 
 **How to apply:** Require a finished run and concurrency checks, update only its elapsed value/version, and atomically append the duration audit record. Include that audit in event backup/restore.
 
+Timer reset returns only the selected run to IDLE, from any operational timer state, without deleting first-start history, results, revisions, or publications. Adding elapsed time uses the server's effective live time; only a running timer is clamped/stopped at its own CAP. Paused and finished timers remain stopped even when the adjusted duration exceeds CAP. Record additive and absolute changes in the same audit history.
+
+**Why:** The user asked for a reusable reset that cannot erase official results, and an auditable time addition that does not resume stopped timers or affect another battery.
+
+**How to apply:** Keep both commands ADMIN-only, target stable event/battery IDs, use expected timer versions and command IDs, and update the run plus audit atomically. Reset clears transient run fields but preserves first-start history; additions never change results or publications.
+
 Scheduled start is also attached to the stable battery ID and event, but remains separate from the actual timer start and elapsed time. It is displayed in Brasília time, stays visible after launch, and may be edited without starting, pausing, resetting, or changing the timer. An unset schedule stays unset rather than being inferred from battery order.
 
 **Why:** The user explicitly distinguished expected start time from recorded timer start and prohibited inventing intervals or coupling schedule edits to timer commands.

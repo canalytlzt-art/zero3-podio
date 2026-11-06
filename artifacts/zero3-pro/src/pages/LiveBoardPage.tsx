@@ -26,6 +26,7 @@ import {
 } from '@/lib/public-battery-status';
 import './LiveBoardPage.css';
 import { RulesDialog } from '@/components/public/RulesDialog';
+import { PodiumAwards } from '@/components/public/PodiumAwards';
 
 type BoardView = 'battery' | 'overall';
 const publicBase = import.meta.env.BASE_URL;
@@ -397,9 +398,10 @@ function OverallBoard({ board }: { board: Zero3PublicBoard }) {
         const correction = isCorrectionPending(leaderboard) || entries.some((entry) =>
           isCorrectionPending(entry) || entry.proofScores.some((score) => score.status === 'PUBLICATION_PENDING'),
         );
+        const publishedPodium=board.podiums.find(item=>item.category===category);
         return (
           <OverallCategory key={category} category={category} leaderboard={leaderboard} entries={entries}
-            proofs={proofs} correction={correction} />
+            proofs={proofs} correction={correction} publishedPodium={publishedPodium} />
         );
       })}
     </div>
@@ -413,12 +415,13 @@ function compareOverallEntries(a: Zero3LeaderboardEntry, b: Zero3LeaderboardEntr
   return (a.totalPoints ?? Number.MAX_SAFE_INTEGER) - (b.totalPoints ?? Number.MAX_SAFE_INTEGER);
 }
 
-function OverallCategory({ category, leaderboard, entries, proofs, correction }: {
+function OverallCategory({ category, leaderboard, entries, proofs, correction, publishedPodium }: {
   category: string;
   leaderboard?: Zero3CategoryLeaderboard;
   entries: Zero3LeaderboardEntry[];
   proofs: Zero3Proof[];
   correction: boolean;
+  publishedPodium?: Zero3PublicBoard['podiums'][number];
 }) {
   const state = correction ? 'PUBLICATION_PENDING' : leaderboard?.status;
   const totalCounts = new Map<number, number>();
@@ -452,6 +455,15 @@ function OverallCategory({ category, leaderboard, entries, proofs, correction }:
           <span>{leaderboard ? 'Não há inscrições nesta categoria.' : 'A classificação aparece aqui após a publicação dos resultados.'}</span>
         </div>
       )}
+      {publishedPodium?.places.length ? (
+        <section className="lb-public-podium" aria-label={`Pódio público ${category}`}
+          data-testid={`published-podium-${category}`}>
+          <h3>Pódio publicado</h3>
+          <PodiumAwards places={publishedPodium.places}
+            arbitrationNote={publishedPodium.arbitrationNote}
+            label={`Pódio público de ${category}`}/>
+        </section>
+      ) : null}
     </section>
   );
 }

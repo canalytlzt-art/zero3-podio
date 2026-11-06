@@ -38,6 +38,8 @@ const batteryTables = [
   "zero3_active_batteries",
   "zero3_battery_runs",
   "zero3_battery_publications",
+  "zero3_battery_time_cap_audit",
+  "zero3_battery_duration_audit",
 ];
 
 test("the current pre-battery staging schema remains supported", () => {

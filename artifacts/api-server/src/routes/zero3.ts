@@ -103,6 +103,7 @@ import {
   type ScoreProof,
 } from "../lib/zero3-scoring";
 import { normalizeEventCategories, validateEventCategories } from "../lib/zero3-categories";
+import { hasUniquePodiumRegistrations, normalizePodiumArbitrationNote, visiblePodiumArbitrationNote } from "../lib/zero3-podium";
 import { findZero3RegistrationConflict } from "../lib/zero3-registration-conflict";
 import rosterRouter from "./zero3-roster";
 
@@ -660,7 +661,11 @@ async function publicPodiums(eventId: string) {
         athleteNames: registration.athleteNames,
       });
     }
-    podiums.push({ category, places });
+    podiums.push({
+      category,
+      places,
+      arbitrationNote: visiblePodiumArbitrationNote(podium.published, podium.arbitrationNote),
+    });
   }
   return podiums;
 }
@@ -2211,7 +2216,7 @@ router.put(
     const selected = body.data.registrationIds.filter(
       (id): id is string => id !== null,
     );
-    if (new Set(selected).size !== selected.length) {
+    if (!hasUniquePodiumRegistrations(body.data.registrationIds)) {
       res.status(400).json({ error: "Cada posição do pódio deve ser única." });
       return;
     }
@@ -2251,6 +2256,7 @@ router.put(
             .update(zero3PodiumsTable)
             .set({
               registrationIds: body.data.registrationIds,
+              arbitrationNote: normalizePodiumArbitrationNote(body.data.arbitrationNote),
               updatedAt: new Date(),
             })
             .where(
@@ -2269,6 +2275,7 @@ router.put(
               eventId: params.data.eventId,
               category: params.data.category,
               registrationIds: body.data.registrationIds,
+              arbitrationNote: normalizePodiumArbitrationNote(body.data.arbitrationNote),
               version,
               published: false,
             })

@@ -36,6 +36,7 @@ import type {
   Zero3AthleteDeleteResult,
   Zero3AthleteInput,
   Zero3BatteryDurationUpdateInput,
+  Zero3BatteryTimeAdjustmentInput,
   Zero3BatteryTimeCapUpdateInput,
   Zero3Category,
   Zero3Dashboard,
@@ -2014,6 +2015,97 @@ export const useUpdateZero3EventBatteryDuration = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdateZero3EventBatteryDurationMutationOptions(options), queryClient);
+    }
+
+export const getAddZero3EventBatteryTimeUrl = (eventId: string,
+    batteryId: string,) => {
+
+
+
+
+  return `/api/zero3/events/${eventId}/batteries/${batteryId}/time-adjustment`
+}
+
+/**
+ * @summary Add elapsed time to a running, paused, or finished battery
+ */
+export const addZero3EventBatteryTime = async (eventId: string,
+    batteryId: string,
+    zero3BatteryTimeAdjustmentInput: Zero3BatteryTimeAdjustmentInput, options?: Parameters<typeof customFetch>[1]): Promise<Zero3EventBattery> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Zero3EventBattery>(getAddZero3EventBatteryTimeUrl(eventId,batteryId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(zero3BatteryTimeAdjustmentInput)
+  }
+);}
+
+
+
+
+
+export const getAddZero3EventBatteryTimeMutationKey = () => ['addZero3EventBatteryTime'] as const;
+
+export const getAddZero3EventBatteryTimeMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addZero3EventBatteryTime>>, TError,AddZero3EventBatteryTimeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addZero3EventBatteryTime>>, TError,AddZero3EventBatteryTimeMutationVariables, TContext> => {
+
+const mutationKey = getAddZero3EventBatteryTimeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addZero3EventBatteryTime>>, AddZero3EventBatteryTimeMutationVariables> = (props) => {
+          const {eventId,batteryId,data} = props ?? {};
+
+          return  addZero3EventBatteryTime(eventId,batteryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddZero3EventBatteryTimeMutationResult = NonNullable<Awaited<ReturnType<typeof addZero3EventBatteryTime>>>
+    export type AddZero3EventBatteryTimeMutationBody = BodyType<Zero3BatteryTimeAdjustmentInput>
+    export type AddZero3EventBatteryTimeMutationError = ErrorType<void>
+    export type AddZero3EventBatteryTimeMutationVariables = {eventId: string;batteryId: string;data: BodyType<Zero3BatteryTimeAdjustmentInput>}
+
+    /**
+ * @summary Add elapsed time to a running, paused, or finished battery
+ */
+export const useAddZero3EventBatteryTime = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addZero3EventBatteryTime>>, TError,AddZero3EventBatteryTimeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof addZero3EventBatteryTime>>,
+        TError,
+        AddZero3EventBatteryTimeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAddZero3EventBatteryTimeMutationOptions(options), queryClient);
     }
 
 export const getSetZero3ActiveEventBatteryUrl = (eventId: string,) => {

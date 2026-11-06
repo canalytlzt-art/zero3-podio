@@ -58,6 +58,7 @@ export type RankingPodiumPlace = {
 export type RankingPodium = {
   category: string;
   places: RankingPodiumPlace[];
+  arbitrationNote?: string | null;
 };
 
 export type ProofScore = {

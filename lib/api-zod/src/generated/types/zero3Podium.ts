@@ -22,6 +22,11 @@ export interface Zero3Podium {
   publishedAt: Date | null;
   /** @nullable */
   publishReason: string | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  arbitrationNote?: string | null;
   version: number;
   updatedAt: Date;
 }

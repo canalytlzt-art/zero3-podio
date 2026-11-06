@@ -1048,6 +1048,18 @@ export interface Zero3BatteryDurationUpdateInput {
   commandId: string;
 }
 
+export interface Zero3BatteryTimeAdjustmentInput {
+  /**
+     * @minimum 1000
+     * @maximum 9007199254740991
+     */
+  additionalMs: number;
+  /** @minimum 0 */
+  expectedTimerVersion: number;
+  /** @minLength 1 */
+  commandId: string;
+}
+
 export interface Zero3HeatProofInput {
   proofId: string;
 }
@@ -1327,6 +1339,11 @@ export interface Zero3Podium {
   publishedAt: string | null;
   /** @nullable */
   publishReason: string | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  arbitrationNote?: string | null;
   version: number;
   updatedAt: string;
 }
@@ -1342,6 +1359,11 @@ export interface Zero3PodiumInput {
      * @maxItems 3
      */
   registrationIds: (string | null)[];
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  arbitrationNote?: string | null;
 }
 
 export interface Zero3PodiumPublishInput {
@@ -1381,6 +1403,11 @@ export type Zero3PublicPodiumPlacesItem = {
 
 export interface Zero3PublicPodium {
   category: Zero3Category;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  arbitrationNote?: string | null;
   places: Zero3PublicPodiumPlacesItem[];
 }
 

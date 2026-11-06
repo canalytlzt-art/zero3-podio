@@ -41,7 +41,7 @@ const RESTORE_DEFINITIONS = [
   { collection: "importTeams", table: "zero3_import_teams", columns: ["id", "batch_id", "source_code", "source_category", "source_row", "source_cells", "source_athlete_names", "target_category", "registration_id", "created_at"] },
   { collection: "batteries", table: "zero3_batteries", columns: ["id", "event_id", "battery_order", "name", "created_at", "operational_finalized_at", "operational_finalized_by", "time_cap_ms"] },
   { collection: "batteryTimeCapAudit", table: "zero3_battery_time_cap_audit", columns: ["id", "event_id", "battery_id", "battery_id_snapshot", "command_id", "clerk_user_id", "role", "old_time_cap_ms", "new_time_cap_ms", "changed_at"] },
-  { collection: "batteryDurationAudit", table: "zero3_battery_duration_audit", columns: ["id", "event_id", "battery_id", "battery_id_snapshot", "command_id", "clerk_user_id", "role", "old_elapsed_ms", "new_elapsed_ms", "changed_at"] },
+  { collection: "batteryDurationAudit", table: "zero3_battery_duration_audit", columns: ["id", "event_id", "battery_id", "battery_id_snapshot", "command_id", "clerk_user_id", "role", "change_type", "additional_ms", "old_elapsed_ms", "new_elapsed_ms", "changed_at"] },
   { collection: "batteryEntries", table: "zero3_battery_entries", columns: ["battery_id", "registration_id", "lane_label", "assigned_at"] },
   { collection: "activeBatteries", table: "zero3_active_batteries", columns: ["event_id", "battery_id", "updated_at"] },
   { collection: "batteryRuns", table: "zero3_battery_runs", columns: ["battery_id", "event_id", "state", "elapsed_ms", "started_at", "preparation_ends_at", "version", "last_command_id", "updated_at", "preparation_started_at", "first_started_at", "stopped_at"] },
@@ -53,7 +53,7 @@ const RESTORE_DEFINITIONS = [
   { collection: "rankingPublications", table: "zero3_ranking_publications", columns: ["id", "event_id", "version", "fingerprint", "result_count", "results_json", "leaderboards_json", "published_by", "published_at"] },
   { collection: "resultRevisions", table: "zero3_result_revisions", columns: ["id", "result_id", "previous_status", "previous_elapsed_ms", "previous_raw_value", "reason", "actor_id", "created_at"] },
   { collection: "timers", table: "zero3_timers", columns: ["event_id", "state", "elapsed_ms", "started_at", "preparation_ends_at", "version", "last_command_id", "updated_at"] },
-  { collection: "podiumVersions", table: "zero3_podium_versions", columns: ["event_id", "category", "registration_ids", "published", "published_by", "published_at", "publish_reason", "version", "updated_at"] },
+  { collection: "podiumVersions", table: "zero3_podium_versions", columns: ["event_id", "category", "registration_ids", "arbitration_note", "published", "published_by", "published_at", "publish_reason", "version", "updated_at"] },
   { collection: "heatRuns", table: "zero3_heat_runs", columns: ["event_id", "proof_id", "battery_order", "state", "elapsed_ms", "started_at", "preparation_ends_at", "version", "last_command_id", "updated_at"] },
   { collection: "heatPublications", table: "zero3_heat_publications", columns: ["id", "event_id", "proof_id", "battery_order", "version", "result_fingerprint", "result_count", "results_json", "leaderboards_json", "published_by", "published_at"] },
 ] as const;
