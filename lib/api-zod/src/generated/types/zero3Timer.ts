@@ -37,4 +37,9 @@ export interface Zero3Timer {
   eventElapsedMs?: number;
   /** @minimum 0 */
   eventLimitMs?: number;
+  /**
+     * @minimum 1
+     * @maximum 7200000
+     */
+  timeCapMs?: number;
 }

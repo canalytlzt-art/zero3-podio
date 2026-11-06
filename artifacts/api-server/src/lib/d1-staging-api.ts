@@ -8,17 +8,26 @@ import {
   GetZero3MeResponse,
   GetZero3PublicBoardQueryParams,
   GetZero3PublicBoardResponse,
+  GetZero3RankingPublicationParams,
+  GetZero3RankingPublicationResponse,
   ListZero3EventsResponse,
   ListZero3ProofsResponse,
   ListZero3RegistrationsResponse,
   UpdateZero3ResultBody,
   UpdateZero3ResultParams,
   UpdateZero3ResultResponse,
+  PublishZero3RankingBody,
+  PublishZero3RankingResponse,
 } from "@workspace/api-zod";
 import { hasSignedInUserSession } from "./auth-session";
 import { workerLogger } from "./worker-logger";
-import { calculateAllResultPlacements } from "./zero3-scoring";
-import { buildD1LeaderboardResults } from "./d1-staging-ranking";
+import { isD1SchemaNotReady } from "./d1-staging-shared";
+import {
+  calculateAllResultPlacements,
+  mergeRankingPodiums,
+  rankingPodiumsFromLeaderboards,
+  scoreTieBreaksFromSnapshot,
+} from "./zero3-scoring";
 import {
   buildBatteryLeaderboards,
   evaluateBatteryReadiness,
@@ -36,6 +45,7 @@ import {
 } from "./d1-staging-event-batteries";
 import { advanceD1TimerPreparation, d1TimerDto } from "./d1-staging-timer";
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
+import { buildRankingPublicationPlan } from "./zero3-ranking-publication";
 
 type D1Env = { DB: D1Database };
 type Member = { clerk_user_id: string; email: string; role: string; active: number };
@@ -58,6 +68,8 @@ type ResultRow = {
   athlete_ids_snapshot: string; athlete_names_snapshot: string;
   team_name_snapshot: string | null; elapsed_ms: number | null;
   raw_value: string | null; sync_error_ms: number | null; status: string;
+  published_status: string | null; published_elapsed_ms: number | null;
+  published_raw_value: string | null; published_revision: number | null;
   idempotency_key: string; captured_at: string; revision: number;
 };
 type HeatPublicationRow = {
@@ -94,6 +106,15 @@ const id = () => crypto.randomUUID();
 const requestId = (req: Request) => (req as Request & { id?: string }).id;
 const error = (res: Response, status: number, code: string, message: string, req: Request) =>
   res.status(status).json({ code, error: message, ...(requestId(req) ? { requestId: requestId(req) } : {}) });
+const d1PublicationChangedRowsGuard = (DB: D1Database, eventId: string, expected: number) =>
+  DB.prepare(`INSERT INTO zero3_batteries(id,event_id,battery_order,name)
+    SELECT ?,?,0,'__ZERO3_PUBLICATION_GUARD__' WHERE changes()<>?`)
+    .bind(id(), eventId, expected);
+
+function isD1ConstraintConflict(cause: unknown) {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /constraint failed|constraint violation|foreign key|unique constraint/i.test(message);
+}
 
 async function memberForRequest(req: Request, DB: D1Database): Promise<Member | null> {
   const auth = getAuth(req);
@@ -166,10 +187,11 @@ async function publicBoard(DB: D1Database, eventId?: string) {
   if (!event) return GetZero3PublicBoardResponse.parse({
     serverTime: new Date(), results: [], proofs: [], registrations: [],
     leaderboards: [], podiums: [], activeHeats: [],
-    batteryOperationsEnabled: true, activeBattery: null, completedBatteries: [], batteryTimers: [],
+    batteryOperationsEnabled: true, activeBattery: null, completedBatteries: [],
+    completedEventBatteries: [], eventBatteries: [], batteryTimers: [],
   });
 
-  const [proofResult, regResult, resultResult, athleteResult, podiumResult, activeResult, heatResult, heatEntryResult, heatRunResult, publicationResult] = await Promise.all([
+  const [proofResult, regResult, resultResult, athleteResult, podiumResult, activeResult, heatResult, heatEntryResult, heatRunResult, publicationResult, rankingPublication] = await Promise.all([
     DB.prepare("SELECT * FROM zero3_proofs WHERE event_id = ? ORDER BY proof_order").bind(event.id).all<ProofRow>(),
     DB.prepare("SELECT * FROM zero3_registrations WHERE event_id = ? ORDER BY created_at").bind(event.id).all<RegistrationRow>(),
     DB.prepare("SELECT * FROM zero3_results WHERE event_id = ? ORDER BY captured_at DESC").bind(event.id).all<ResultRow>(),
@@ -208,6 +230,9 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     DB.prepare(`SELECT * FROM zero3_heat_publications
       WHERE event_id=? ORDER BY proof_id,battery_order,version DESC`)
       .bind(event.id).all<HeatPublicationRow>(),
+    DB.prepare(`SELECT leaderboards_json FROM zero3_ranking_publications
+      WHERE event_id=? ORDER BY version DESC LIMIT 1`)
+      .bind(event.id).first<{leaderboards_json: string}>(),
   ]);
   const proofs = proofResult.results;
   const registrations = regResult.results.filter((row) => row.confirmation_status !== "CANCELLED");
@@ -278,64 +303,20 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       capturedAt:result.capturedAt,
     })),fingerprintProof));
   }
-  const leaderboardResults=buildD1LeaderboardResults({
-    registrationIds:activeRegistrationIds,
-    liveResults:results.map(row=>({
-      id:row.id,registrationId:row.registration_id,proofId:row.proof_id,
-      rawValue:row.raw_value,status:row.status,
-    })),
-    publications:[...publicationByKey.values()].map(publication=>({
-      proofId:publication.proof_id,
-      resultFingerprint:publication.result_fingerprint,
-      currentFingerprint:batteryFingerprintByKey.get(`${publication.proof_id}:${publication.battery_order}`)??null,
-      resultsJson:publication.results_json,
-    })),
-  });
   const eventBatteries=await listD1EventBatteries(DB,event.id,now)??[];
-  const eventBatteryPublications=await DB.prepare(`SELECT p.* FROM zero3_battery_publications p
-    WHERE p.event_id=? AND p.version=(
-      SELECT MAX(latest.version) FROM zero3_battery_publications latest
-      WHERE latest.battery_id=p.battery_id
-    ) ORDER BY p.battery_id`)
-    .bind(event.id).all<{
-      battery_id:string;result_fingerprint:string;results_json:string;
-    }>();
-  const eventPublicationSnapshots=eventBatteryPublications.results.flatMap(publication=>{
-    const battery=eventBatteries.find(item=>item.id===publication.battery_id);
-    if(!battery)return [];
-    let decoded:unknown;
-    try{decoded=JSON.parse(publication.results_json);}
-    catch(cause){throw new Error("Publicação de bateria armazenada está inválida.",{cause});}
-    if(!Array.isArray(decoded))throw new Error("Publicação de bateria não contém resultados.");
-    return battery.proofs.map(proof=>{
-      const proofResults=decoded.filter((result):result is Record<string,unknown>=>
-        Boolean(result&&typeof result==="object"&&!Array.isArray(result)&&
-          (result as Record<string,unknown>).proofId===proof.id));
-      return {
-        proofId:proof.id,resultFingerprint:publication.result_fingerprint,
-        currentFingerprint:battery.finalizationFingerprint,
-        resultsJson:JSON.stringify(proofResults),
-      };
-    });
-  });
-  const allLeaderboardPublications=[
-    ...[...publicationByKey.values()].map(publication=>({
-      proofId:publication.proof_id,
-      resultFingerprint:publication.result_fingerprint,
-      currentFingerprint:batteryFingerprintByKey.get(`${publication.proof_id}:${publication.battery_order}`)??null,
-      resultsJson:publication.results_json,
-    })),
-    ...eventPublicationSnapshots,
-  ];
-  const eventLeaderboardResults=buildD1LeaderboardResults({
-    registrationIds:activeRegistrationIds,
-    liveResults:results.map(row=>({
-      id:row.id,registrationId:row.registration_id,proofId:row.proof_id,
-      rawValue:row.raw_value,status:row.status,
-    })),
-    publications:allLeaderboardPublications,
-  });
+  const eventLeaderboardResults = results.flatMap((row) =>
+    row.published_status && row.published_status !== "PROVISIONAL"
+      ? [{
+          id: row.id,
+          registrationId: row.registration_id,
+          proofId: row.proof_id,
+          rawValue: row.published_raw_value,
+          status: row.published_status,
+        }]
+      : [],
+  );
   const scoring = calculateAllResultPlacements({
+    eventId,
     categories: jsonArray(event.categories),
     eventStatus: event.status,
     proofs: proofs.map((proof) => ({
@@ -343,7 +324,8 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       metricType: proof.metric_type, unit: proof.unit, direction: proof.direction,
     })),
     registrations: registrationsDto,
-    results: eventLeaderboardResults.length?eventLeaderboardResults:leaderboardResults,
+    results: eventLeaderboardResults,
+    tieBreaks: scoreTieBreaksFromSnapshot(rankingPublication?.leaderboards_json ?? null),
   });
   const placement = scoring.placements;
   const heatIds = [...new Set(results.flatMap((row) => row.heat_id ? [row.heat_id] : []))];
@@ -363,6 +345,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       placement: p?.placement ?? null, points: p?.points ?? null,
       tieRulePending: p?.tiePending ?? false, syncErrorMs: row.sync_error_ms,
       status: row.status, capturedAt: date(row.captured_at), revision: row.revision,
+       publishedRevision: row.published_revision,
       names: snapshotNames.length ? snapshotNames : reg?.athleteNames ?? [],
       teamName: resolveZero3DisplayTeamName(reg?.teamName, row.team_name_snapshot, Boolean(reg)),
       heatName: row.heat_id ? heatNames.get(row.heat_id) ?? null : null,
@@ -372,7 +355,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
   for (const podium of podiumResult.results) {
     if (!latestPodium.has(podium.category)) latestPodium.set(podium.category, podium.registration_ids);
   }
-  const podiums = [...latestPodium].map(([category, json]) => ({
+  const manuallyPublishedPodiums = [...latestPodium].map(([category, json]) => ({
     category, places: nullableStringArray(json).flatMap((registrationId, index) => {
       if (!registrationId) return [];
       const reg = registrationsById.get(registrationId);
@@ -381,6 +364,10 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       }];
     }),
   }));
+  const podiums = mergeRankingPodiums(
+    rankingPublication ? rankingPodiumsFromLeaderboards(scoring.leaderboards) : [],
+    manuallyPublishedPodiums,
+  );
   const selectedRows = activeResult.results.filter((row) => row.heat_id);
   const firstSelected = selectedRows[0];
   const selectedOrder = firstSelected ? (firstSelected.battery_order ?? firstSelected.heat_order) : null;
@@ -503,24 +490,25 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       };
     }).filter((item):item is NonNullable<typeof item>=>Boolean(item))
     .sort((a,b)=>a.proofOrder-b.proofOrder||a.order-b.order);
-  const timer = activeBattery ? (() => {
+   const timer = activeBattery ? (() => {
     const timer = activeRun ?? {
       event_id:event.id,proof_id:activeBattery.proofId,battery_order:activeBattery.order,
       state:"IDLE",elapsed_ms:0,started_at:null,preparation_ends_at:null,
       version:0,last_command_id:null,updated_at:now.toISOString(),
     };
     return d1TimerDto(timer,event.id,event.preparation_seconds,now);
-  })() : undefined;
+   })() : undefined;
   const activeSelection=await DB.prepare("SELECT battery_id FROM zero3_active_batteries WHERE event_id=?")
     .bind(event.id).first<{battery_id:string|null}>();
   const selectedEventBattery=activeSelection?.battery_id
-    ?eventBatteries.find(item=>item.id===activeSelection.battery_id)??null:null;
+    ?eventBatteries.find(item=>item.id===activeSelection.battery_id&&!item.operationalFinalized)??null:null;
   const eventBatteryToPublic=(battery:typeof eventBatteries[number])=>{
     const firstProof=battery.proofs[0];
     return {
       eventId:battery.eventId,batteryId:battery.id,
       proofId:firstProof?.id??"",proofOrder:firstProof?.order??1,proofName:firstProof?.name??"",
       order:battery.order,name:battery.name,heatIds:[],categories:battery.categories,
+      scheduledStartAt:battery.scheduledStartAt,
       registrations:battery.registrations.map(reg=>({...reg,heatId:null,batteryId:battery.id})),
       results:battery.results,leaderboards:battery.proofLeaderboards[0]?.leaderboards??[],
       state:battery.state,pendingResultCount:battery.pendingResultCount,
@@ -528,9 +516,12 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       elapsedMs:battery.elapsedMs,
       finalized:battery.finalized,finalizationCurrent:battery.finalizationCurrent,
       finalizationVersion:battery.finalizationVersion,finalizedAt:battery.finalizedAt,
+      operationalFinalized:battery.operationalFinalized,
+      operationalFinalizedAt:battery.operationalFinalizedAt,
       finalizationFingerprint:battery.finalizationFingerprint,
       proofs:battery.proofs,proofLeaderboards:battery.proofLeaderboards,
       eventElapsedMs:battery.eventElapsedMs,eventLimitMs:battery.eventLimitMs,
+       timeCapMs:battery.timeCapMs,
       preparationEndsAt:battery.preparationEndsAt,
       preparationStartedAt:battery.preparationStartedAt,
       firstStartedAt:battery.firstStartedAt,stoppedAt:battery.stoppedAt,
@@ -546,6 +537,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     firstStartedAt:battery.firstStartedAt,stoppedAt:battery.stoppedAt,
     updatedAt:battery.updatedAt,proofId:null,batteryOrder:battery.order,
     batteryId:battery.id,eventElapsedMs:battery.eventElapsedMs,eventLimitMs:battery.eventLimitMs,
+     timeCapMs:battery.timeCapMs,
   });
   const activeEventTimer=selectedEventBattery?eventBatteryTimer(selectedEventBattery):undefined;
   const activeHeats = jsonArray(event.categories).map((category) => {
@@ -558,13 +550,15 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     };
   });
   return GetZero3PublicBoardResponse.parse({
-    serverTime: now, event: eventDto(event), timer:activeEventTimer??timer,
+    serverTime: now, event: eventDto(event),
+    timer: activeEventBattery ? activeEventTimer : eventBatteries.length ? undefined : timer,
     results: resultDtos, proofs: proofs.map(proofDto),
     registrations: registrationsDto,
     leaderboards: scoring.leaderboards, podiums, activeHeats,
     batteryOperationsEnabled:true,batteryModel:"EVENT",
     activeBattery:activeEventBattery,
-    completedEventBatteries:eventBatteries.filter(item=>item.finalized),
+    completedEventBatteries:eventBatteries.filter(item=>item.operationalFinalized||item.finalized),
+    eventBatteries,
     completedBatteries,
     batteryTimers:eventBatteries.map(eventBatteryTimer),
   });
@@ -579,8 +573,108 @@ function captureDto(row: ResultRow, reg: RegistrationRow, names: string[], place
     placement: placement?.placement ?? null, points: placement?.points ?? null,
     tieRulePending: placement?.tiePending ?? false, syncErrorMs: row.sync_error_ms,
     status: row.status, capturedAt: date(row.captured_at), revision: row.revision,
+    publishedRevision: row.published_revision,
      names, teamName: reg.team_name, heatName: null,
   };
+}
+
+async function loadD1RankingPublicationState(DB: D1Database, eventId: string) {
+  const [event, proofRows, registrationRows, resultRows, athleteRows, batteries, batteryEntries, heats, heatEntries, latest] =
+    await Promise.all([
+      DB.prepare("SELECT * FROM zero3_events WHERE id=? LIMIT 1").bind(eventId).first<EventRow>(),
+      DB.prepare("SELECT * FROM zero3_proofs WHERE event_id=? ORDER BY proof_order").bind(eventId).all<ProofRow>(),
+      DB.prepare("SELECT * FROM zero3_registrations WHERE event_id=? AND confirmation_status<>'CANCELLED' ORDER BY created_at").bind(eventId).all<RegistrationRow>(),
+      DB.prepare("SELECT * FROM zero3_results WHERE event_id=? ORDER BY captured_at").bind(eventId).all<ResultRow>(),
+      DB.prepare("SELECT id,full_name FROM zero3_athletes").all<{id:string;full_name:string}>(),
+      DB.prepare("SELECT id,event_id FROM zero3_batteries WHERE event_id=?").bind(eventId).all<{id:string;event_id:string}>(),
+      DB.prepare(`SELECT be.battery_id,be.registration_id FROM zero3_battery_entries be
+        JOIN zero3_batteries b ON b.id=be.battery_id WHERE b.event_id=?`).bind(eventId)
+        .all<{battery_id:string;registration_id:string}>(),
+      DB.prepare("SELECT id,event_id,proof_id,category FROM zero3_heats WHERE event_id=?").bind(eventId)
+        .all<{id:string;event_id:string;proof_id:string|null;category:string}>(),
+      DB.prepare(`SELECT he.heat_id,he.registration_id FROM zero3_heat_entries he
+        JOIN zero3_heats h ON h.id=he.heat_id WHERE h.event_id=?`).bind(eventId)
+        .all<{heat_id:string;registration_id:string}>(),
+       DB.prepare(`SELECT id,version,fingerprint,result_count,published_at,published_by,leaderboards_json
+        FROM zero3_ranking_publications WHERE event_id=? ORDER BY version DESC LIMIT 1`)
+        .bind(eventId).first<{
+          id:string;version:number;fingerprint:string;result_count:number;
+           published_at:string;published_by:string;leaderboards_json:string;
+        }>(),
+    ]);
+  if (!event) return null;
+
+  const registrations = registrationRows.results.map((row) => {
+    const athleteIds = jsonArray(row.athlete_ids);
+    return {
+      id: row.id,
+      category: row.category,
+      teamName: row.team_name,
+      athleteNames: athleteIds.map((athleteId) =>
+        athleteRows.results.find((athlete) => athlete.id === athleteId)?.full_name ?? "Atleta removido",
+      ),
+      laneLabel: row.lane_label,
+      active: row.confirmation_status !== "CANCELLED",
+    };
+  });
+  const registrationById = new Map(registrationRows.results.map((row) => [row.id, row]));
+  const proofById = new Map(proofRows.results.map((row) => [row.id, row]));
+  const heatById = new Map(heats.results.map((row) => [row.id, row]));
+  const batteryIds = new Set(batteries.results.map((row) => row.id));
+  const batteryEntryKeys = new Set(batteryEntries.results.map((row) => `${row.battery_id}:${row.registration_id}`));
+  const heatEntryKeys = new Set(heatEntries.results.map((row) => `${row.heat_id}:${row.registration_id}`));
+  const results = resultRows.results.map((row) => {
+    const registration = registrationById.get(row.registration_id);
+    const proof = row.proof_id ? proofById.get(row.proof_id) : undefined;
+    const heat = row.heat_id ? heatById.get(row.heat_id) : undefined;
+    const assignedToBattery = Boolean(
+      row.battery_id && batteryIds.has(row.battery_id) &&
+      batteryEntryKeys.has(`${row.battery_id}:${row.registration_id}`),
+    );
+    const assignedToHeat = Boolean(
+      row.heat_id && heat?.event_id === eventId && heat.proof_id === row.proof_id &&
+      heatEntryKeys.has(`${row.heat_id}:${row.registration_id}`),
+    );
+    return {
+      id: row.id,
+      registrationId: row.registration_id,
+      proofId: row.proof_id,
+      category: row.category,
+      status: row.status,
+      rawValue: row.raw_value,
+      elapsedMs: row.elapsed_ms,
+      revision: row.revision,
+      publishedStatus: row.published_status,
+      publishedRawValue: row.published_raw_value,
+      publishedElapsedMs: row.published_elapsed_ms,
+      publishedRevision: row.published_revision,
+      associationValid: Boolean(
+        registration &&
+        registration.event_id === eventId &&
+        registration.category === row.category &&
+        proof?.event_id === eventId &&
+        (assignedToBattery || assignedToHeat),
+      ),
+    };
+  });
+  const planInput = {
+    eventId,
+    eventStatus: event.status,
+    version: latest?.version ?? 0,
+    proofs: proofRows.results.map((row) => ({
+      id: row.id,
+      order: row.proof_order,
+      name: row.name,
+      metricType: row.metric_type,
+      unit: row.unit,
+      direction: row.direction,
+    })),
+    registrations,
+    results,
+    persistedTieBreaks: scoreTieBreaksFromSnapshot(latest?.leaderboards_json ?? null),
+  };
+  const plan = await buildRankingPublicationPlan(planInput);
+  return { event, plan, planInput, latest, resultRows: resultRows.results };
 }
 
 export function d1StagingApi(
@@ -591,6 +685,246 @@ export function d1StagingApi(
     if (!req.path.startsWith("/api/zero3/")) { next(); return; }
     void (async () => {
       const route = req.path.slice("/api/zero3".length);
+      const rankingPublicationMatch = route.match(/^\/events\/([^/]+)\/ranking-publication$/);
+      if (rankingPublicationMatch && (req.method === "GET" || req.method === "POST")) {
+        const member = await requireD1Role(req, res, DB,
+          req.method === "POST" ? ["ADMIN"] : ["ADMIN", "JUIZ_CHEFE"]);
+        if (!member) return;
+        const params = GetZero3RankingPublicationParams.safeParse({ eventId: rankingPublicationMatch[1] });
+        if (!params.success) {
+          error(res, 400, "INVALID_REQUEST", params.error.message, req);
+          return;
+        }
+        let publicationFingerprint: string | null = null;
+        let publicationStage = "load_publication_state";
+        try {
+          const state = await loadD1RankingPublicationState(DB, params.data.eventId);
+          if (!state) {
+            error(res, 404, "EVENT_NOT_FOUND", "Evento não encontrado.", req);
+            return;
+          }
+          publicationFingerprint = state.plan.fingerprint;
+          publicationStage = req.method === "GET" ? "return_preview" : "validate_publication";
+          if (req.method === "GET") {
+            res.json(GetZero3RankingPublicationResponse.parse({
+              eventId: params.data.eventId,
+              version: state.latest?.version ?? 0,
+              publishedAt: state.latest?.published_at ?? null,
+              publishedBy: state.latest?.published_by ?? null,
+              eligibleResultCount: state.plan.eligibleResultCount,
+              partialResultCount: state.plan.partialResultCount,
+              affected: state.plan.affected,
+              issues: state.plan.issues,
+              resultStates: state.plan.resultStates,
+              ties: state.plan.ties,
+              leaderboards: state.plan.leaderboards,
+              fingerprint: state.plan.fingerprint,
+              canPublish: state.plan.canPublish,
+            }));
+            return;
+          }
+
+          const body = PublishZero3RankingBody.safeParse(req.body);
+          if (!body.success) {
+            error(res, 400, "INVALID_REQUEST", body.error.message, req);
+            return;
+          }
+          const latestVersion = state.latest?.version ?? 0;
+          const publicationPlan = await buildRankingPublicationPlan({
+            ...state.planInput,
+            ...(body.data.tieBreaks !== undefined ? { tieBreaksOverride: body.data.tieBreaks } : {}),
+          });
+          publicationFingerprint = publicationPlan.fingerprint;
+          if (
+            state.latest?.fingerprint === publicationPlan.fingerprint
+          ) {
+            res.json(PublishZero3RankingResponse.parse({
+              eventId: params.data.eventId,
+              version: state.latest.version,
+              resultCount: state.latest.result_count,
+              publishedAt: date(state.latest.published_at),
+              publishedBy: state.latest.published_by,
+              fingerprint: state.latest.fingerprint,
+              alreadyPublished: true,
+            }));
+            return;
+          }
+          if (
+            body.data.expectedVersion !== latestVersion ||
+            body.data.expectedFingerprint !== state.plan.fingerprint
+          ) {
+            res.status(409).json({
+              code: "RANKING_PUBLICATION_STALE",
+              error: "Os resultados mudaram desde a conferência. Atualize a prévia antes de publicar.",
+            });
+            return;
+          }
+          if (!publicationPlan.canPublish) {
+            res.status(400).json({
+              code: "RANKING_PUBLICATION_BLOCKED",
+              error: publicationPlan.eligibleResultCount === 0
+                ? "Não há resultados revisados novos para publicar."
+                : "Há pendências que impedem a publicação do ranking.",
+              issues: publicationPlan.issues,
+            });
+            return;
+          }
+
+          const nextVersion = latestVersion + 1;
+          const stamp = new Date().toISOString();
+          const candidatesById = new Map(publicationPlan.candidates.map((candidate) => [candidate.id, candidate]));
+          const candidateRows = state.resultRows
+            .filter((row) => candidatesById.has(row.id))
+            .map((row) => ({
+              id: row.id,
+              revision: row.revision,
+              status: row.status,
+              registrationId: row.registration_id,
+              proofId: row.proof_id,
+              category: row.category,
+              rawValue: row.raw_value,
+              batteryId: row.battery_id,
+              heatId: row.heat_id,
+            }));
+          const candidateJson = JSON.stringify(candidateRows);
+          const insert = DB.prepare(`INSERT INTO zero3_ranking_publications
+            (id,event_id,version,fingerprint,result_count,results_json,leaderboards_json,published_by,published_at)
+            SELECT ?,?,?,?,?,?,?,?,?
+            WHERE COALESCE((SELECT MAX(version) FROM zero3_ranking_publications WHERE event_id=?),0)=?
+              AND (SELECT COUNT(*) FROM zero3_results
+                WHERE event_id=? AND status IN ('VALIDATED','DNS','DNF')
+                  AND (published_revision IS NULL OR revision<>published_revision))=json_array_length(?)
+              AND NOT EXISTS (
+                SELECT 1 FROM json_each(?) candidate
+                LEFT JOIN zero3_results r ON r.id=json_extract(candidate.value,'$.id')
+                LEFT JOIN zero3_registrations reg ON reg.id=r.registration_id
+                LEFT JOIN zero3_proofs proof ON proof.id=r.proof_id
+                WHERE r.id IS NULL
+                  OR r.revision<>json_extract(candidate.value,'$.revision')
+                  OR r.status<>json_extract(candidate.value,'$.status')
+                  OR CAST(r.raw_value AS REAL)<>CAST(json_extract(candidate.value,'$.rawValue') AS REAL)
+                  OR r.registration_id<>json_extract(candidate.value,'$.registrationId')
+                  OR r.category<>json_extract(candidate.value,'$.category')
+                  OR reg.event_id<>r.event_id OR reg.category<>r.category
+                  OR proof.event_id<>r.event_id
+                  OR reg.confirmation_status='CANCELLED'
+                  OR NOT (
+                    (r.battery_id IS NOT NULL AND EXISTS (
+                      SELECT 1 FROM zero3_battery_entries be
+                      JOIN zero3_batteries b ON b.id=be.battery_id
+                      WHERE be.battery_id=r.battery_id AND be.registration_id=r.registration_id
+                        AND b.event_id=r.event_id
+                    ))
+                    OR
+                    (r.heat_id IS NOT NULL AND EXISTS (
+                      SELECT 1 FROM zero3_heat_entries he
+                      JOIN zero3_heats h ON h.id=he.heat_id
+                      WHERE he.heat_id=r.heat_id AND he.registration_id=r.registration_id
+                        AND h.event_id=r.event_id AND h.proof_id=r.proof_id
+                    ))
+                  )
+              )
+            RETURNING id`)
+            .bind(
+              crypto.randomUUID(), params.data.eventId, nextVersion, publicationPlan.fingerprint,
+              publicationPlan.results.length, JSON.stringify(publicationPlan.results),
+              JSON.stringify(publicationPlan.leaderboards), member.clerk_user_id, stamp,
+              params.data.eventId, latestVersion, params.data.eventId, candidateJson, candidateJson,
+            );
+          const update = DB.prepare(`UPDATE zero3_results
+            SET published_status=status,published_elapsed_ms=elapsed_ms,
+                published_raw_value=raw_value,published_revision=revision
+            WHERE id IN (SELECT json_extract(value,'$.id') FROM json_each(?))
+              AND EXISTS (
+                SELECT 1 FROM zero3_ranking_publications
+                WHERE event_id=? AND version=? AND fingerprint=?
+              )`).bind(candidateJson, params.data.eventId, nextVersion, publicationPlan.fingerprint);
+          publicationStage = "commit_publication";
+          const [insertResult, updateResult] = await DB.batch([
+            insert,
+            update,
+            d1PublicationChangedRowsGuard(DB, params.data.eventId, candidateRows.length),
+          ]);
+          if ((insertResult.meta.changes ?? 0) !== 1) {
+            const duplicate = await DB.prepare(`SELECT id,version,fingerprint,result_count,published_at,published_by
+              FROM zero3_ranking_publications WHERE event_id=? AND fingerprint=? LIMIT 1`)
+              .bind(params.data.eventId, publicationPlan.fingerprint)
+              .first<{id:string;version:number;fingerprint:string;result_count:number;published_at:string;published_by:string}>();
+            if (duplicate) {
+              res.json(PublishZero3RankingResponse.parse({
+                eventId: params.data.eventId,
+                version: duplicate.version,
+                resultCount: duplicate.result_count,
+                publishedAt: date(duplicate.published_at),
+                publishedBy: duplicate.published_by,
+                fingerprint: duplicate.fingerprint,
+                alreadyPublished: true,
+              }));
+              return;
+            }
+            res.status(409).json({
+              code: "RANKING_PUBLICATION_STALE",
+              error: "Os resultados mudaram durante a publicação. Atualize a prévia e tente novamente.",
+            });
+            return;
+          }
+          if ((updateResult.meta.changes ?? 0) !== candidateRows.length) {
+            error(res, 500, "RANKING_PUBLICATION_INCOMPLETE", "A publicação foi registrada, mas nem todos os resultados foram atualizados.", req);
+            return;
+          }
+          res.json(PublishZero3RankingResponse.parse({
+            eventId: params.data.eventId,
+            version: nextVersion,
+            resultCount: publicationPlan.results.length,
+            publishedAt: date(stamp),
+            publishedBy: member.clerk_user_id,
+            fingerprint: publicationPlan.fingerprint,
+            alreadyPublished: false,
+          }));
+        } catch (cause) {
+          if (isD1SchemaNotReady(cause)) {
+            workerLogger.error({
+              error: cause, requestId: requestId(req), method: req.method,
+              path: route, stage: publicationStage,
+            }, "D1 ranking publication schema is not ready");
+            error(res, 503, "D1_SCHEMA_NOT_READY",
+              "O schema D1 está desatualizado e precisa das migrations de publicação do ranking.", req);
+            return;
+          }
+          if (isD1ConstraintConflict(cause)) {
+            const duplicate = await DB.prepare(`SELECT id,version,fingerprint,result_count,published_at,published_by
+              FROM zero3_ranking_publications WHERE event_id=? AND fingerprint=? LIMIT 1`)
+              .bind(params.data.eventId, publicationFingerprint).first<{
+                id:string;version:number;fingerprint:string;result_count:number;
+                published_at:string;published_by:string;
+              }>().catch(() => null);
+            if (duplicate) {
+              res.json(PublishZero3RankingResponse.parse({
+                eventId: params.data.eventId,
+                version: duplicate.version,
+                resultCount: duplicate.result_count,
+                publishedAt: date(duplicate.published_at),
+                publishedBy: duplicate.published_by,
+                fingerprint: duplicate.fingerprint,
+                alreadyPublished: true,
+              }));
+              return;
+            }
+            res.status(409).json({
+              code: "RANKING_PUBLICATION_STALE",
+              error: "Os resultados mudaram durante a publicação. Nada foi publicado; atualize a prévia e tente novamente.",
+              ...(requestId(req) ? { requestId: requestId(req) } : {}),
+            });
+            return;
+          }
+          workerLogger.error({
+            error: cause, requestId: requestId(req), method: req.method,
+            path: route, stage: "ranking_publication",
+          }, "D1 ranking publication failed");
+          error(res, 503, "DATABASE_UNAVAILABLE", "Não foi possível preparar ou publicar o ranking.", req);
+        }
+        return;
+      }
       const legacyFinalizeMatch = route.match(/^\/events\/[^/]+\/batteries\/[^/]+\/\d+\/finalize$/);
       const legacyTimerBody = typeof req.body === "object" && req.body !== null
         ? req.body as Record<string, unknown>

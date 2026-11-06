@@ -1,0 +1,254 @@
+.zero3-rules-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 9px 13px;
+  border: 1px solid #8b70bb;
+  border-radius: 4px;
+  color: #f2eaff;
+  background: #251d34;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+  text-decoration: none;
+  touch-action: manipulation;
+  transition: background .16s, border-color .16s;
+}
+.zero3-rules-trigger:hover { border-color: #b59ae6; background: #38294d; }
+.zero3-rules-trigger:focus-visible,
+.zero3-rules-dialog :focus-visible {
+  outline: 3px solid #e8ff00;
+  outline-offset: 3px;
+}
+.zero3-rules-overlay {
+  z-index: 1000;
+  background: rgb(9 8 13 / 78%);
+  backdrop-filter: blur(3px);
+}
+.zero3-rules-dialog {
+  z-index: 1001;
+  display: flex !important;
+  flex-direction: column;
+  gap: 0 !important;
+  width: min(880px, calc(100vw - 28px));
+  max-width: 880px !important;
+  height: min(790px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px) !important;
+  min-height: 0;
+  overflow: hidden !important;
+  padding: 0;
+  border: 1px solid #665184;
+  border-radius: 14px !important;
+  color: #f6f1fb;
+  background: #191620;
+  box-shadow: 0 30px 100px rgb(0 0 0 / 58%), 0 0 0 1px rgb(232 255 0 / 8%);
+}
+.zero3-rules-dialog > button[aria-label="Fechar regras"] {
+  position: absolute;
+  z-index: 2;
+  top: 17px;
+  right: 18px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #554767;
+  border-radius: 7px;
+  color: #e8e0f1;
+  background: #25202e;
+  opacity: 1;
+}
+.zero3-rules-dialog > button[aria-label="Fechar regras"] svg { width: 17px; height: 17px; }
+.zero3-rules-dialog > button[aria-label="Fechar regras"]:hover { color: #e8ff00; background: #30283b; }
+.zero3-rules-header {
+  flex: 0 0 auto;
+  gap: 0 !important;
+  padding: 25px 70px 18px 28px;
+  border-bottom: 1px solid #393142;
+  background: linear-gradient(110deg, #211a2c, #191620 68%);
+}
+.zero3-rules-kicker {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 9px;
+  color: #c7b5e4;
+  font: 700 9px/1.4 var(--font-data, Consolas, monospace);
+  letter-spacing: .14em;
+}
+.zero3-rules-kicker span { width: 20px; height: 3px; transform: skew(-20deg); background: #e8ff00; }
+.zero3-rules-title {
+  margin: 0;
+  color: #fbf9ff;
+  font: 760 clamp(24px, 3vw, 34px)/1.06 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
+  letter-spacing: -.045em;
+}
+.zero3-rules-subtitle {
+  margin: 7px 0 0;
+  color: #c9bfd4 !important;
+  font-size: 12px !important;
+  line-height: 1.45;
+}
+.zero3-rules-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.zero3-rules-tab-list {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 5px;
+  height: auto;
+  min-height: 57px;
+  margin: 0;
+  padding: 10px 22px;
+  border-bottom: 1px solid #393142;
+  border-radius: 0;
+  background: #1d1925;
+}
+.zero3-rules-tab {
+  display: inline-flex;
+  min-height: 36px;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #c4bbcf;
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  transition: color .16s, background .16s, border-color .16s;
+}
+.zero3-rules-tab:hover { color: #fff; background: #2a2334; }
+.zero3-rules-tab[data-state="active"] {
+  border-color: #665184;
+  color: #f8f3ff;
+  background: #30263e;
+  box-shadow: inset 0 -2px #e8ff00;
+}
+.zero3-rules-tab-index {
+  color: #a18abf;
+  font: 700 8px var(--font-data, Consolas, monospace);
+}
+.zero3-rules-tab[data-state="active"] .zero3-rules-tab-index { color: #e8ff00; }
+.zero3-rules-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 !important;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 23px clamp(20px, 4vw, 42px) 31px;
+  scrollbar-color: #665184 #211d29;
+  scrollbar-width: thin;
+}
+.zero3-rules-panel:focus-visible { outline-offset: -4px; }
+.zero3-rules-copy {
+  max-width: 690px;
+  margin: 0 auto;
+  color: #ded8e5;
+  font-size: 13px;
+  line-height: 1.72;
+}
+.zero3-rules-copy h2 {
+  margin: 0 0 17px;
+  color: #e8ff00;
+  font: 750 clamp(18px, 2.5vw, 24px)/1.2 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
+  letter-spacing: -.025em;
+}
+.zero3-rules-copy h3 {
+  margin: 22px 0 8px;
+  padding-left: 11px;
+  border-left: 2px solid #866bb4;
+  color: #f6f0fc;
+  font: 730 14px/1.35 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
+  letter-spacing: -.01em;
+}
+.zero3-rules-copy h2 + h3 { margin-top: 0; }
+.zero3-rules-copy p { margin: 0 0 13px; }
+.zero3-rules-copy ul,
+.zero3-rules-copy ol { display: grid; gap: 7px; margin: 8px 0 15px; padding-left: 23px; }
+.zero3-rules-copy li { padding-left: 3px; }
+.zero3-rules-copy li::marker { color: #e8ff00; font-weight: 700; }
+.zero3-rules-copy strong { color: #fff; font-weight: 750; }
+.zero3-rules-signature {
+  margin-top: 31px !important;
+  padding-top: 17px;
+  border-top: 1px solid #393142;
+  color: #c7b5e4;
+  font: 700 10px/1.5 var(--font-data, Consolas, monospace);
+  letter-spacing: .1em;
+}
+.zero3-rules-copy .zero3-rules-closing {
+  margin: 0;
+  color: #e8ff00;
+  font-weight: 750;
+}
+.zero3-rules-footer {
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 65px;
+  padding: 10px 22px;
+  border-top: 1px solid #393142;
+  background: #1d1925;
+}
+.zero3-rules-footer > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #aaa0b8;
+  font: 700 8px var(--font-data, Consolas, monospace);
+  letter-spacing: .1em;
+}
+.zero3-rules-footer > span i { width: 4px; height: 4px; border-radius: 50%; background: #e8ff00; }
+.zero3-rules-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 98px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid #9278bd;
+  border-radius: 5px;
+  color: #191620;
+  background: #e8ff00;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+.zero3-rules-close:hover { background: #f1ff57; }
+
+@media (max-width: 600px) {
+  .zero3-rules-dialog {
+    width: calc(100vw - 20px);
+    height: min(820px, calc(100dvh - 20px));
+    max-height: calc(100dvh - 20px) !important;
+    border-radius: 11px !important;
+  }
+  .zero3-rules-header { padding: 20px 56px 15px 18px; }
+  .zero3-rules-dialog > button[aria-label="Fechar regras"] { top: 13px; right: 13px; width: 34px; height: 34px; }
+  .zero3-rules-tab-list { gap: 4px; padding: 9px 12px; }
+  .zero3-rules-tab { flex: 1 1 29%; justify-content: center; min-width: 0; padding-inline: 7px; font-size: 9px; }
+  .zero3-rules-tab-index { font-size: 7px; }
+  .zero3-rules-panel { padding: 19px 18px 26px; }
+  .zero3-rules-copy { font-size: 12px; line-height: 1.68; }
+  .zero3-rules-copy h3 { margin-top: 19px; }
+  .zero3-rules-footer { min-height: 59px; padding-inline: 13px; }
+  .zero3-rules-footer > span { font-size: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zero3-rules-trigger,
+  .zero3-rules-tab { transition: none; }
+}

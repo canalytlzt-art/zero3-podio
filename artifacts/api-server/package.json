@@ -13,6 +13,8 @@
     "test:timer": "esbuild src/lib/d1-staging-timer.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-staging-timer.test.mjs && node --test /tmp/zero3-staging-timer.test.mjs",
     "test:heat-assignments": "esbuild src/lib/zero3-heat-assignments.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-heat-assignments.test.mjs && node --test /tmp/zero3-heat-assignments.test.mjs",
     "test:finalization": "esbuild src/lib/d1-staging-finalization.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-staging-finalization.test.mjs && node --test /tmp/zero3-staging-finalization.test.mjs",
+    "test:event-battery-finalization": "esbuild src/lib/d1-staging-event-battery-finalization.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-event-battery-finalization.test.mjs && node --test /tmp/zero3-event-battery-finalization.test.mjs",
+    "test:ranking-publication": "esbuild src/lib/zero3-ranking-publication.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-ranking-publication.test.mjs && node --test /tmp/zero3-ranking-publication.test.mjs",
     "test:ranking": "esbuild src/lib/d1-staging-ranking.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-staging-ranking.test.mjs && node --test /tmp/zero3-staging-ranking.test.mjs",
     "test:categories": "esbuild src/lib/zero3-categories.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-categories.test.mjs && node --test /tmp/zero3-categories.test.mjs",
     "test:team-name": "esbuild src/lib/zero3-team-name.test.ts --bundle --platform=node --format=esm --outfile=/tmp/zero3-team-name.test.mjs && node --test /tmp/zero3-team-name.test.mjs",

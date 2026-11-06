@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useSearch } from 'wouter';
-import { ArrowLeft, Plus, Radio, RotateCw, Save, Trophy, Users, Play, Square, Pencil, Trash2, X, Clock3 } from 'lucide-react';
+import { ArrowLeft, Plus, Radio, RotateCw, Save, Trophy, Users, Play, Square, Pencil, Trash2, X } from 'lucide-react';
 import {
   Zero3EventStatus, Zero3ResultStatus, Zero3Role,
   Zero3RegistrationConfirmationStatus, Zero3RegistrationPaymentStatus,
@@ -28,14 +28,17 @@ import { AdminShell, EmptyState, LoadingRows, PageHeading, QueryError } from '@/
 import { AthletePicker } from '@/components/AthletePicker';
 import { BatteryRegistrationPicker } from '@/components/BatteryRegistrationPicker';
 import { EventBatteryResultsPanel } from '@/components/EventBatteryResultsPanel';
+import { EventBatteryTimerPanel } from '@/components/EventBatteryTimerPanel';
+import { EventResultsWorkspace } from '@/components/EventResultsWorkspace';
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { liveBoardHrefForBattery } from '@/lib/live-board-navigation';
-import { pollingIntervalAfterError, shouldRefetchAfterError } from '@/lib/api-error-policy';
+import { pollingIntervalAfterError, shouldRefetchAfterError, shouldRetryZero3Query } from '@/lib/api-error-policy';
 import { normalizeTeamNameInput, teamNameInputError } from '@/lib/roster-management';
 import { describeAthleteReplacement, normalizeAthleteSearch } from '@/lib/athlete-search';
 import { primaryTimerAction, timerStateLabel } from '@/lib/zero3-timer-controls';
-import { eventBatteryTimerControl } from '@/lib/event-battery-timer-controls';
 import { eventBatteryCode, zero3EventBatteryDeleteConfirmation } from '@/lib/event-battery-code';
+import { parseBrasiliaDateTimeInput } from '@/lib/brasilia-schedule';
+import { nextAvailableBatteryOrder } from '@/lib/battery-sequence';
 import {
  batteryIssueActionLabel, batteryIssueHref, batteryIssueLabel,
  batteryReadinessCount, getBatteryReadinessIssues,
@@ -169,6 +172,7 @@ function Field({label,name,type='text',required=false,placeholder,defaultValue,m
   const searchParams=new URLSearchParams(search);
   const requestedProofId=searchParams.get('proofId')||undefined;
   const requestedBatteryOrder=Number(searchParams.get('batteryOrder'))||undefined;
+   const requestedRegistrationId=searchParams.get('registrationId')||undefined;
   useEffect(()=>{
    const requestedTab=searchParams.get('tab');
    if(requestedTab&&(['heats','registrations','timer','results','podium'] as const).includes(requestedTab as 'heats'|'registrations'|'timer'|'results'|'podium')){
@@ -180,7 +184,7 @@ function Field({label,name,type='text',required=false,placeholder,defaultValue,m
   {tab==='heats'&&<Heats eventId={eventId}/>}
   {tab==='registrations'&&<Registrations eventId={eventId}/>}
   {tab==='timer'&&<TimerControl eventId={eventId} event={event}/>}
-   {tab==='results'&&<Results eventId={eventId} proofId={requestedProofId} batteryOrder={requestedBatteryOrder}/>}
+    {tab==='results'&&<Results eventId={eventId} eventName={event?.name} proofId={requestedProofId} batteryOrder={requestedBatteryOrder} initialRegistrationId={requestedRegistrationId} initialProofId={requestedProofId}/>}
   {tab==='podium'&&<PodiumEditor eventId={eventId}/>}
  </AdminShell>;
 }
@@ -573,24 +577,86 @@ function Registrations({eventId}:{eventId:string}) {
 }
 
  function TimerControl({eventId,event}:{eventId:string;event?:Zero3Event}) {
- const board=useGetZero3PublicBoard({eventId},{query:{refetchInterval:1500,queryKey:getGetZero3PublicBoardQueryKey({eventId})}});const command=useControlZero3Timer();const qc=useQueryClient();const timer=board.data?.timer;
+ const [timerFilter,setTimerFilter]=useState<string>('ALL');
+ const board=useGetZero3PublicBoard({eventId},{query:{refetchInterval:1500,queryKey:getGetZero3PublicBoardQueryKey({eventId})}});
+ const command=useControlZero3Timer();const qc=useQueryClient();const timer=board.data?.timer;
+ const batteryMode=board.data?.batteryOperationsEnabled===true;
+ const batteriesQuery=useListZero3EventBatteries(eventId,{query:{
+  queryKey:getListZero3EventBatteriesQueryKey(eventId),enabled:batteryMode,refetchInterval:1500,
+ }});
   const activeBattery=board.data?.activeBattery;
-  const batteryMode=board.data?.batteryOperationsEnabled===true;
   const timerAction=primaryTimerAction(timer?.state);
   const timerValue=timer?.state==='PREPARATION'?timer.preparationRemainingMs:timer?.elapsedMs;
+ if(batteryMode){
+  const batteries=batteriesQuery.data??[];
+  const timerStatusFor=(battery:Zero3EventBattery)=>board.data?.batteryTimers?.find(item=>item.batteryId===battery.id)?.state??battery.state;
+  const visibleBatteries=timerFilter==='ALL'?batteries:batteries.filter(battery=>timerStatusFor(battery)===timerFilter);
+  return <div className="detail-layout">
+   <section className="panel panel-pad">
+    <div className="op-section-head"><div><div className="eyebrow">Central de cronômetros</div><h2 className="panel-title">Tempos por bateria</h2></div><span className={`pill ${batteries.some(item=>item.state==='RUNNING')?'warn':'good'}`}>{batteries.filter(item=>item.state==='RUNNING').length} em andamento</span></div>
+    <p className="field-help">Cada bateria tem largada, preparação, pausa, retomada, parada e CAP independentes. O acumulado do evento permanece separado e não encerra outros cronômetros.</p>
+    <div className="toolbar" role="group" aria-label="Filtrar baterias por status">
+     {[['ALL','Todas'],['IDLE','Não iniciada'],['RUNNING','Em andamento'],['PAUSED','Pausa'],['FINISHED','Finalizada'],['CANCELLED','Cancelada']].map(([value,label])=><button key={value} type="button" className={`button small ${timerFilter===value?'primary':''}`} aria-pressed={timerFilter===value} onClick={()=>setTimerFilter(value)}>{label}</button>)}
+    </div>
+    {batteriesQuery.isLoading?<LoadingRows/>:batteriesQuery.isError?<QueryError error={batteriesQuery.error} retry={()=>batteriesQuery.refetch()}/>:!batteries.length?<EmptyState title="Nenhuma bateria cadastrada" detail="Crie uma bateria em Operações → Baterias para iniciar um cronômetro independente."/>:
+     !visibleBatteries.length?<EmptyState title="Nenhuma bateria neste status" detail="Escolha outro filtro para ver as demais baterias."/>:
+     <div className="timer-center-list">{visibleBatteries.map(battery=>{
+      const batteryTimer=board.data?.batteryTimers?.find(item=>item.batteryId===battery.id);
+      const state=batteryTimer?.state??battery.state;
+      const elapsed=state==='PREPARATION'?batteryTimer?.preparationRemainingMs??battery.preparationRemainingMs:batteryTimer?.elapsedMs??battery.elapsedMs;
+      const capReached=battery.timeCapMs>0&&state==='FINISHED'&&elapsed>=battery.timeCapMs;
+      return <details className="timer-center-details" key={battery.id}>
+       <summary className="timer-center-summary">
+        <div className="timer-center-summary-name"><span className="lane-tag">{eventBatteryCode(battery.order)}</span><div><strong>{battery.name}</strong><small>{battery.categories.join(' + ')||'Sem categoria'}</small></div></div>
+        <div className="timer-center-summary-status"><span className={`pill ${state==='RUNNING'?'warn':capReached?'good':'neutral'}`}>{capReached?'Finalizada · CAP atingido':state==='PAUSED'?'Pausado · tempo congelado':timerStateLabel(state)}</span><strong>{formatMs(elapsed)}</strong><small>CAP {formatMs(battery.timeCapMs)}</small></div>
+        {activeBattery?.batteryId===battery.id&&<span className="pill good">SELECIONADA PARA TV</span>}
+       </summary>
+       <EventBatteryTimerPanel
+        battery={battery}
+        timer={batteryTimer}
+        batteryTimers={board.data?.batteryTimers}
+        serverTime={board.data?.serverTime}
+        isActiveForTv={activeBattery?.batteryId===battery.id}
+       />
+      </details>;
+     })}</div>}
+   </section>
+   <section className="panel panel-pad">
+    <h2 className="panel-title">Estado compartilhado</h2>
+    <div className="lane-list">
+     <div className="lane-card"><span className="lane-tag">EVT</span><div><div className="lane-name">{event?.name||'Evento'}</div><div className="lane-meta">{event?.proofName||'Provas do evento'}</div></div></div>
+     <div className="lane-card"><span className="lane-tag">TV</span><div><div className="lane-name">{activeBattery?`${eventBatteryCode(activeBattery.order)} · ${activeBattery.name}`:'Nenhuma bateria selecionada'}</div><div className="lane-meta">Selecionar para a TV não inicia nem pausa cronômetros.</div></div></div>
+     <div className="lane-card"><span className="lane-tag">SYNC</span><div><div className="lane-name">{board.isError?(board.isFetching?'Reconectando':'Sem conexão'):board.isFetching?'Sincronizando':'Ao vivo'}</div><div className="lane-meta">O servidor mantém estado, versão e tempos oficiais; telas atualizam a cada 1,5 s.</div></div></div>
+    </div>
+    <p className="notice" style={{marginTop:16}}>A preparação configurada pelo evento não consome o CAP. Atingir o CAP congela somente aquele cronômetro; a bateria continua em apuração até uma ação separada de finalização.</p>
+   </section>
+  </div>;
+ }
+ if(board.isLoading&&!board.data)return <section className="panel panel-pad"><LoadingRows/></section>;
   const doAction=()=>timer&&command.mutate({eventId,data:{
    action:timerAction.action,expectedVersion:timer.version,commandId:crypto.randomUUID(),
-   ...(batteryMode&&activeBattery?{expectedProofId:activeBattery.proofId,expectedBatteryOrder:activeBattery.order}:{}),
   }},{onSuccess:()=>qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})})});
   const connectionLabel=board.isError?(board.isFetching?'Reconectando':'Sem conexão'):board.isFetching?'Sincronizando':'Ao vivo';
-   return <div className="detail-layout"><section className="panel panel-pad"><div className="timer-display"><div className="timer-state">{timerStateLabel(timer?.state)} · V{timer?.version??'—'}</div><div className="timer-time">{formatMs(timerValue)}</div><div className="lede">{batteryMode?activeBattery?`Bateria ${eventBatteryCode(activeBattery.order)} · ${activeBattery.name}`:'Selecione uma bateria em Baterias antes de iniciar o cronômetro.':timer?.state==='PREPARATION'?`Preparação · ${Math.ceil((timer.preparationRemainingMs||0)/1000)}s restantes`:timer?`Preparação configurada: ${timer.preparationSeconds}s`:'Aguardando sincronização do cronômetro'}</div></div><div className="timer-actions"><button className={`button ${timerAction.label==='Iniciar'?'primary':''}`} disabled={!timer||command.isPending||board.isError||batteryMode&&!activeBattery} onClick={doAction}>{timerAction.label==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {command.isPending?'Aguardando confirmação…':timerAction.label}</button></div>{command.isError&&<div className="error-box" style={{marginTop:15}}>Falha no comando · {feedback(command.error)}<button className="button small" onClick={()=>board.refetch()}><RotateCw size={13}/> Atualizar</button></div>}</section>
-   <section className="panel panel-pad"><h2 className="panel-title">Estado compartilhado</h2><div className="lane-list"><div className="lane-card"><span className="lane-tag">EVT</span><div><div className="lane-name">{event?.name||'Evento'}</div><div className="lane-meta">{event?.proofName||'Prova'}</div></div></div>{batteryMode&&<div className="lane-card"><span className="lane-tag">BAT</span><div><div className="lane-name">{activeBattery?`${eventBatteryCode(activeBattery.order)} · ${activeBattery.name}`:'Nenhuma selecionada'}</div><div className="lane-meta">{activeBattery?.categories.map(categoryName).join(' + ')||'Escolha em Operação → Baterias'}</div></div></div>}<div className="lane-card"><span className="lane-tag">SYNC</span><div><div className="lane-name">{connectionLabel}</div><div className="lane-meta">Estado recebido do servidor · atualização a cada 1,5 s</div></div></div></div><p className="notice" style={{marginTop:16}}>Iniciar aplica a preparação configurada e depois inicia a contagem. Parar cancela a preparação ou congela o tempo para apuração; finalizar a bateria é uma ação separada.</p></section></div>;
+    return <div className="detail-layout"><section className="panel panel-pad"><div className="timer-display"><div className="timer-state">{timerStateLabel(timer?.state)} · V{timer?.version??'—'}</div><div className="timer-time">{formatMs(timerValue)}</div><div className="lede">{timer?.state==='PREPARATION'?`Preparação · ${Math.ceil((timer.preparationRemainingMs||0)/1000)}s restantes`:timer?`Preparação configurada: ${timer.preparationSeconds}s`:'Aguardando sincronização do cronômetro'}</div></div><div className="timer-actions"><button className={`button ${timerAction.label==='Iniciar'?'primary':''}`} disabled={!timer||command.isPending||board.isError} onClick={doAction}>{timerAction.label==='Iniciar'?<Play size={14}/>:<Square size={14}/>} {command.isPending?'Aguardando confirmação…':timerAction.label}</button></div>{command.isError&&<div className="error-box" style={{marginTop:15}}>Falha no comando · {feedback(command.error)}<button className="button small" onClick={()=>board.refetch()}><RotateCw size={13}/> Atualizar</button></div>}</section>
+    <section className="panel panel-pad"><h2 className="panel-title">Estado compartilhado</h2><div className="lane-list"><div className="lane-card"><span className="lane-tag">EVT</span><div><div className="lane-name">{event?.name||'Evento'}</div><div className="lane-meta">{event?.proofName||'Prova'}</div></div></div><div className="lane-card"><span className="lane-tag">SYNC</span><div><div className="lane-name">{connectionLabel}</div><div className="lane-meta">Estado recebido do servidor · atualização a cada 1,5 s</div></div></div></div><p className="notice" style={{marginTop:16}}>Iniciar aplica a preparação configurada e depois inicia a contagem. Parar congela o tempo para apuração; finalizar a bateria é uma ação separada.</p></section></div>;
 }
 
- function Results(props:{eventId:string;proofId?:string;batteryOrder?:number}) {
+ function Results(props:{eventId:string;eventName?:string;proofId?:string;batteryOrder?:number;initialRegistrationId?:string;initialProofId?:string}) {
+   const board=useGetZero3PublicBoard({eventId:props.eventId},{query:{
+    queryKey:getGetZero3PublicBoardQueryKey({eventId:props.eventId}),
+    retry:shouldRetryZero3Query,
+    refetchInterval:query=>pollingIntervalAfterError(query.state.error,3000),
+    refetchOnWindowFocus:query=>shouldRefetchAfterError(query.state.error),
+    refetchOnReconnect:query=>shouldRefetchAfterError(query.state.error),
+   }});
   if(props.proofId&&props.batteryOrder!==undefined){
    return <BatteryResults eventId={props.eventId} proofId={props.proofId} batteryOrder={props.batteryOrder}/>;
   }
+   if(board.isLoading)return <section className="panel panel-pad"><LoadingRows/></section>;
+   if(board.isError)return <section className="panel panel-pad"><QueryError retry={()=>board.refetch()}/></section>;
+   if(board.data?.batteryOperationsEnabled===true){
+    return <EventResultsWorkspace eventId={props.eventId} eventName={props.eventName} initialRegistrationId={props.initialRegistrationId} initialProofId={props.initialProofId}/>;
+   }
   return <GeneralResults {...props}/>;
  }
 
@@ -599,7 +665,6 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const registrations=useListZero3Registrations(eventId,{query:{queryKey:getListZero3RegistrationsQueryKey(eventId),refetchInterval:10000}});
  const proofs=useListZero3Proofs(eventId,{query:{queryKey:getListZero3ProofsQueryKey(eventId),refetchInterval:10000}});
  const select=useSetZero3ActiveEventBattery();
- const timerCommand=useControlZero3Timer();
  const create=useCreateZero3EventBattery();
  const finalize=useFinalizeZero3EventBattery();
   const updateBattery=useUpdateZero3EventBattery();
@@ -607,7 +672,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
   const me=useGetZero3Me();
  const qc=useQueryClient();
  const [error,setError]=useState('');
- const [timerCommandBatteryId,setTimerCommandBatteryId]=useState<string|null>(null);
+ const [notice,setNotice]=useState('');
  const [confirmId,setConfirmId]=useState<string|null>(null);
   const [editingBatteryId,setEditingBatteryId]=useState<string|null>(null);
   const [editingName,setEditingName]=useState('');
@@ -622,7 +687,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const [resultsFocusIssue,setResultsFocusIssue]=useState<BatteryReadinessIssue|null>(null);
  const activeId=batteryModel.activeBattery?.batteryId;
  const batteries=batteriesQuery.data??[];
- const nextOrder=Math.max(0,...batteries.map(item=>item.order))+1;
+ const nextOrder=nextAvailableBatteryOrder(batteries.map(item=>item.order));
  const refresh=()=>{
   void qc.invalidateQueries({queryKey:getListZero3EventBatteriesQueryKey(eventId)});
   void qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})});
@@ -663,7 +728,10 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const createBattery=(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget);
   const formElement=event.currentTarget;
-   create.mutate({eventId,data:{name:String(form.get('name')||'').trim(),order:Number(form.get('order')),registrationIds:createRegistrationIds}},{
+    let scheduledStartAt:string|null;
+    try{scheduledStartAt=parseBrasiliaDateTimeInput(String(form.get('scheduledStartAt')||''));}
+    catch(failure){setError(feedback(failure));return;}
+    create.mutate({eventId,data:{name:String(form.get('name')||'').trim(),order:Number(form.get('order')),scheduledStartAt,registrationIds:createRegistrationIds}},{
     onSuccess:()=>{refresh();setError('');formElement.reset();setOrder(undefined);setCreateRegistrationIds([]);},
    onError:failure=>setError(feedback(failure)),
   });
@@ -671,40 +739,19 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const selectBattery=(batteryId:string|null)=>select.mutate({eventId,data:{batteryId}},{
   onSuccess:()=>{setError('');refresh();},onError:failure=>setError(feedback(failure)),
  });
- const controlBatteryTimer=(battery:Zero3EventBattery)=>{
-  const timer=batteryModel.batteryTimers?.find(item=>item.batteryId===battery.id);
-  const state=timer?.state??battery.state;
-  const control=eventBatteryTimerControl(state);
-  if(!control||timerCommand.isPending)return;
-  setTimerCommandBatteryId(battery.id);
-  timerCommand.mutate({eventId,data:{
-   action:control.action,
-   expectedVersion:timer?.version??battery.timerVersion,
-   commandId:crypto.randomUUID(),
-   expectedBatteryId:battery.id,
-  }},{
-   onSuccess:()=>{setTimerCommandBatteryId(null);setError('');refresh();},
-   onError:failure=>{setTimerCommandBatteryId(null);setError(feedback(failure));refresh();},
-  });
- };
  const openResultsPanel=(batteryId:string,issue:BatteryReadinessIssue|null=null)=>{
   setConfirmId(null);
   setResultsBatteryId(batteryId);
   setResultsFocusIssue(issue);
  };
- const requestFinalization=(battery:Zero3EventBattery,issues:BatteryReadinessIssue[])=>{
-  const firstResultIssue=issues.find(issue=>Boolean(issue.registrationId));
-  if(firstResultIssue){
-   openResultsPanel(battery.id,firstResultIssue);
-   return;
-  }
+  const requestFinalization=(battery:Zero3EventBattery)=>{
   setConfirmId(battery.id);
  };
  const finalizeBattery=(battery:Zero3EventBattery)=>{
-  if(confirmId!==battery.id||battery.reviewedResultCount!==battery.expectedResultCount||
-    battery.expectedResultCount===0||!battery.finalizationFingerprint)return;
+   if(confirmId!==battery.id||battery.operationalFinalized||battery.registrations.length===0||
+     !battery.finalizationFingerprint)return;
   finalize.mutate({eventId,batteryId:battery.id,data:{expectedFingerprint:battery.finalizationFingerprint}},{
-   onSuccess:()=>{setConfirmId(null);setError('');refresh();},
+    onSuccess:saved=>{setConfirmId(null);setError('');setNotice(saved.alreadyFinalized?'Esta bateria já estava finalizada.':'Bateria finalizada; cronômetro encerrado sem publicar o ranking.');refresh();},
     onError:failure=>{setError(feedback(failure));refresh();},
   });
  };
@@ -719,57 +766,47 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
      const isActive=activeId===battery.id;
       const readinessIssues=getBatteryReadinessIssues(battery);
       const readyCount=batteryReadinessCount(battery);
-      const proofsConfigured=battery.proofs.length===4&&battery.proofs.every(proof=>proof.configured);
       const exceptionPending=readinessIssues.some(issue=>issue.kind==='EXCEPTION');
-      const canFinalize=battery.expectedResultCount>0&&readinessIssues.length===0&&proofsConfigured&&
-       !unresolved(battery)&&!exceptionPending&&Boolean(battery.finalizationFingerprint)&&
-      (!battery.finalized||!battery.finalizationCurrent);
-      const canOpenFinalize=battery.expectedResultCount>0&&Boolean(battery.finalizationFingerprint)&&
-       (!battery.finalized||!battery.finalizationCurrent);
+       const canFinalize=(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&
+        battery.registrations.length>0&&Boolean(battery.finalizationFingerprint)&&!battery.operationalFinalized;
+       const canOpenFinalize=canFinalize;
       const batteryTimer=batteryModel.batteryTimers?.find(item=>item.batteryId===battery.id);
-      const timerState=batteryTimer?.state??battery.state;
        const deleteConfirmationPhrase=zero3EventBatteryDeleteConfirmation(battery.order,battery.name);
        const hasTimerData=battery.timerVersion>0||battery.state!=='IDLE';
-      const timerControl=eventBatteryTimerControl(timerState);
       const canControlTimer=me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE';
        const canEditBattery=(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&
         !['PREPARATION','RUNNING'].includes(battery.state);
-       const canEditComposition=battery.state==='IDLE'&&battery.results.length===0&&!battery.finalized;
+        const canEditComposition=battery.state==='IDLE'&&battery.results.length===0&&!battery.operationalFinalized;
        const compositionChanged=editingRegistrationIds.length!==battery.registrations.length||
         editingRegistrationIds.some(id=>!battery.registrations.some(registration=>registration.id===id));
        const orderOccupant=batteries.find(item=>item.id!==battery.id&&item.order===editingOrder);
       const isAdmin=me.data?.role==='ADMIN';
      return <article className="panel panel-pad" key={battery.id}>
-        <div className="op-section-head"><div><div className="eyebrow">Bateria {eventBatteryCode(battery.order)} · todas as provas</div><h3 className="panel-title">{battery.name}</h3></div><span className={`pill ${battery.finalized&&battery.finalizationCurrent?'':'warn'}`}>{battery.finalized?(battery.finalizationCurrent?'Finalizada':'Correção pendente'):canFinalize?'Pronta para finalizar':'Em apuração'}</span></div>
+        <div className="op-section-head"><div><div className="eyebrow">Bateria {eventBatteryCode(battery.order)} · todas as provas</div><h3 className="panel-title">{battery.name}</h3></div><span className={`pill ${battery.state==='RUNNING'?'warn':battery.state==='FINISHED'||battery.operationalFinalized?'good':'neutral'}`}>{battery.operationalFinalized?battery.pendingResultCount>0?'Finalizada · resultados parciais':'Finalizada':battery.state==='PAUSED'?'Pausado · tempo congelado':timerStateLabel(battery.state)}</span></div>
        <div className="toolbar"><span className="field-help">{battery.registrations.length} equipes · {battery.categories.join(' + ')||'sem categoria'} · {readyCount} de {battery.expectedResultCount} resultados prontos</span>
         {battery.state==='PAUSED'&&<span className="field-help">Cronômetro pausado; renomear ou reordenar preserva o tempo.</span>}
        <button className={`button small ${isActive?'primary':''}`} disabled={select.isPending||isActive} onClick={()=>selectBattery(battery.id)}>{isActive?'Na TV':'Colocar na TV'}</button>
-        <button className="button small" type="button" onClick={()=>openResultsPanel(battery.id)}>{resultsBatteryId===battery.id?'Resultados abertos':'Resultados'}</button>
-         <button className={`button small ${canFinalize?'primary':''}`} disabled={!canOpenFinalize||finalize.isPending} onClick={()=>requestFinalization(battery,readinessIssues)}>{battery.finalized&&battery.finalizationCurrent?'Finalizada':battery.finalized?'Publicar correção':'Finalizar e publicar bateria'}</button>
+        <button className="button small" type="button" onClick={()=>openResultsPanel(battery.id)}>{resultsBatteryId===battery.id?'Resultados abertos':'Gerenciar Resultados'}</button>
+          <button className={`button small ${canFinalize?'primary':''}`} disabled={!canOpenFinalize||finalize.isPending} onClick={()=>requestFinalization(battery)}>{battery.operationalFinalized?'Finalizada':finalize.isPending&&confirmId===battery.id?'Finalizando…':'Finalizar Bateria'}</button>
         {(me.data?.role==='ADMIN'||me.data?.role==='JUIZ_CHEFE')&&<button className="button small" type="button" disabled={!canEditBattery||updateBattery.isPending} onClick={()=>beginBatteryEdit(battery)} aria-label={`Editar bateria ${eventBatteryCode(battery.order)}`}>Editar bateria</button>}
         {isAdmin&&<button className="button small" type="button" disabled={['PREPARATION','RUNNING'].includes(battery.state)||deleteBattery.isPending} onClick={()=>{setDeleteBatteryId(battery.id);setDeleteBatteryConfirmation('');setError('');}} aria-label={`Excluir bateria ${eventBatteryCode(battery.order)}`}><Trash2 size={13}/> Excluir bateria</button>}
       </div>
-      <div className="battery-timer-tools">
-       <BatteryTimerReadout battery={battery} timer={batteryTimer} serverTime={batteryModel.serverTime}/>
-       {canControlTimer&&timerControl&&<button
-        className={`button small ${timerControl.action==='prepare'?'primary':''}`}
-        type="button"
-        data-testid={`battery-timer-action-${battery.id}`}
-        disabled={timerCommand.isPending}
-        onClick={()=>controlBatteryTimer(battery)}
-       >
-        {timerControl.action==='finish'?<Square size={13}/>:timerControl.action==='reset'?<X size={13}/>:timerControl.action==='resume'?<RotateCw size={13}/>:<Play size={13}/>}
-        {timerCommandBatteryId===battery.id?'Salvando…':timerControl.label}
-       </button>}
-      </div>
+       <EventBatteryTimerPanel
+        battery={battery}
+        timer={batteryTimer}
+        batteryTimers={batteryModel.batteryTimers}
+        serverTime={batteryModel.serverTime}
+        isActiveForTv={batteryModel.activeBattery?.batteryId===battery.id}
+       />
+       {!canControlTimer&&<p className="field-help">Somente ADMIN ou JUIZ-CHEFE podem comandar cronômetros.</p>}
       {battery.expectedResultCount===0&&<p className="field-help">Adicione inscrições à bateria antes de finalizar.</p>}
       {exceptionPending&&<p className="field-help">DNS/DNF requer regra oficial de exceção antes da publicação.</p>}
-      {unresolved(battery)&&<p className="field-help">Há empate sem regra oficial configurada; a finalização está bloqueada.</p>}
+       {unresolved(battery)&&<p className="field-help">Há empate sem regra oficial configurada; os pontos afetados permanecem pendentes no ranking até a regra ser resolvida.</p>}
       <div className="lane-list">{battery.registrations.map(reg=><div className="lane-card" key={reg.id}>
        <span className="lane-tag">{reg.laneLabel||'—'}</span><div style={{minWidth:0,flex:1}}><div className="lane-name">{reg.teamName||reg.athleteNames.join(' / ')||reg.id}</div><div className="lane-meta">{reg.category} · {reg.athleteNames.join(' · ')}</div>
         <div className="lane-meta">{battery.proofs.slice().sort((a,b)=>a.order-b.order).map(proof=>{
           const result=battery.results.find(item=>item.registrationId===reg.id&&item.proofId===proof.id);
-          const state=!result?'Faltando':result.status==='PROVISIONAL'?'Provisório · revisar':result.status==='VALIDATED'?'Validado':result.status;
+           const state=!result?'Faltando':result.status==='PROVISIONAL'?'Provisório · revisar':result.status==='VALIDATED'?'Revisado · aguarda publicar ranking':result.status;
           return `${proof.order}. ${proof.name||'Prova pendente'}: ${result?.rawValue??state}${result?.status==='PROVISIONAL'?' · Provisório':''}`;
         }).join(' · ')}</div>
        </div></div>)}</div>
@@ -803,38 +840,35 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
          <div className="field"><label htmlFor={`delete-battery-confirm-${battery.id}`}>Digite {deleteConfirmationPhrase}</label><input id={`delete-battery-confirm-${battery.id}`} value={deleteBatteryConfirmation} onChange={event=>setDeleteBatteryConfirmation(event.target.value)} autoComplete="off" spellCheck={false} placeholder={deleteConfirmationPhrase}/></div>
         <div className="toolbar"><button type="button" className="button" onClick={()=>{setDeleteBatteryId(null);setDeleteBatteryConfirmation('');}} disabled={deleteBattery.isPending}>Cancelar</button><button type="button" className="button" style={{borderColor:'#a34238',color:'#a34238'}} disabled={deleteBatteryConfirmation!==deleteConfirmationPhrase||!battery.finalizationFingerprint||deleteBattery.isPending} onClick={()=>confirmBatteryDelete(battery)}>{deleteBattery.isPending?'Excluindo…':'Excluir bateria e dados dela'}</button></div>
        </section>}
-       {resultsBatteryId===battery.id&&<EventBatteryResultsPanel
+        {resultsBatteryId===battery.id&&<EventBatteryResultsPanel
         eventId={eventId}
+         eventName={batteryModel.event?.name||'Evento'}
         battery={battery}
         focusIssue={resultsFocusIssue}
         onClose={()=>{setResultsBatteryId(null);setResultsFocusIssue(null);}}
         onSaved={refresh}
        />}
-      {confirmId===battery.id&&<div role="alertdialog" aria-label="Confirmar finalização da bateria" className="panel panel-pad" style={{marginTop:12}}>
-        <strong>{canFinalize?'Confirmar finalização e publicação?':'Pendências para finalizar'}</strong>
-        <p className="field-help">{battery.name} · {battery.proofs.length} provas · {battery.registrations.length} inscrições · {readyCount} de {battery.expectedResultCount} resultados prontos. A publicação atualiza a TV e o ranking geral; selecionar a TV e controlar o cronômetro continuam sendo ações separadas.</p>
-        {readinessIssues.length>0?<div className="battery-readiness-panel" role="alert">
-         <strong>A bateria permanece em apuração até resolver todas as pendências.</strong>
-         <ul className="battery-readiness-list">{readinessIssues.map((issue,index)=><li className="battery-readiness-item" key={`${issue.registrationId}:${issue.proofId}:${index}`}>
-          <span><b>{issue.laneLabel||'—'} · {issue.teamName}</b><small>{issue.category} · Prova {issue.proofOrder}: {issue.proofName} · {batteryIssueLabel(issue.kind)}</small></span>
-          {issue.kind==='CONFIGURATION'
-           ?<Link className="button small" href={batteryIssueHref(eventId,battery.id,issue)}>{batteryIssueActionLabel(issue.kind)}</Link>
-           :<button type="button" className="button small" onClick={()=>openResultsPanel(battery.id,issue)}>{batteryIssueActionLabel(issue.kind)}</button>}
-         </li>)}</ul>
-        </div>:unresolved(battery)?<p className="error-box" role="alert">Há empate sem regra oficial configurada; resolva o desempate antes de publicar.</p>
-         :!proofsConfigured?<p className="error-box" role="alert">Configure as quatro provas do evento antes de finalizar.</p>
-         :exceptionPending?<p className="error-box" role="alert">DNS/DNF ainda não tem regra oficial de pontuação configurada.</p>:null}
-        <div className="toolbar">{canFinalize&&<button className="button primary" disabled={finalize.isPending} onClick={()=>finalizeBattery(battery)}>Confirmar e publicar</button>}<button className="button" onClick={()=>setConfirmId(null)}>Fechar</button></div>
-      </div>}
+       {confirmId===battery.id&&<div role="alertdialog" aria-label="Confirmar finalização operacional da bateria" className="panel panel-pad" style={{marginTop:12}}>
+         <strong>Confirmar Finalizar Bateria?</strong>
+         <p className="field-help">{batteryModel.event?.name||'Evento'} · {eventBatteryCode(battery.order)} · {battery.name} · {battery.proofs.map(proof=>`${proof.order}. ${proof.name||'Prova sem nome'}`).join(' · ')} · {battery.registrations.length} inscrições · {battery.results.length} marcas registradas · {readyCount} de {battery.expectedResultCount} revisadas.</p>
+         <p className="field-help">Esta ação encerra somente o cronômetro desta bateria e preserva o tempo decorrido. Não publica resultados, pontos, ranking nem pódio. A publicação oficial continua separada em “Publicar Ranking”.</p>
+         {readinessIssues.length>0&&<div className="battery-readiness-panel" role="status">
+          <strong>Há {readinessIssues.length} pendência(s). A bateria será finalizada mesmo assim.</strong>
+          <span className="field-help">Os resultados ausentes ou provisórios continuarão identificados como pendentes; não serão preenchidos com zero.</span>
+         </div>}
+         <div className="toolbar"><button className="button primary" disabled={!canFinalize||finalize.isPending} onClick={()=>finalizeBattery(battery)}>{finalize.isPending?'Finalizando…':'Confirmar Finalizar Bateria'}</button><button className="button" onClick={()=>setConfirmId(null)}>Cancelar</button></div>
+       </div>}
      </article>;
     })}</div>}
    {error&&<p role="alert" className="error-box">{error}</p>}
+   {notice&&<p role="status" className="notice">{notice}</p>}
   </section>
   <form className="panel panel-pad" onSubmit={createBattery}>
    <h2 className="panel-title">Criar bateria do evento</h2>
    <p className="field-help">Uma inscrição participa uma única vez no evento. A bateria inclui, em paralelo, todas as provas cadastradas.</p>
    <Field label="Nome da bateria" name="name" required placeholder="Bateria 01"/>
-   <div className="field"><label htmlFor="event-battery-order">Número no evento</label><input id="event-battery-order" name="order" type="number" min="1" required value={order??nextOrder} onChange={event=>setOrder(Number(event.target.value))}/></div>
+   <div className="field"><label htmlFor="event-battery-order">Número na sequência · P{String(order??nextOrder).padStart(2,'0')}</label><input id="event-battery-order" name="order" type="number" min="1" required value={order??nextOrder} onChange={event=>setOrder(Number(event.target.value))}/><span className="field-help">Próximo número disponível sugerido automaticamente; ajuste aqui se necessário.</span></div>
+   <div className="field"><label htmlFor="event-battery-scheduled-start">Início previsto · horário de Brasília</label><input id="event-battery-scheduled-start" name="scheduledStartAt" type="datetime-local" step="60"/><span className="field-help">Opcional. Sem horário cadastrado, a TV mostra —. A programação não inicia o cronômetro.</span></div>
     <div className="field"><span className="battery-picker-field-label">Inscrições da bateria</span><BatteryRegistrationPicker
      registrations={registrations.data||[]}
      batteries={batteries}
@@ -844,37 +878,6 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
    <button className="button primary" disabled={create.isPending||!registrations.data?.length}><Plus size={14}/>{create.isPending?'Criando…':'Criar bateria'}</button>
    {proofs.data?.length!==4&&<p className="field-help">O evento precisa manter quatro provas cadastradas.</p>}
   </form>
- </div>;
-}
-
-type EventBatteryTimerSnapshot = NonNullable<Zero3PublicBoard['batteryTimers']>[number];
-
-function timestampMs(value?:string|Date|null){
- if(value instanceof Date)return value.getTime();
- if(typeof value==='string'){
-  const parsed=Date.parse(value);
-  return Number.isFinite(parsed)?parsed:undefined;
- }
- return undefined;
-}
-
-function BatteryTimerReadout({battery,timer,serverTime}:{battery:Zero3EventBattery;timer?:EventBatteryTimerSnapshot;serverTime?:string|Date}){
- const [now,setNow]=useState(()=>Date.now());
- useEffect(()=>{const id=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(id);},[]);
- const state=timer?.state??battery.state;
- const serverNow=timestampMs(serverTime);
- const delta=serverNow===undefined?0:Math.max(0,now-serverNow);
- const elapsed=(timer?.elapsedMs??battery.elapsedMs)+(state==='RUNNING'?delta:0);
- const prepEnd=timestampMs(timer?.preparationEndsAt);
- const preparation=state==='PREPARATION'
-  ?prepEnd===undefined?Math.max(0,(timer?.preparationRemainingMs??battery.preparationRemainingMs)-delta):Math.max(0,prepEnd-now)
-  :0;
- return <div className="battery-timer-readout" data-testid={`battery-timer-${battery.id}`}>
-  <Clock3 size={17} aria-hidden="true"/>
-  <div><small>{state==='PREPARATION'?'PREPARAÇÃO':state==='RUNNING'?'DURAÇÃO DA BATERIA':'CRONÔMETRO DA BATERIA'}</small>
-   <strong>{formatMs(state==='PREPARATION'?preparation:elapsed)}</strong>
-   <small>{state==='FINISHED'?'Parado · tempo congelado':timerStateLabel(state)}</small>
-  </div>
  </div>;
 }
 

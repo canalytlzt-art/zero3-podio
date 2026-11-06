@@ -13,6 +13,11 @@ export const newD1Id = () => crypto.randomUUID();
 export const d1Date = (value: string | null | undefined) => value ? new Date(value) : null;
 export const d1IsoNow = () => new Date().toISOString();
 
+export function isD1SchemaNotReady(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bno such (?:table|column|index)\b|\bhas no column named\b|\bno column named\b/i.test(message);
+}
+
 export function d1JsonArray(value: string | null | undefined): string[] {
   if (!value) return [];
   try {

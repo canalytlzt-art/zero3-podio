@@ -19,6 +19,8 @@ export interface Zero3PublicBattery {
   proofName: string;
   order: number;
   name: string;
+  /** @nullable */
+  scheduledStartAt?: Date | null;
   heatIds: string[];
   categories: string[];
   registrations: Zero3BatteryEntry[];
@@ -44,6 +46,9 @@ export interface Zero3PublicBattery {
   finalizedAt: Date | null;
   /** @nullable */
   finalizationFingerprint: string | null;
+  operationalFinalized?: boolean;
+  /** @nullable */
+  operationalFinalizedAt?: Date | null;
   batteryId?: string;
   proofs?: Zero3Proof[];
   proofLeaderboards?: Zero3ProofLeaderboards[];
@@ -51,6 +56,11 @@ export interface Zero3PublicBattery {
   eventElapsedMs?: number;
   /** @minimum 0 */
   eventLimitMs?: number;
+  /**
+     * @minimum 1
+     * @maximum 7200000
+     */
+  timeCapMs?: number;
   /** @nullable */
   preparationEndsAt?: Date | null;
 }

@@ -19,6 +19,8 @@ import {
   GetZero3PodiumStateResponse,
   GetZero3PublicBoardQueryParams,
   GetZero3PublicBoardResponse,
+  GetZero3RankingPublicationParams,
+  GetZero3RankingPublicationResponse,
   ListZero3AthletesResponse,
   ListZero3EventsResponse,
   ListZero3HeatsParams,
@@ -54,6 +56,8 @@ import {
   UpdateZero3ResultBody,
   UpdateZero3ResultParams,
   UpdateZero3ResultResponse,
+  PublishZero3RankingBody,
+  PublishZero3RankingResponse,
 } from "@workspace/api-zod";
 import {
   and,
@@ -67,6 +71,7 @@ import { Router, type IRouter } from "express";
 import { getAuth } from "@clerk/express";
 import { parseZero3TeamName, resolveZero3DisplayTeamName } from "../lib/zero3-team-name";
 import { resolveHeatRegistrationAssignments } from "../lib/zero3-heat-assignments";
+import { buildRankingPublicationPlan } from "../lib/zero3-ranking-publication";
 import {
   db,
   zero3ActiveHeatsTable,
@@ -81,6 +86,7 @@ import {
   zero3RegistrationsTable,
   zero3RegistrationMembersTable,
   zero3ResultRevisionsTable,
+  zero3RankingPublicationsTable,
   zero3ResultsTable,
   zero3TimersTable,
 } from "@workspace/db";
@@ -90,6 +96,9 @@ import { hasSignedInUserSession } from "../lib/auth-session";
 import { workerLogger } from "../lib/worker-logger";
 import {
   calculateAllResultPlacements,
+  mergeRankingPodiums,
+  rankingPodiumsFromLeaderboards,
+  scoreTieBreaksFromSnapshot,
   type ResultPlacement,
   type ScoreProof,
 } from "../lib/zero3-scoring";
@@ -170,10 +179,12 @@ async function ensureProofSlots(eventId: string) {
     .orderBy(zero3ProofsTable.order);
 }
 
-async function registrationDtos(rows: RegistrationRow[]) {
+type Zero3ReadDatabase = Pick<typeof db, "select">;
+
+async function registrationDtos(rows: RegistrationRow[], database: Zero3ReadDatabase = db) {
   const athleteIds = [...new Set(rows.flatMap((registration) => registration.athleteIds))];
   const athletes = athleteIds.length
-    ? await db
+    ? await database
         .select()
         .from(zero3AthletesTable)
         .where(inArray(zero3AthletesTable.id, athleteIds))
@@ -250,6 +261,7 @@ async function resultDto(
     status: result.status,
     capturedAt: result.capturedAt,
     revision: result.revision,
+    publishedRevision: result.publishedRevision,
     names: hasRosterSnapshot
       ? result.athleteNamesSnapshot
       : registrationInfo?.athleteNames ?? [],
@@ -308,7 +320,7 @@ async function eventResults(
 }
 
 async function eventScoring(event: EventRow) {
-  const [proofRows, allRegistrationRows, allResultRows] = await Promise.all([
+  const [proofRows, allRegistrationRows, allResultRows, latestRankingRows] = await Promise.all([
     ensureProofSlots(event.id),
     db
       .select()
@@ -318,6 +330,10 @@ async function eventScoring(event: EventRow) {
       .select()
       .from(zero3ResultsTable)
       .where(eq(zero3ResultsTable.eventId, event.id)),
+    db.select().from(zero3RankingPublicationsTable)
+      .where(eq(zero3RankingPublicationsTable.eventId, event.id))
+      .orderBy(desc(zero3RankingPublicationsTable.version))
+      .limit(1),
   ]);
   const registrationRows = allRegistrationRows.filter(
     (registration) => registration.confirmationStatus !== "CANCELLED",
@@ -336,6 +352,7 @@ async function eventScoring(event: EventRow) {
     direction: proof.direction,
   }));
   const calculated = calculateAllResultPlacements({
+    eventId: event.id,
     categories: event.categories,
     eventStatus: event.status,
     proofs,
@@ -344,9 +361,10 @@ async function eventScoring(event: EventRow) {
       id: result.id,
       registrationId: result.registrationId,
       proofId: result.proofId,
-      rawValue: result.rawValue,
-      status: result.status,
+      rawValue: result.publishedRawValue,
+      status: result.publishedStatus ?? "PROVISIONAL",
     })),
+    tieBreaks: scoreTieBreaksFromSnapshot(latestRankingRows[0]?.leaderboardsJson ?? null),
   });
   return {
     proofs: proofRows.map(proofDto),
@@ -363,7 +381,109 @@ async function eventScoring(event: EventRow) {
     resultRows,
     leaderboards: calculated.leaderboards,
     placements: calculated.placements,
+    hasRankingPublication: latestRankingRows.length > 0,
+    publishedPodiums: rankingPodiumsFromLeaderboards(calculated.leaderboards),
   };
+}
+
+async function loadPgRankingPublicationState(
+  eventId: string,
+  database: Zero3ReadDatabase = db,
+) {
+  const [event, proofRows, registrationRows, allResultRows, heatRows, heatEntryRows, latestRows] =
+    await Promise.all([
+      database.select().from(zero3EventsTable).where(eq(zero3EventsTable.id, eventId)).limit(1),
+      database.select().from(zero3ProofsTable).where(eq(zero3ProofsTable.eventId, eventId)).orderBy(zero3ProofsTable.order),
+      database.select().from(zero3RegistrationsTable).where(eq(zero3RegistrationsTable.eventId, eventId)),
+      database.select().from(zero3ResultsTable).where(eq(zero3ResultsTable.eventId, eventId)),
+      database.select().from(zero3HeatsTable).where(eq(zero3HeatsTable.eventId, eventId)),
+      database.select().from(zero3HeatEntriesTable),
+      database.select().from(zero3RankingPublicationsTable)
+        .where(eq(zero3RankingPublicationsTable.eventId, eventId))
+        .orderBy(desc(zero3RankingPublicationsTable.version))
+        .limit(1),
+    ]);
+  const selectedEvent = event[0];
+  if (!selectedEvent) return null;
+  const activeRows = registrationRows.filter((registration) => registration.confirmationStatus !== "CANCELLED");
+  const registrationDtosForPlan = await registrationDtos(activeRows, database);
+  const registrationById = new Map(activeRows.map((row) => [row.id, row]));
+  const heatById = new Map(heatRows.map((row) => [row.id, row]));
+  const proofById = new Map(proofRows.map((row) => [row.id, row]));
+  const heatEntryKeys = new Set(heatEntryRows.map((row) => `${row.heatId}:${row.registrationId}`));
+  const resultInputs = allResultRows.map((row) => {
+    const registration = registrationById.get(row.registrationId);
+    const heat = row.heatId ? heatById.get(row.heatId) : undefined;
+    const proof = row.proofId ? proofById.get(row.proofId) : undefined;
+    return {
+      id: row.id,
+      registrationId: row.registrationId,
+      proofId: row.proofId,
+      category: row.category,
+      status: row.status,
+      rawValue: row.rawValue,
+      elapsedMs: row.elapsedMs,
+      revision: row.revision,
+      publishedStatus: row.publishedStatus,
+      publishedRawValue: row.publishedRawValue,
+      publishedElapsedMs: row.publishedElapsedMs,
+      publishedRevision: row.publishedRevision,
+      associationValid: Boolean(
+        registration &&
+        registration.category === row.category &&
+        row.proofId &&
+        heat &&
+        heat.eventId === eventId &&
+        heat.category === row.category &&
+        proof?.eventId === eventId &&
+        heatEntryKeys.has(`${row.heatId}:${row.registrationId}`),
+      ),
+    };
+  });
+  const latest = latestRows[0];
+  const planInput = {
+    eventId,
+    eventStatus: selectedEvent.status,
+    version: latest?.version ?? 0,
+    proofs: proofRows.map((proof) => ({
+      id: proof.id,
+      order: proof.order,
+      name: proof.name,
+      metricType: proof.metricType,
+      unit: proof.unit,
+      direction: proof.direction,
+    })),
+    registrations: registrationDtosForPlan.map((registration) => ({
+      ...registration,
+      active: true,
+    })),
+    results: resultInputs,
+    persistedTieBreaks: scoreTieBreaksFromSnapshot(latest?.leaderboardsJson ?? null),
+  };
+  const plan = await buildRankingPublicationPlan(planInput);
+  return { event: selectedEvent, plan, planInput, latest, resultRows: allResultRows };
+}
+
+function rankingPublicationPreviewDto(
+  eventId: string,
+  plan: Awaited<ReturnType<typeof buildRankingPublicationPlan>>,
+  latest: (typeof zero3RankingPublicationsTable.$inferSelect) | undefined,
+) {
+  return GetZero3RankingPublicationResponse.parse({
+    eventId,
+    version: latest?.version ?? 0,
+    publishedAt: latest?.publishedAt?.toISOString() ?? null,
+    publishedBy: latest?.publishedBy ?? null,
+    eligibleResultCount: plan.eligibleResultCount,
+    partialResultCount: plan.partialResultCount,
+    affected: plan.affected,
+    issues: plan.issues,
+    resultStates: plan.resultStates,
+    ties: plan.ties,
+    leaderboards: plan.leaderboards,
+    fingerprint: plan.fingerprint,
+    canPublish: plan.canPublish,
+  });
 }
 
 async function activeHeatDtos(eventId: string, categories: Category[]) {
@@ -1332,6 +1452,16 @@ router.put(
       });
       return;
     }
+    if (
+      body.data.expectedBatteryId ||
+      body.data.expectedProofId ||
+      body.data.expectedBatteryOrder !== undefined
+    ) {
+      res.status(409).json({
+        error: "Este backend usa um cronômetro por evento e não pode operar com segurança um cronômetro por bateria. Nenhum timer foi alterado; use o backend D1 de staging.",
+      });
+      return;
+    }
     const [event] = await db
       .select()
       .from(zero3EventsTable)
@@ -1434,6 +1564,8 @@ router.put(
             preparationEndsAt: null,
           };
           break;
+        case "cancel":
+          throw new Error("TIMER_INVALID_ACTION");
       }
       const [saved] = await tx
         .update(zero3TimersTable)
@@ -1463,6 +1595,167 @@ router.put(
     }
     const current = timerDto(result, event.preparationSeconds, now);
     res.json(ControlZero3TimerResponse.parse(current));
+  },
+);
+
+router.get(
+  "/zero3/events/:eventId/ranking-publication",
+  requireZero3Roles([...EVENT_ROLES]),
+  async (req, res): Promise<void> => {
+    const params = GetZero3RankingPublicationParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const state = await loadPgRankingPublicationState(params.data.eventId);
+    if (!state) {
+      res.status(404).json({ error: "Evento não encontrado." });
+      return;
+    }
+    res.json(rankingPublicationPreviewDto(params.data.eventId, state.plan, state.latest));
+  },
+);
+
+router.post(
+  "/zero3/events/:eventId/ranking-publication",
+  requireZero3Roles([...ADMIN_ROLES]),
+  async (req, res): Promise<void> => {
+    const params = GetZero3RankingPublicationParams.safeParse(req.params);
+    const body = PublishZero3RankingBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({
+        error: !params.success ? params.error.message : body.error?.message,
+      });
+      return;
+    }
+    const state = await loadPgRankingPublicationState(params.data.eventId);
+    if (!state) {
+      res.status(404).json({ error: "Evento não encontrado." });
+      return;
+    }
+    const publicationPlan = await buildRankingPublicationPlan({
+      ...state.planInput,
+      ...(body.data.tieBreaks !== undefined ? { tieBreaksOverride: body.data.tieBreaks } : {}),
+    });
+    const [duplicate] = await db.select().from(zero3RankingPublicationsTable).where(and(
+      eq(zero3RankingPublicationsTable.eventId, params.data.eventId),
+      eq(zero3RankingPublicationsTable.fingerprint, publicationPlan.fingerprint),
+    )).limit(1);
+    if (duplicate) {
+      res.json(PublishZero3RankingResponse.parse({
+        eventId: params.data.eventId,
+        version: duplicate.version,
+        resultCount: duplicate.resultCount,
+        publishedAt: duplicate.publishedAt.toISOString(),
+        publishedBy: duplicate.publishedBy,
+        fingerprint: duplicate.fingerprint,
+        alreadyPublished: true,
+      }));
+      return;
+    }
+    const latestVersion = state.latest?.version ?? 0;
+    if (
+      body.data.expectedVersion !== latestVersion ||
+      body.data.expectedFingerprint !== state.plan.fingerprint
+    ) {
+      res.status(409).json({
+        code: "RANKING_PUBLICATION_STALE",
+        error: "Os resultados mudaram desde a conferência. Atualize a prévia antes de publicar.",
+      });
+      return;
+    }
+    if (!publicationPlan.canPublish) {
+      res.status(400).json({
+        code: "RANKING_PUBLICATION_BLOCKED",
+        error: publicationPlan.eligibleResultCount === 0
+          ? "Não há resultados revisados novos para publicar."
+          : "Há pendências que impedem a publicação do ranking.",
+        issues: publicationPlan.issues,
+      });
+      return;
+    }
+
+    const actorId = getAuth(req).userId;
+    if (!actorId) {
+      res.status(401).json({ error: "Sessão inválida." });
+      return;
+    }
+    const nextVersion = latestVersion + 1;
+    const stamp = new Date();
+    try {
+      const publicationResult = await db.transaction(async (tx) => {
+        // Serialize publication requests for this event; the serializable
+        // transaction also detects result edits concurrent with this snapshot.
+        await tx.execute(sql`SELECT id FROM zero3_events WHERE id = ${params.data.eventId} FOR UPDATE`);
+        const [existing] = await tx.select().from(zero3RankingPublicationsTable).where(and(
+          eq(zero3RankingPublicationsTable.eventId, params.data.eventId),
+          eq(zero3RankingPublicationsTable.fingerprint, publicationPlan.fingerprint),
+        )).limit(1);
+        if (existing) return { record: existing, alreadyPublished: true };
+        const freshState = await loadPgRankingPublicationState(params.data.eventId, tx);
+        const freshPublicationPlan = freshState
+          ? await buildRankingPublicationPlan({
+              ...freshState.planInput,
+              ...(body.data.tieBreaks !== undefined ? { tieBreaksOverride: body.data.tieBreaks } : {}),
+            })
+          : null;
+        if (
+          !freshState ||
+          (freshState.latest?.version ?? 0) !== latestVersion ||
+          freshState.plan.fingerprint !== body.data.expectedFingerprint ||
+          !freshPublicationPlan?.canPublish ||
+          freshPublicationPlan.fingerprint !== publicationPlan.fingerprint
+        ) {
+          throw new Error("RANKING_PUBLICATION_STALE");
+        }
+
+        const [inserted] = await tx.insert(zero3RankingPublicationsTable).values({
+          eventId: params.data.eventId,
+          version: nextVersion,
+          fingerprint: freshPublicationPlan.fingerprint,
+          resultCount: freshPublicationPlan.results.length,
+          resultsJson: freshPublicationPlan.results,
+          leaderboardsJson: freshPublicationPlan.leaderboards,
+          publishedBy: actorId,
+          publishedAt: stamp,
+        }).onConflictDoNothing().returning();
+        if (!inserted) throw new Error("RANKING_PUBLICATION_STALE");
+
+        for (const candidate of freshPublicationPlan.candidates) {
+          const [updated] = await tx.update(zero3ResultsTable).set({
+            publishedStatus: "VALIDATED",
+            publishedElapsedMs: candidate.elapsedMs,
+            publishedRawValue: candidate.rawValue === null ? null : String(candidate.rawValue),
+            publishedRevision: candidate.revision,
+          }).where(and(
+            eq(zero3ResultsTable.id, candidate.id),
+            eq(zero3ResultsTable.revision, candidate.revision),
+            eq(zero3ResultsTable.status, "VALIDATED"),
+          )).returning({ id: zero3ResultsTable.id });
+          if (!updated) throw new Error("RANKING_PUBLICATION_STALE");
+        }
+        return { record: inserted, alreadyPublished: false };
+      }, { isolationLevel: "serializable" });
+
+      res.json(PublishZero3RankingResponse.parse({
+        eventId: params.data.eventId,
+        version: publicationResult.record.version,
+        resultCount: publicationResult.record.resultCount,
+        publishedAt: publicationResult.record.publishedAt.toISOString(),
+        publishedBy: publicationResult.record.publishedBy,
+        fingerprint: publicationResult.record.fingerprint,
+        alreadyPublished: publicationResult.alreadyPublished,
+      }));
+    } catch (failure) {
+      if (failure instanceof Error && failure.message === "RANKING_PUBLICATION_STALE") {
+        res.status(409).json({
+          code: "RANKING_PUBLICATION_STALE",
+          error: "Os resultados mudaram durante a publicação. Atualize a prévia e tente novamente.",
+        });
+        return;
+      }
+      throw failure;
+    }
   },
 );
 
@@ -2149,7 +2442,10 @@ router.get(
         proofs: scoring.proofs,
         registrations: scoring.registrations,
         leaderboards: scoring.leaderboards,
-        podiums,
+        podiums: mergeRankingPodiums(
+          scoring.hasRankingPublication ? scoring.publishedPodiums : [],
+          podiums,
+        ),
         activeHeats,
       }),
     );

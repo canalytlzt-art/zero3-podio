@@ -14,6 +14,8 @@ export interface Zero3EventBatteryUpdateInput {
   expectedName: string;
   /** @minimum 1 */
   expectedOrder: number;
+  /** @nullable */
+  expectedScheduledStartAt?: Date | null;
   expectedRegistrationIds: string[];
   /**
      * @minLength 1
@@ -22,6 +24,8 @@ export interface Zero3EventBatteryUpdateInput {
   name: string;
   /** @minimum 1 */
   order: number;
+  /** @nullable */
+  scheduledStartAt?: Date | null;
   swapWithBatteryId?: string;
   registrationIds: string[];
 }

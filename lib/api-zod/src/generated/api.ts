@@ -46,6 +46,7 @@ export const getZero3DashboardResponseRecentResultsItemSyncErrorMsMin = 0;
 
 
 
+
 export const GetZero3DashboardResponse = zod.object({
   "eventCount": zod.number().int(),
   "athleteCount": zod.number().int(),
@@ -76,6 +77,7 @@ export const GetZero3DashboardResponse = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
@@ -154,7 +156,7 @@ export const restoreZero3EventBackupBodyBackupDigestMax = 64;
 export const RestoreZero3EventBackupBody = zod.object({
   "backup": zod.object({
   "format": zod.literal("zero3-event-backup"),
-  "version": zod.union([zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),
+  "version": zod.union([zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4),zod.literal(5),zod.literal(6)]),
   "eventId": zod.string(),
   "eventName": zod.string(),
   "exportedAt": zod.coerce.date(),
@@ -173,6 +175,7 @@ export const RestoreZero3EventBackupBody = zod.object({
   "heatEntries": zod.array(zod.record(zod.string(), zod.unknown())),
   "activeHeats": zod.array(zod.record(zod.string(), zod.unknown())),
   "results": zod.array(zod.record(zod.string(), zod.unknown())),
+  "rankingPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "resultRevisions": zod.array(zod.record(zod.string(), zod.unknown())),
   "timers": zod.array(zod.record(zod.string(), zod.unknown())),
   "podiumVersions": zod.array(zod.record(zod.string(), zod.unknown())),
@@ -182,7 +185,8 @@ export const RestoreZero3EventBackupBody = zod.object({
   "batteryEntries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "activeBatteries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "batteryRuns": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryTimeCapAudit": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 }),
   "digest": zod.string().min(restoreZero3EventBackupBodyBackupDigestMin).max(restoreZero3EventBackupBodyBackupDigestMax)
 })
@@ -208,7 +212,7 @@ export const getZero3EventDeletionBackupResponseDigestMax = 64;
 
 export const GetZero3EventDeletionBackupResponse = zod.object({
   "format": zod.literal("zero3-event-backup"),
-  "version": zod.union([zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),
+  "version": zod.union([zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4),zod.literal(5),zod.literal(6)]),
   "eventId": zod.string(),
   "eventName": zod.string(),
   "exportedAt": zod.coerce.date(),
@@ -227,6 +231,7 @@ export const GetZero3EventDeletionBackupResponse = zod.object({
   "heatEntries": zod.array(zod.record(zod.string(), zod.unknown())),
   "activeHeats": zod.array(zod.record(zod.string(), zod.unknown())),
   "results": zod.array(zod.record(zod.string(), zod.unknown())),
+  "rankingPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "resultRevisions": zod.array(zod.record(zod.string(), zod.unknown())),
   "timers": zod.array(zod.record(zod.string(), zod.unknown())),
   "podiumVersions": zod.array(zod.record(zod.string(), zod.unknown())),
@@ -236,7 +241,8 @@ export const GetZero3EventDeletionBackupResponse = zod.object({
   "batteryEntries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "activeBatteries": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "batteryRuns": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
-  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "batteryPublications": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "batteryTimeCapAudit": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 }),
   "digest": zod.string().min(getZero3EventDeletionBackupResponseDigestMin).max(getZero3EventDeletionBackupResponseDigestMax)
 })
@@ -501,6 +507,8 @@ export const listZero3EventBatteriesResponseEventElapsedMsMin = 0;
 
 export const listZero3EventBatteriesResponseEventLimitMsMin = 0;
 
+export const listZero3EventBatteriesResponseTimeCapMsMax = 7200000;
+
 export const listZero3EventBatteriesResponsePreparationRemainingMsMin = 0;
 
 export const listZero3EventBatteriesResponsePreparationSecondsMin = 0;
@@ -534,6 +542,7 @@ export const listZero3EventBatteriesResponseResultsItemOneRawValueMin = 0;
 
 export const listZero3EventBatteriesResponseResultsItemOneSyncErrorMsMin = 0;
 
+
 export const listZero3EventBatteriesResponsePendingResultCountMin = 0;
 
 export const listZero3EventBatteriesResponseReviewedResultCountMin = 0;
@@ -550,10 +559,12 @@ export const ListZero3EventBatteriesResponseItem = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
-  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "scheduledStartAt": zod.coerce.date().nullable(),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
   "elapsedMs": zod.number().int().min(listZero3EventBatteriesResponseElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(listZero3EventBatteriesResponseEventElapsedMsMin),
   "eventLimitMs": zod.number().int().min(listZero3EventBatteriesResponseEventLimitMsMin),
+  "timeCapMs": zod.number().int().min(1).max(listZero3EventBatteriesResponseTimeCapMsMax),
   "preparationEndsAt": zod.coerce.date().nullable(),
   "preparationRemainingMs": zod.number().int().min(listZero3EventBatteriesResponsePreparationRemainingMsMin),
   "preparationSeconds": zod.number().int().min(listZero3EventBatteriesResponsePreparationSecondsMin),
@@ -630,6 +641,7 @@ export const ListZero3EventBatteriesResponseItem = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
@@ -643,6 +655,8 @@ export const ListZero3EventBatteriesResponseItem = zod.object({
   "finalizationFingerprint": zod.string().nullable(),
   "finalizationVersion": zod.number().int().min(1).nullable(),
   "finalizedAt": zod.coerce.date().nullable(),
+  "operationalFinalized": zod.boolean().optional(),
+  "operationalFinalizedAt": zod.coerce.date().nullish(),
   "timerVersion": zod.number().int().min(listZero3EventBatteriesResponseTimerVersionMin),
   "updatedAt": zod.coerce.date()
 })
@@ -664,6 +678,7 @@ export const createZero3EventBatteryBodyNameMax = 120;
 export const CreateZero3EventBatteryBody = zod.object({
   "name": zod.string().min(1).max(createZero3EventBatteryBodyNameMax),
   "order": zod.number().int().min(1),
+  "scheduledStartAt": zod.coerce.date().nullish(),
   "registrationIds": zod.array(zod.string())
 })
 
@@ -673,6 +688,8 @@ export const createZero3EventBatteryResponseElapsedMsMin = 0;
 export const createZero3EventBatteryResponseEventElapsedMsMin = 0;
 
 export const createZero3EventBatteryResponseEventLimitMsMin = 0;
+
+export const createZero3EventBatteryResponseTimeCapMsMax = 7200000;
 
 export const createZero3EventBatteryResponsePreparationRemainingMsMin = 0;
 
@@ -707,6 +724,7 @@ export const createZero3EventBatteryResponseResultsItemOneRawValueMin = 0;
 
 export const createZero3EventBatteryResponseResultsItemOneSyncErrorMsMin = 0;
 
+
 export const createZero3EventBatteryResponsePendingResultCountMin = 0;
 
 export const createZero3EventBatteryResponseReviewedResultCountMin = 0;
@@ -723,10 +741,12 @@ export const CreateZero3EventBatteryResponse = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
-  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "scheduledStartAt": zod.coerce.date().nullable(),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
   "elapsedMs": zod.number().int().min(createZero3EventBatteryResponseElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(createZero3EventBatteryResponseEventElapsedMsMin),
   "eventLimitMs": zod.number().int().min(createZero3EventBatteryResponseEventLimitMsMin),
+  "timeCapMs": zod.number().int().min(1).max(createZero3EventBatteryResponseTimeCapMsMax),
   "preparationEndsAt": zod.coerce.date().nullable(),
   "preparationRemainingMs": zod.number().int().min(createZero3EventBatteryResponsePreparationRemainingMsMin),
   "preparationSeconds": zod.number().int().min(createZero3EventBatteryResponsePreparationSecondsMin),
@@ -803,6 +823,7 @@ export const CreateZero3EventBatteryResponse = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
@@ -816,6 +837,8 @@ export const CreateZero3EventBatteryResponse = zod.object({
   "finalizationFingerprint": zod.string().nullable(),
   "finalizationVersion": zod.number().int().min(1).nullable(),
   "finalizedAt": zod.coerce.date().nullable(),
+  "operationalFinalized": zod.boolean().optional(),
+  "operationalFinalizedAt": zod.coerce.date().nullish(),
   "timerVersion": zod.number().int().min(createZero3EventBatteryResponseTimerVersionMin),
   "updatedAt": zod.coerce.date()
 })
@@ -840,9 +863,11 @@ export const updateZero3EventBatteryBodyNameMax = 120;
 export const UpdateZero3EventBatteryBody = zod.object({
   "expectedName": zod.string().min(1).max(updateZero3EventBatteryBodyExpectedNameMax),
   "expectedOrder": zod.number().int().min(1),
+  "expectedScheduledStartAt": zod.coerce.date().nullish(),
   "expectedRegistrationIds": zod.array(zod.string()),
   "name": zod.string().min(1).max(updateZero3EventBatteryBodyNameMax),
   "order": zod.number().int().min(1),
+  "scheduledStartAt": zod.coerce.date().nullish(),
   "swapWithBatteryId": zod.string().optional(),
   "registrationIds": zod.array(zod.string())
 })
@@ -853,6 +878,8 @@ export const updateZero3EventBatteryResponseElapsedMsMin = 0;
 export const updateZero3EventBatteryResponseEventElapsedMsMin = 0;
 
 export const updateZero3EventBatteryResponseEventLimitMsMin = 0;
+
+export const updateZero3EventBatteryResponseTimeCapMsMax = 7200000;
 
 export const updateZero3EventBatteryResponsePreparationRemainingMsMin = 0;
 
@@ -887,6 +914,7 @@ export const updateZero3EventBatteryResponseResultsItemOneRawValueMin = 0;
 
 export const updateZero3EventBatteryResponseResultsItemOneSyncErrorMsMin = 0;
 
+
 export const updateZero3EventBatteryResponsePendingResultCountMin = 0;
 
 export const updateZero3EventBatteryResponseReviewedResultCountMin = 0;
@@ -903,10 +931,12 @@ export const UpdateZero3EventBatteryResponse = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
-  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "scheduledStartAt": zod.coerce.date().nullable(),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
   "elapsedMs": zod.number().int().min(updateZero3EventBatteryResponseElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(updateZero3EventBatteryResponseEventElapsedMsMin),
   "eventLimitMs": zod.number().int().min(updateZero3EventBatteryResponseEventLimitMsMin),
+  "timeCapMs": zod.number().int().min(1).max(updateZero3EventBatteryResponseTimeCapMsMax),
   "preparationEndsAt": zod.coerce.date().nullable(),
   "preparationRemainingMs": zod.number().int().min(updateZero3EventBatteryResponsePreparationRemainingMsMin),
   "preparationSeconds": zod.number().int().min(updateZero3EventBatteryResponsePreparationSecondsMin),
@@ -983,6 +1013,7 @@ export const UpdateZero3EventBatteryResponse = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
@@ -996,6 +1027,8 @@ export const UpdateZero3EventBatteryResponse = zod.object({
   "finalizationFingerprint": zod.string().nullable(),
   "finalizationVersion": zod.number().int().min(1).nullable(),
   "finalizedAt": zod.coerce.date().nullable(),
+  "operationalFinalized": zod.boolean().optional(),
+  "operationalFinalizedAt": zod.coerce.date().nullish(),
   "timerVersion": zod.number().int().min(updateZero3EventBatteryResponseTimerVersionMin),
   "updatedAt": zod.coerce.date()
 })
@@ -1040,6 +1073,192 @@ export const DeleteZero3EventBatteryResponse = zod.object({
 
 
 /**
+ * @summary Update an event battery time cap with concurrency checks and an audit record
+ */
+export const UpdateZero3EventBatteryTimeCapParams = zod.object({
+  "eventId": zod.coerce.string(),
+  "batteryId": zod.coerce.string()
+})
+
+export const updateZero3EventBatteryTimeCapBodyTimeCapMsMax = 7200000;
+
+export const updateZero3EventBatteryTimeCapBodyExpectedTimeCapMsMax = 7200000;
+
+export const updateZero3EventBatteryTimeCapBodyExpectedTimerVersionMin = 0;
+
+
+
+
+export const UpdateZero3EventBatteryTimeCapBody = zod.object({
+  "timeCapMs": zod.number().int().min(1).max(updateZero3EventBatteryTimeCapBodyTimeCapMsMax),
+  "expectedTimeCapMs": zod.number().int().min(1).max(updateZero3EventBatteryTimeCapBodyExpectedTimeCapMsMax),
+  "expectedTimerVersion": zod.number().int().min(updateZero3EventBatteryTimeCapBodyExpectedTimerVersionMin),
+  "commandId": zod.string().min(1)
+})
+
+
+export const updateZero3EventBatteryTimeCapResponseElapsedMsMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseEventElapsedMsMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseEventLimitMsMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseTimeCapMsMax = 7200000;
+
+export const updateZero3EventBatteryTimeCapResponsePreparationRemainingMsMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponsePreparationSecondsMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseRegistrationsItemCategoryMax = 32;
+
+export const updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemCategoryMax = 32;
+
+export const updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemProofCountMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemEntriesItemCategoryMax = 32;
+
+
+
+export const updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemEntriesItemCompletedProofsMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemEntriesItemProofCountMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemEntriesItemTotalPointsMin = 0;
+
+
+export const updateZero3EventBatteryTimeCapResponseProofsItemOrderMax = 4;
+
+export const updateZero3EventBatteryTimeCapResponseResultsItemOneCategoryMax = 32;
+
+export const updateZero3EventBatteryTimeCapResponseResultsItemOneElapsedMsMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseResultsItemOneRawValueMin = 0;
+
+
+
+export const updateZero3EventBatteryTimeCapResponseResultsItemOneSyncErrorMsMin = 0;
+
+
+export const updateZero3EventBatteryTimeCapResponsePendingResultCountMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseReviewedResultCountMin = 0;
+
+export const updateZero3EventBatteryTimeCapResponseExpectedResultCountMin = 0;
+
+
+export const updateZero3EventBatteryTimeCapResponseTimerVersionMin = 0;
+
+
+
+export const UpdateZero3EventBatteryTimeCapResponse = zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "order": zod.number().int().min(1),
+  "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullable(),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
+  "elapsedMs": zod.number().int().min(updateZero3EventBatteryTimeCapResponseElapsedMsMin),
+  "eventElapsedMs": zod.number().int().min(updateZero3EventBatteryTimeCapResponseEventElapsedMsMin),
+  "eventLimitMs": zod.number().int().min(updateZero3EventBatteryTimeCapResponseEventLimitMsMin),
+  "timeCapMs": zod.number().int().min(1).max(updateZero3EventBatteryTimeCapResponseTimeCapMsMax),
+  "preparationEndsAt": zod.coerce.date().nullable(),
+  "preparationRemainingMs": zod.number().int().min(updateZero3EventBatteryTimeCapResponsePreparationRemainingMsMin),
+  "preparationSeconds": zod.number().int().min(updateZero3EventBatteryTimeCapResponsePreparationSecondsMin),
+  "startedAt": zod.coerce.date().nullable(),
+  "preparationStartedAt": zod.coerce.date().nullable(),
+  "firstStartedAt": zod.coerce.date().nullable(),
+  "stoppedAt": zod.coerce.date().nullable(),
+  "registrations": zod.array(zod.object({
+  "heatId": zod.string().nullish(),
+  "batteryId": zod.string().optional(),
+  "id": zod.string(),
+  "category": zod.string().min(1).max(updateZero3EventBatteryTimeCapResponseRegistrationsItemCategoryMax),
+  "teamName": zod.string().nullable(),
+  "laneLabel": zod.string().nullable(),
+  "athleteNames": zod.array(zod.string())
+})),
+  "proofLeaderboards": zod.array(zod.object({
+  "proofId": zod.string(),
+  "leaderboards": zod.array(zod.object({
+  "category": zod.string().min(1).max(updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemCategoryMax),
+  "proofCount": zod.number().int().min(updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemProofCountMin),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'EXCEPTION_RULE_PENDING', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING']),
+  "entries": zod.array(zod.object({
+  "registrationId": zod.string(),
+  "category": zod.string().min(1).max(updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemEntriesItemCategoryMax),
+  "laneLabel": zod.string().nullable(),
+  "teamName": zod.string().nullable(),
+  "athleteNames": zod.array(zod.string()),
+  "proofScores": zod.array(zod.object({
+  "resultId": zod.string().nullable(),
+  "proofId": zod.string(),
+  "order": zod.number().int(),
+  "name": zod.string(),
+  "unit": zod.string().nullable(),
+  "value": zod.number().nullable(),
+  "status": zod.enum(['MISSING', 'PROVISIONAL', 'PUBLICATION_PENDING', 'VALIDATED', 'DNS', 'DNF', 'CONFIGURATION_PENDING', 'TIE_RULE_PENDING']),
+  "placement": zod.number().int().min(1).nullable(),
+  "points": zod.number().int().min(1).nullable()
+})),
+  "completedProofs": zod.number().int().min(updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemEntriesItemCompletedProofsMin),
+  "proofCount": zod.number().int().min(updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemEntriesItemProofCountMin),
+  "totalPoints": zod.number().int().min(updateZero3EventBatteryTimeCapResponseProofLeaderboardsItemLeaderboardsItemEntriesItemTotalPointsMin).nullable(),
+  "overallPlace": zod.number().int().min(1).nullable(),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'PUBLICATION_PENDING', 'EXCEPTION_RULE_PENDING', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING'])
+}))
+}))
+})),
+  "proofs": zod.array(zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "order": zod.number().int().min(1).max(updateZero3EventBatteryTimeCapResponseProofsItemOrderMax),
+  "name": zod.string(),
+  "metricType": zod.enum(['TIME', 'REPETITIONS', 'LOAD', 'CUSTOM', 'UNCONFIGURED']),
+  "unit": zod.string().nullable(),
+  "direction": zod.union([zod.enum(['LOWER', 'HIGHER']),zod.null()]),
+  "configured": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})),
+  "results": zod.array(zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "registrationId": zod.string(),
+  "heatId": zod.string().nullish(),
+  "batteryId": zod.string().nullish(),
+  "category": zod.string().min(1).max(updateZero3EventBatteryTimeCapResponseResultsItemOneCategoryMax),
+  "laneLabel": zod.string().nullish(),
+  "elapsedMs": zod.number().int().min(updateZero3EventBatteryTimeCapResponseResultsItemOneElapsedMsMin).nullish(),
+  "proofId": zod.string().nullable(),
+  "rawValue": zod.number().min(updateZero3EventBatteryTimeCapResponseResultsItemOneRawValueMin).nullable(),
+  "placement": zod.number().int().min(1).nullable(),
+  "points": zod.number().int().min(1).nullable(),
+  "tieRulePending": zod.boolean(),
+  "syncErrorMs": zod.number().int().min(updateZero3EventBatteryTimeCapResponseResultsItemOneSyncErrorMsMin).nullable(),
+  "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
+  "capturedAt": zod.coerce.date(),
+  "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
+  "names": zod.array(zod.string()),
+  "teamName": zod.string().nullish(),
+  "heatName": zod.string().nullish()
+})),
+  "categories": zod.array(zod.string()),
+  "pendingResultCount": zod.number().int().min(updateZero3EventBatteryTimeCapResponsePendingResultCountMin),
+  "reviewedResultCount": zod.number().int().min(updateZero3EventBatteryTimeCapResponseReviewedResultCountMin),
+  "expectedResultCount": zod.number().int().min(updateZero3EventBatteryTimeCapResponseExpectedResultCountMin),
+  "finalizationCurrent": zod.boolean(),
+  "finalized": zod.boolean(),
+  "finalizationFingerprint": zod.string().nullable(),
+  "finalizationVersion": zod.number().int().min(1).nullable(),
+  "finalizedAt": zod.coerce.date().nullable(),
+  "operationalFinalized": zod.boolean().optional(),
+  "operationalFinalizedAt": zod.coerce.date().nullish(),
+  "timerVersion": zod.number().int().min(updateZero3EventBatteryTimeCapResponseTimerVersionMin),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Select the event battery shown on the TV without changing its timer
  */
 export const SetZero3ActiveEventBatteryParams = zod.object({
@@ -1056,6 +1275,8 @@ export const setZero3ActiveEventBatteryResponseOneElapsedMsMin = 0;
 export const setZero3ActiveEventBatteryResponseOneEventElapsedMsMin = 0;
 
 export const setZero3ActiveEventBatteryResponseOneEventLimitMsMin = 0;
+
+export const setZero3ActiveEventBatteryResponseOneTimeCapMsMax = 7200000;
 
 export const setZero3ActiveEventBatteryResponseOnePreparationRemainingMsMin = 0;
 
@@ -1090,6 +1311,7 @@ export const setZero3ActiveEventBatteryResponseOneResultsItemOneRawValueMin = 0;
 
 export const setZero3ActiveEventBatteryResponseOneResultsItemOneSyncErrorMsMin = 0;
 
+
 export const setZero3ActiveEventBatteryResponseOnePendingResultCountMin = 0;
 
 export const setZero3ActiveEventBatteryResponseOneReviewedResultCountMin = 0;
@@ -1106,10 +1328,12 @@ export const SetZero3ActiveEventBatteryResponse = zod.union([zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
-  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "scheduledStartAt": zod.coerce.date().nullable(),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
   "elapsedMs": zod.number().int().min(setZero3ActiveEventBatteryResponseOneElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(setZero3ActiveEventBatteryResponseOneEventElapsedMsMin),
   "eventLimitMs": zod.number().int().min(setZero3ActiveEventBatteryResponseOneEventLimitMsMin),
+  "timeCapMs": zod.number().int().min(1).max(setZero3ActiveEventBatteryResponseOneTimeCapMsMax),
   "preparationEndsAt": zod.coerce.date().nullable(),
   "preparationRemainingMs": zod.number().int().min(setZero3ActiveEventBatteryResponseOnePreparationRemainingMsMin),
   "preparationSeconds": zod.number().int().min(setZero3ActiveEventBatteryResponseOnePreparationSecondsMin),
@@ -1186,6 +1410,7 @@ export const SetZero3ActiveEventBatteryResponse = zod.union([zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
@@ -1199,13 +1424,15 @@ export const SetZero3ActiveEventBatteryResponse = zod.union([zod.object({
   "finalizationFingerprint": zod.string().nullable(),
   "finalizationVersion": zod.number().int().min(1).nullable(),
   "finalizedAt": zod.coerce.date().nullable(),
+  "operationalFinalized": zod.boolean().optional(),
+  "operationalFinalizedAt": zod.coerce.date().nullish(),
   "timerVersion": zod.number().int().min(setZero3ActiveEventBatteryResponseOneTimerVersionMin),
   "updatedAt": zod.coerce.date()
 }),zod.null()])
 
 
 /**
- * @summary Review all proofs and atomically publish an event battery
+ * @summary Operationally finalize one event battery without publishing results
  */
 export const FinalizeZero3EventBatteryParams = zod.object({
   "eventId": zod.coerce.string(),
@@ -1224,10 +1451,12 @@ export const FinalizeZero3EventBatteryBody = zod.object({
 })
 
 
+export const finalizeZero3EventBatteryResponseElapsedMsMin = 0;
 
 
-export const finalizeZero3EventBatteryResponseFingerprintMin = 64;
-export const finalizeZero3EventBatteryResponseFingerprintMax = 64;
+export const finalizeZero3EventBatteryResponseResultCountMin = 0;
+
+export const finalizeZero3EventBatteryResponsePendingResultCountMin = 0;
 
 
 
@@ -1235,11 +1464,12 @@ export const FinalizeZero3EventBatteryResponse = zod.object({
   "eventId": zod.string(),
   "batteryId": zod.string(),
   "order": zod.number().int().min(1),
-  "version": zod.number().int().min(1),
-  "resultCount": zod.number().int().min(1),
-  "publishedAt": zod.coerce.date(),
-  "fingerprint": zod.string().min(finalizeZero3EventBatteryResponseFingerprintMin).max(finalizeZero3EventBatteryResponseFingerprintMax),
-  "alreadyPublished": zod.boolean()
+  "operationalFinalizedAt": zod.coerce.date(),
+  "elapsedMs": zod.number().int().min(finalizeZero3EventBatteryResponseElapsedMsMin),
+  "timerVersion": zod.number().int().min(1),
+  "resultCount": zod.number().int().min(finalizeZero3EventBatteryResponseResultCountMin),
+  "pendingResultCount": zod.number().int().min(finalizeZero3EventBatteryResponsePendingResultCountMin),
+  "alreadyFinalized": zod.boolean()
 })
 
 
@@ -1829,7 +2059,7 @@ export const controlZero3TimerBodyExpectedVersionMin = 0;
 
 
 export const ControlZero3TimerBody = zod.object({
-  "action": zod.enum(['prepare', 'start', 'pause', 'resume', 'finish', 'reset']),
+  "action": zod.enum(['prepare', 'start', 'pause', 'resume', 'finish', 'reset', 'cancel']),
   "expectedVersion": zod.number().int().min(controlZero3TimerBodyExpectedVersionMin),
   "commandId": zod.string().min(1),
   "expectedProofId": zod.string().min(1).optional(),
@@ -1845,11 +2075,13 @@ export const controlZero3TimerResponseEventElapsedMsMin = 0;
 
 export const controlZero3TimerResponseEventLimitMsMin = 0;
 
+export const controlZero3TimerResponseTimeCapMsMax = 7200000;
+
 
 
 export const ControlZero3TimerResponse = zod.object({
   "eventId": zod.string(),
-  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
   "elapsedMs": zod.number().int().min(controlZero3TimerResponseElapsedMsMin),
   "preparationRemainingMs": zod.number().int().min(controlZero3TimerResponsePreparationRemainingMsMin),
   "preparationSeconds": zod.number().int(),
@@ -1864,7 +2096,8 @@ export const ControlZero3TimerResponse = zod.object({
   "batteryId": zod.string().nullish(),
   "preparationEndsAt": zod.coerce.date().nullish(),
   "eventElapsedMs": zod.number().int().min(controlZero3TimerResponseEventElapsedMsMin).optional(),
-  "eventLimitMs": zod.number().int().min(controlZero3TimerResponseEventLimitMsMin).optional()
+  "eventLimitMs": zod.number().int().min(controlZero3TimerResponseEventLimitMsMin).optional(),
+  "timeCapMs": zod.number().int().min(1).max(controlZero3TimerResponseTimeCapMsMax).optional()
 })
 
 
@@ -1902,6 +2135,7 @@ export const captureZero3ResultResponseSyncErrorMsMin = 0;
 
 
 
+
 export const CaptureZero3ResultResponse = zod.object({
   "id": zod.string(),
   "eventId": zod.string(),
@@ -1920,9 +2154,185 @@ export const CaptureZero3ResultResponse = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
+})
+
+
+/**
+ * @summary Preview reviewed results and the current event ranking publication
+ */
+export const GetZero3RankingPublicationParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const getZero3RankingPublicationResponseVersionMin = 0;
+
+export const getZero3RankingPublicationResponseEligibleResultCountMin = 0;
+
+export const getZero3RankingPublicationResponsePartialResultCountMin = 0;
+
+
+export const getZero3RankingPublicationResponseAffectedItemCategoryMax = 32;
+
+
+
+
+export const getZero3RankingPublicationResponseTiesItemCategoryMax = 32;
+
+
+export const getZero3RankingPublicationResponseTiesItemValueMin = 0;
+
+
+export const getZero3RankingPublicationResponseTiesItemRegistrationIdsMin = 2;
+
+export const getZero3RankingPublicationResponseTiesItemOrderedRegistrationIdsMin = 2;
+
+
+
+export const getZero3RankingPublicationResponseLeaderboardsItemCategoryMax = 32;
+
+export const getZero3RankingPublicationResponseLeaderboardsItemProofCountMin = 0;
+
+export const getZero3RankingPublicationResponseLeaderboardsItemEntriesItemCategoryMax = 32;
+
+
+
+export const getZero3RankingPublicationResponseLeaderboardsItemEntriesItemCompletedProofsMin = 0;
+
+export const getZero3RankingPublicationResponseLeaderboardsItemEntriesItemProofCountMin = 0;
+
+export const getZero3RankingPublicationResponseLeaderboardsItemEntriesItemTotalPointsMin = 0;
+
+
+export const getZero3RankingPublicationResponseFingerprintMin = 64;
+export const getZero3RankingPublicationResponseFingerprintMax = 64;
+
+
+
+export const GetZero3RankingPublicationResponse = zod.object({
+  "eventId": zod.string(),
+  "version": zod.number().int().min(getZero3RankingPublicationResponseVersionMin),
+  "publishedAt": zod.coerce.date().nullable(),
+  "publishedBy": zod.string().nullable(),
+  "eligibleResultCount": zod.number().int().min(getZero3RankingPublicationResponseEligibleResultCountMin),
+  "partialResultCount": zod.number().int().min(getZero3RankingPublicationResponsePartialResultCountMin),
+  "affected": zod.array(zod.object({
+  "proofId": zod.string(),
+  "proofOrder": zod.number().int().min(1),
+  "proofName": zod.string(),
+  "category": zod.string().min(1).max(getZero3RankingPublicationResponseAffectedItemCategoryMax),
+  "resultCount": zod.number().int().min(1)
+})),
+  "issues": zod.array(zod.object({
+  "code": zod.string(),
+  "message": zod.string(),
+  "blocking": zod.boolean(),
+  "resultId": zod.string().nullable()
+})),
+  "resultStates": zod.array(zod.object({
+  "resultId": zod.string(),
+  "revision": zod.number().int().min(1),
+  "state": zod.enum(['PARCIAL', 'REVISADO', 'PUBLICADO']),
+  "previouslyPublished": zod.boolean()
+})),
+  "ties": zod.array(zod.object({
+  "key": zod.string().min(1),
+  "scope": zod.enum(['PROOF', 'OVERALL']),
+  "category": zod.string().min(1).max(getZero3RankingPublicationResponseTiesItemCategoryMax),
+  "proofId": zod.string().nullable(),
+  "proofOrder": zod.number().int().min(1).nullable(),
+  "proofName": zod.string().nullable(),
+  "value": zod.number().min(getZero3RankingPublicationResponseTiesItemValueMin),
+  "exactValue": zod.string().min(1),
+  "registrationIds": zod.array(zod.string()).min(getZero3RankingPublicationResponseTiesItemRegistrationIdsMin),
+  "orderedRegistrationIds": zod.array(zod.string()).min(getZero3RankingPublicationResponseTiesItemOrderedRegistrationIdsMin).nullable(),
+  "conditionDistance": zod.object({
+  "proofId": zod.string(),
+  "proofName": zod.string(),
+  "proofOrder": zod.number().int().min(1),
+  "unit": zod.string(),
+  "exactValue": zod.string().min(1)
+}).optional()
+})),
+  "leaderboards": zod.array(zod.object({
+  "category": zod.string().min(1).max(getZero3RankingPublicationResponseLeaderboardsItemCategoryMax),
+  "proofCount": zod.number().int().min(getZero3RankingPublicationResponseLeaderboardsItemProofCountMin),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'EXCEPTION_RULE_PENDING', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING']),
+  "entries": zod.array(zod.object({
+  "registrationId": zod.string(),
+  "category": zod.string().min(1).max(getZero3RankingPublicationResponseLeaderboardsItemEntriesItemCategoryMax),
+  "laneLabel": zod.string().nullable(),
+  "teamName": zod.string().nullable(),
+  "athleteNames": zod.array(zod.string()),
+  "proofScores": zod.array(zod.object({
+  "resultId": zod.string().nullable(),
+  "proofId": zod.string(),
+  "order": zod.number().int(),
+  "name": zod.string(),
+  "unit": zod.string().nullable(),
+  "value": zod.number().nullable(),
+  "status": zod.enum(['MISSING', 'PROVISIONAL', 'PUBLICATION_PENDING', 'VALIDATED', 'DNS', 'DNF', 'CONFIGURATION_PENDING', 'TIE_RULE_PENDING']),
+  "placement": zod.number().int().min(1).nullable(),
+  "points": zod.number().int().min(1).nullable()
+})),
+  "completedProofs": zod.number().int().min(getZero3RankingPublicationResponseLeaderboardsItemEntriesItemCompletedProofsMin),
+  "proofCount": zod.number().int().min(getZero3RankingPublicationResponseLeaderboardsItemEntriesItemProofCountMin),
+  "totalPoints": zod.number().int().min(getZero3RankingPublicationResponseLeaderboardsItemEntriesItemTotalPointsMin).nullable(),
+  "overallPlace": zod.number().int().min(1).nullable(),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'PUBLICATION_PENDING', 'EXCEPTION_RULE_PENDING', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING'])
+}))
+})),
+  "fingerprint": zod.string().min(getZero3RankingPublicationResponseFingerprintMin).max(getZero3RankingPublicationResponseFingerprintMax),
+  "canPublish": zod.boolean()
+})
+
+
+/**
+ * @summary Publish the reviewed results for one event as an atomic ranking revision
+ */
+export const PublishZero3RankingParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const publishZero3RankingBodyExpectedFingerprintMin = 64;
+export const publishZero3RankingBodyExpectedFingerprintMax = 64;
+
+
+export const publishZero3RankingBodyExpectedFingerprintRegExp = new RegExp('^[a-f0-9]{64}$');
+export const publishZero3RankingBodyExpectedVersionMin = 0;
+
+
+export const publishZero3RankingBodyTieBreaksItemOrderedRegistrationIdsMin = 2;
+
+
+
+export const PublishZero3RankingBody = zod.object({
+  "expectedFingerprint": zod.string().min(publishZero3RankingBodyExpectedFingerprintMin).max(publishZero3RankingBodyExpectedFingerprintMax).regex(publishZero3RankingBodyExpectedFingerprintRegExp),
+  "expectedVersion": zod.number().int().min(publishZero3RankingBodyExpectedVersionMin),
+  "tieBreaks": zod.array(zod.object({
+  "key": zod.string().min(1),
+  "orderedRegistrationIds": zod.array(zod.string()).min(publishZero3RankingBodyTieBreaksItemOrderedRegistrationIdsMin)
+})).optional()
+})
+
+
+
+export const publishZero3RankingResponseFingerprintMin = 64;
+export const publishZero3RankingResponseFingerprintMax = 64;
+
+
+
+export const PublishZero3RankingResponse = zod.object({
+  "eventId": zod.string(),
+  "version": zod.number().int().min(1),
+  "resultCount": zod.number().int().min(1),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string(),
+  "fingerprint": zod.string().min(publishZero3RankingResponseFingerprintMin).max(publishZero3RankingResponseFingerprintMax),
+  "alreadyPublished": zod.boolean()
 })
 
 
@@ -1966,6 +2376,7 @@ export const updateZero3ResultResponseSyncErrorMsMin = 0;
 
 
 
+
 export const UpdateZero3ResultResponse = zod.object({
   "id": zod.string(),
   "eventId": zod.string(),
@@ -1984,6 +2395,7 @@ export const UpdateZero3ResultResponse = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
@@ -2167,6 +2579,7 @@ export const getZero3PublicBoardResponseActiveBatteryOneResultsItemOneRawValueMi
 
 export const getZero3PublicBoardResponseActiveBatteryOneResultsItemOneSyncErrorMsMin = 0;
 
+
 export const getZero3PublicBoardResponseActiveBatteryOneLeaderboardsItemCategoryMax = 32;
 
 export const getZero3PublicBoardResponseActiveBatteryOneLeaderboardsItemProofCountMin = 0;
@@ -2212,6 +2625,8 @@ export const getZero3PublicBoardResponseActiveBatteryOneEventElapsedMsMin = 0;
 
 export const getZero3PublicBoardResponseActiveBatteryOneEventLimitMsMin = 0;
 
+export const getZero3PublicBoardResponseActiveBatteryOneTimeCapMsMax = 7200000;
+
 export const getZero3PublicBoardResponseCompletedBatteriesItemResultsItemOneCategoryMax = 32;
 
 export const getZero3PublicBoardResponseCompletedBatteriesItemResultsItemOneElapsedMsMin = 0;
@@ -2221,6 +2636,7 @@ export const getZero3PublicBoardResponseCompletedBatteriesItemResultsItemOneRawV
 
 
 export const getZero3PublicBoardResponseCompletedBatteriesItemResultsItemOneSyncErrorMsMin = 0;
+
 
 export const getZero3PublicBoardResponseCompletedBatteriesItemLeaderboardsItemCategoryMax = 32;
 
@@ -2246,6 +2662,8 @@ export const getZero3PublicBoardResponseCompletedEventBatteriesItemElapsedMsMin 
 export const getZero3PublicBoardResponseCompletedEventBatteriesItemEventElapsedMsMin = 0;
 
 export const getZero3PublicBoardResponseCompletedEventBatteriesItemEventLimitMsMin = 0;
+
+export const getZero3PublicBoardResponseCompletedEventBatteriesItemTimeCapMsMax = 7200000;
 
 export const getZero3PublicBoardResponseCompletedEventBatteriesItemPreparationRemainingMsMin = 0;
 
@@ -2280,6 +2698,7 @@ export const getZero3PublicBoardResponseCompletedEventBatteriesItemResultsItemOn
 
 export const getZero3PublicBoardResponseCompletedEventBatteriesItemResultsItemOneSyncErrorMsMin = 0;
 
+
 export const getZero3PublicBoardResponseCompletedEventBatteriesItemPendingResultCountMin = 0;
 
 export const getZero3PublicBoardResponseCompletedEventBatteriesItemReviewedResultCountMin = 0;
@@ -2289,6 +2708,58 @@ export const getZero3PublicBoardResponseCompletedEventBatteriesItemExpectedResul
 
 export const getZero3PublicBoardResponseCompletedEventBatteriesItemTimerVersionMin = 0;
 
+
+export const getZero3PublicBoardResponseEventBatteriesItemElapsedMsMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemEventElapsedMsMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemEventLimitMsMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemTimeCapMsMax = 7200000;
+
+export const getZero3PublicBoardResponseEventBatteriesItemPreparationRemainingMsMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemPreparationSecondsMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemRegistrationsItemCategoryMax = 32;
+
+export const getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemCategoryMax = 32;
+
+export const getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemProofCountMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemEntriesItemCategoryMax = 32;
+
+
+
+export const getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemEntriesItemCompletedProofsMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemEntriesItemProofCountMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemEntriesItemTotalPointsMin = 0;
+
+
+export const getZero3PublicBoardResponseEventBatteriesItemProofsItemOrderMax = 4;
+
+export const getZero3PublicBoardResponseEventBatteriesItemResultsItemOneCategoryMax = 32;
+
+export const getZero3PublicBoardResponseEventBatteriesItemResultsItemOneElapsedMsMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemResultsItemOneRawValueMin = 0;
+
+
+
+export const getZero3PublicBoardResponseEventBatteriesItemResultsItemOneSyncErrorMsMin = 0;
+
+
+export const getZero3PublicBoardResponseEventBatteriesItemPendingResultCountMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemReviewedResultCountMin = 0;
+
+export const getZero3PublicBoardResponseEventBatteriesItemExpectedResultCountMin = 0;
+
+
+export const getZero3PublicBoardResponseEventBatteriesItemTimerVersionMin = 0;
+
 export const getZero3PublicBoardResponseBatteryTimersItemElapsedMsMin = 0;
 
 export const getZero3PublicBoardResponseBatteryTimersItemPreparationRemainingMsMin = 0;
@@ -2296,6 +2767,8 @@ export const getZero3PublicBoardResponseBatteryTimersItemPreparationRemainingMsM
 export const getZero3PublicBoardResponseBatteryTimersItemEventElapsedMsMin = 0;
 
 export const getZero3PublicBoardResponseBatteryTimersItemEventLimitMsMin = 0;
+
+export const getZero3PublicBoardResponseBatteryTimersItemTimeCapMsMax = 7200000;
 
 export const getZero3PublicBoardResponseEventCategoriesItemMax = 32;
 
@@ -2309,6 +2782,8 @@ export const getZero3PublicBoardResponseTimerEventElapsedMsMin = 0;
 
 export const getZero3PublicBoardResponseTimerEventLimitMsMin = 0;
 
+export const getZero3PublicBoardResponseTimerTimeCapMsMax = 7200000;
+
 export const getZero3PublicBoardResponseResultsItemOneCategoryMax = 32;
 
 export const getZero3PublicBoardResponseResultsItemOneElapsedMsMin = 0;
@@ -2318,6 +2793,7 @@ export const getZero3PublicBoardResponseResultsItemOneRawValueMin = 0;
 
 
 export const getZero3PublicBoardResponseResultsItemOneSyncErrorMsMin = 0;
+
 
 export const getZero3PublicBoardResponseProofsItemOrderMax = 4;
 
@@ -2355,6 +2831,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "proofName": zod.string(),
   "order": zod.number().int(),
   "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullish(),
   "heatIds": zod.array(zod.string()),
   "categories": zod.array(zod.string()),
   "registrations": zod.array(zod.object({
@@ -2384,6 +2861,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
@@ -2416,7 +2894,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "status": zod.enum(['PARTIAL', 'FINAL', 'PUBLICATION_PENDING', 'EXCEPTION_RULE_PENDING', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING'])
 }))
 })),
-  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
   "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseActiveBatteryOneElapsedMsMin).optional(),
   "pendingResultCount": zod.number().int().min(getZero3PublicBoardResponseActiveBatteryOnePendingResultCountMin),
   "reviewedResultCount": zod.number().int().min(getZero3PublicBoardResponseActiveBatteryOneReviewedResultCountMin),
@@ -2426,6 +2904,8 @@ export const GetZero3PublicBoardResponse = zod.object({
   "finalizationVersion": zod.number().int().min(1).nullable(),
   "finalizedAt": zod.coerce.date().nullable(),
   "finalizationFingerprint": zod.string().nullable(),
+  "operationalFinalized": zod.boolean().optional(),
+  "operationalFinalizedAt": zod.coerce.date().nullish(),
   "batteryId": zod.string().optional(),
   "proofs": zod.array(zod.object({
   "id": zod.string(),
@@ -2471,6 +2951,7 @@ export const GetZero3PublicBoardResponse = zod.object({
 })).optional(),
   "eventElapsedMs": zod.number().int().min(getZero3PublicBoardResponseActiveBatteryOneEventElapsedMsMin).optional(),
   "eventLimitMs": zod.number().int().min(getZero3PublicBoardResponseActiveBatteryOneEventLimitMsMin).optional(),
+  "timeCapMs": zod.number().int().min(1).max(getZero3PublicBoardResponseActiveBatteryOneTimeCapMsMax).optional(),
   "preparationEndsAt": zod.coerce.date().nullish()
 }),zod.null()]).optional(),
   "completedBatteries": zod.array(zod.object({
@@ -2498,6 +2979,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
@@ -2541,10 +3023,12 @@ export const GetZero3PublicBoardResponse = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
-  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "scheduledStartAt": zod.coerce.date().nullable(),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
   "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseCompletedEventBatteriesItemElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(getZero3PublicBoardResponseCompletedEventBatteriesItemEventElapsedMsMin),
   "eventLimitMs": zod.number().int().min(getZero3PublicBoardResponseCompletedEventBatteriesItemEventLimitMsMin),
+  "timeCapMs": zod.number().int().min(1).max(getZero3PublicBoardResponseCompletedEventBatteriesItemTimeCapMsMax),
   "preparationEndsAt": zod.coerce.date().nullable(),
   "preparationRemainingMs": zod.number().int().min(getZero3PublicBoardResponseCompletedEventBatteriesItemPreparationRemainingMsMin),
   "preparationSeconds": zod.number().int().min(getZero3PublicBoardResponseCompletedEventBatteriesItemPreparationSecondsMin),
@@ -2621,6 +3105,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()
@@ -2634,12 +3119,120 @@ export const GetZero3PublicBoardResponse = zod.object({
   "finalizationFingerprint": zod.string().nullable(),
   "finalizationVersion": zod.number().int().min(1).nullable(),
   "finalizedAt": zod.coerce.date().nullable(),
+  "operationalFinalized": zod.boolean().optional(),
+  "operationalFinalizedAt": zod.coerce.date().nullish(),
   "timerVersion": zod.number().int().min(getZero3PublicBoardResponseCompletedEventBatteriesItemTimerVersionMin),
   "updatedAt": zod.coerce.date()
 })).optional(),
+  "eventBatteries": zod.array(zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "order": zod.number().int().min(1),
+  "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullable(),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
+  "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemElapsedMsMin),
+  "eventElapsedMs": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemEventElapsedMsMin),
+  "eventLimitMs": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemEventLimitMsMin),
+  "timeCapMs": zod.number().int().min(1).max(getZero3PublicBoardResponseEventBatteriesItemTimeCapMsMax),
+  "preparationEndsAt": zod.coerce.date().nullable(),
+  "preparationRemainingMs": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemPreparationRemainingMsMin),
+  "preparationSeconds": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemPreparationSecondsMin),
+  "startedAt": zod.coerce.date().nullable(),
+  "preparationStartedAt": zod.coerce.date().nullable(),
+  "firstStartedAt": zod.coerce.date().nullable(),
+  "stoppedAt": zod.coerce.date().nullable(),
+  "registrations": zod.array(zod.object({
+  "heatId": zod.string().nullish(),
+  "batteryId": zod.string().optional(),
+  "id": zod.string(),
+  "category": zod.string().min(1).max(getZero3PublicBoardResponseEventBatteriesItemRegistrationsItemCategoryMax),
+  "teamName": zod.string().nullable(),
+  "laneLabel": zod.string().nullable(),
+  "athleteNames": zod.array(zod.string())
+})),
+  "proofLeaderboards": zod.array(zod.object({
+  "proofId": zod.string(),
+  "leaderboards": zod.array(zod.object({
+  "category": zod.string().min(1).max(getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemCategoryMax),
+  "proofCount": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemProofCountMin),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'EXCEPTION_RULE_PENDING', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING']),
+  "entries": zod.array(zod.object({
+  "registrationId": zod.string(),
+  "category": zod.string().min(1).max(getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemEntriesItemCategoryMax),
+  "laneLabel": zod.string().nullable(),
+  "teamName": zod.string().nullable(),
+  "athleteNames": zod.array(zod.string()),
+  "proofScores": zod.array(zod.object({
+  "resultId": zod.string().nullable(),
+  "proofId": zod.string(),
+  "order": zod.number().int(),
+  "name": zod.string(),
+  "unit": zod.string().nullable(),
+  "value": zod.number().nullable(),
+  "status": zod.enum(['MISSING', 'PROVISIONAL', 'PUBLICATION_PENDING', 'VALIDATED', 'DNS', 'DNF', 'CONFIGURATION_PENDING', 'TIE_RULE_PENDING']),
+  "placement": zod.number().int().min(1).nullable(),
+  "points": zod.number().int().min(1).nullable()
+})),
+  "completedProofs": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemEntriesItemCompletedProofsMin),
+  "proofCount": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemEntriesItemProofCountMin),
+  "totalPoints": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemProofLeaderboardsItemLeaderboardsItemEntriesItemTotalPointsMin).nullable(),
+  "overallPlace": zod.number().int().min(1).nullable(),
+  "status": zod.enum(['PARTIAL', 'FINAL', 'PUBLICATION_PENDING', 'EXCEPTION_RULE_PENDING', 'TIE_RULE_PENDING', 'CONFIGURATION_PENDING'])
+}))
+}))
+})),
+  "proofs": zod.array(zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "order": zod.number().int().min(1).max(getZero3PublicBoardResponseEventBatteriesItemProofsItemOrderMax),
+  "name": zod.string(),
+  "metricType": zod.enum(['TIME', 'REPETITIONS', 'LOAD', 'CUSTOM', 'UNCONFIGURED']),
+  "unit": zod.string().nullable(),
+  "direction": zod.union([zod.enum(['LOWER', 'HIGHER']),zod.null()]),
+  "configured": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})),
+  "results": zod.array(zod.object({
+  "id": zod.string(),
+  "eventId": zod.string(),
+  "registrationId": zod.string(),
+  "heatId": zod.string().nullish(),
+  "batteryId": zod.string().nullish(),
+  "category": zod.string().min(1).max(getZero3PublicBoardResponseEventBatteriesItemResultsItemOneCategoryMax),
+  "laneLabel": zod.string().nullish(),
+  "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemResultsItemOneElapsedMsMin).nullish(),
+  "proofId": zod.string().nullable(),
+  "rawValue": zod.number().min(getZero3PublicBoardResponseEventBatteriesItemResultsItemOneRawValueMin).nullable(),
+  "placement": zod.number().int().min(1).nullable(),
+  "points": zod.number().int().min(1).nullable(),
+  "tieRulePending": zod.boolean(),
+  "syncErrorMs": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemResultsItemOneSyncErrorMsMin).nullable(),
+  "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
+  "capturedAt": zod.coerce.date(),
+  "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
+  "names": zod.array(zod.string()),
+  "teamName": zod.string().nullish(),
+  "heatName": zod.string().nullish()
+})),
+  "categories": zod.array(zod.string()),
+  "pendingResultCount": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemPendingResultCountMin),
+  "reviewedResultCount": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemReviewedResultCountMin),
+  "expectedResultCount": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemExpectedResultCountMin),
+  "finalizationCurrent": zod.boolean(),
+  "finalized": zod.boolean(),
+  "finalizationFingerprint": zod.string().nullable(),
+  "finalizationVersion": zod.number().int().min(1).nullable(),
+  "finalizedAt": zod.coerce.date().nullable(),
+  "operationalFinalized": zod.boolean().optional(),
+  "operationalFinalizedAt": zod.coerce.date().nullish(),
+  "timerVersion": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemTimerVersionMin),
+  "updatedAt": zod.coerce.date()
+})).optional().describe('Todas as baterias operacionais do evento, na ordem cadastrada.'),
   "batteryTimers": zod.array(zod.object({
   "eventId": zod.string(),
-  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
   "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseBatteryTimersItemElapsedMsMin),
   "preparationRemainingMs": zod.number().int().min(getZero3PublicBoardResponseBatteryTimersItemPreparationRemainingMsMin),
   "preparationSeconds": zod.number().int(),
@@ -2654,7 +3247,8 @@ export const GetZero3PublicBoardResponse = zod.object({
   "batteryId": zod.string().nullish(),
   "preparationEndsAt": zod.coerce.date().nullish(),
   "eventElapsedMs": zod.number().int().min(getZero3PublicBoardResponseBatteryTimersItemEventElapsedMsMin).optional(),
-  "eventLimitMs": zod.number().int().min(getZero3PublicBoardResponseBatteryTimersItemEventLimitMsMin).optional()
+  "eventLimitMs": zod.number().int().min(getZero3PublicBoardResponseBatteryTimersItemEventLimitMsMin).optional(),
+  "timeCapMs": zod.number().int().min(1).max(getZero3PublicBoardResponseBatteryTimersItemTimeCapMsMax).optional()
 })).optional(),
   "event": zod.object({
   "id": zod.string(),
@@ -2667,7 +3261,7 @@ export const GetZero3PublicBoardResponse = zod.object({
 }).optional(),
   "timer": zod.object({
   "eventId": zod.string(),
-  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
+  "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED', 'CANCELLED']),
   "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseTimerElapsedMsMin),
   "preparationRemainingMs": zod.number().int().min(getZero3PublicBoardResponseTimerPreparationRemainingMsMin),
   "preparationSeconds": zod.number().int(),
@@ -2682,7 +3276,8 @@ export const GetZero3PublicBoardResponse = zod.object({
   "batteryId": zod.string().nullish(),
   "preparationEndsAt": zod.coerce.date().nullish(),
   "eventElapsedMs": zod.number().int().min(getZero3PublicBoardResponseTimerEventElapsedMsMin).optional(),
-  "eventLimitMs": zod.number().int().min(getZero3PublicBoardResponseTimerEventLimitMsMin).optional()
+  "eventLimitMs": zod.number().int().min(getZero3PublicBoardResponseTimerEventLimitMsMin).optional(),
+  "timeCapMs": zod.number().int().min(1).max(getZero3PublicBoardResponseTimerTimeCapMsMax).optional()
 }).optional(),
   "results": zod.array(zod.object({
   "id": zod.string(),
@@ -2702,6 +3297,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "status": zod.enum(['PROVISIONAL', 'VALIDATED', 'DNS', 'DNF']),
   "capturedAt": zod.coerce.date(),
   "revision": zod.number().int(),
+  "publishedRevision": zod.number().int().min(1).nullish(),
   "names": zod.array(zod.string()),
   "teamName": zod.string().nullish(),
   "heatName": zod.string().nullish()

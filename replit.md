@@ -74,13 +74,23 @@ Competition operations for SC/RX events: roster and registrations, heats, a shar
 - `/sign-in?redirect_url=%2Fadmin` é um destino interno válido. Não use endereços de login externos nem crie outra instância Clerk. O vínculo atual de papéis usa e-mail primário verificado; não altere ou eleve papéis para contornar erros.
 - O login real no domínio Cloudflare ainda precisa ser validado com uma sessão autorizada. A tela local e respostas anônimas não substituem esse teste.
 
+## Responsividade — requisito de release
+
+- Validar `/tv`, `/placar-ao-vivo` (Resultados e Ranking Geral), `/admin/events/:eventId` (Baterias, Cronômetros e Resultados) e `/operacao` antes e depois de publicar.
+- Usar a matriz: celular 320, 360, 390 e 430 px; celular horizontal 844×390; tablet 768×1024 e 1024×768; computador 1366×768 e 1440×900; TV Full HD 1920×1080; telão 4K 3840×2160. Incluir larguras intermediárias e considerar área útil do navegador, escala e zoom.
+- Confirmar no celular que a tabela única mantém todas as colunas e dados, com rolagem horizontal somente dentro da tabela; a página não pode ter overflow horizontal. Conferir banner/logo/título/relógio, controles por toque e teclado, cabeçalhos fixos, orientação e tela cheia sem ocultar controles nem reiniciar cronômetros ou alterar programação.
+- Registrar evidências/capturas e resultados na matriz `Tela | Navegador/dispositivo | Dimensão | Esperado | Observado | Passou/Falhou/Não testado`; marcar navegadores/plataformas não testados.
+- Identificar explicitamente cada resultado como **emulação** ou **dispositivo físico**. Emulação não substitui a validação física; registrar os testes reais pendentes, especialmente toque, rotação, fullscreen e leitura à distância em TV/telão.
+- Não alterar dados, colunas, rotas, eventId, API, timer, CAP, horários, pontuação ou semântica de interação para corrigir layout.
+
 ## Cloudflare publication boundary
 
-- Root build command `pnpm run build` runs typecheck and workspace builds. Cloudflare's static output is `artifacts/zero3-pro/dist/public/`; the Worker entry is `artifacts/api-server/src/worker.ts`.
-- `pnpm run build:cloudflare` builds the Vite assets then runs a Wrangler dry-run; it does not publish. `pnpm run deploy:cloudflare` performs a real Wrangler deploy with `--keep-vars` but does not build first. Do not use either to claim a GitHub Workers Build was published.
-- Cloudflare Workers Builds settings are managed outside the repository. Keep root directory `/`, pnpm 10.26.1, and ensure the pipeline builds the assets before Wrangler deploys `wrangler.toml`. Set `VITE_CLERK_PUBLISHABLE_KEY` in Build Variables; set `VITE_CLERK_PROXY_URL` only after `/api/__clerk` is repaired and tested. Keep `CLERK_SECRET_KEY` and `ZERO3_INITIAL_ADMIN_EMAIL` in runtime Secrets, never in the bundle.
+- Root build command `pnpm run build` runs typecheck and workspace builds. Cloudflare's static output is `artifacts/zero3-pro/dist/public/`; the staging Worker entry is `artifacts/api-server/src/worker-d1-staging.ts`.
+- `pnpm run build:cloudflare` builds the Vite assets then runs a Wrangler dry-run; it does not publish. `pnpm run deploy:cloudflare` targets the D1 staging config, but performs a direct Wrangler publish without building first. Use the GitHub-connected Workers Builds pipeline for approved staging releases.
+- The Workers Builds connection is configured outside the repository for `canalytlzt-art/zero3-podio`, branch `feat/zero3-results-by-registration`, with root `/`, build command `pnpm run build`, deploy command `pnpm exec wrangler deploy --config wrangler.d1-staging.toml`, and previews disabled. The staging config targets only `zero3-games-d1-staging` and D1 `zero3-podio-dev`; `wrangler.toml` remains the separate production configuration.
+- Set `VITE_CLERK_PUBLISHABLE_KEY` in Cloudflare Build Variables; set `VITE_CLERK_PROXY_URL` only after `/api/__clerk` is repaired and tested. Keep `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` in runtime Secrets, never in the bundle. Operational authorization reads the active D1 member by the verified Clerk user ID; do not grant access automatically by email.
 - Do not run `pnpm run deploy:cloudflare` from Replit. Publish only through the GitHub-connected Cloudflare pipeline when explicitly approved.
-- A local build or dry-run does not prove the currently published Worker revision, a real Clerk session, role authorization, or production database access. Verify those on the published `zero3-podio` URL after the Cloudflare GitHub deployment completes.
+- A local build or dry-run does not prove the currently published Worker revision or a real Clerk session. Verify the approved staging release at `https://zero3-games-d1-staging.canalytlzt.workers.dev`; keep `zero3-podio` production separate.
 - The demo proof definitions are test fixtures only; official proof descriptions, units, directions, tie rules, and participants remain to be supplied.
 - Release gate: run `pnpm run check:cloudflare` and the navigation, auth-session, API error, request-tracing, and scoring tests. Separately verify an authorized Clerk session reaches `/api/zero3/me` with 200 and can read events; a no-session 401, demo login form, or public-board read is not proof of administrative access.
 - If a live API returns 5xx, correlate its `requestId` and Cloudflare `cf-ray` with Worker runtime logs before attributing the failure to Clerk or PostgreSQL. Do not change roles, keys, or database contents to mask an unverified cause.

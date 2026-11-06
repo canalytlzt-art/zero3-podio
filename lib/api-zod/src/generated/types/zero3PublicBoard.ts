@@ -25,6 +25,8 @@ export interface Zero3PublicBoard {
   activeBattery?: Zero3PublicBattery | null;
   completedBatteries?: Zero3CompletedBattery[];
   completedEventBatteries?: Zero3EventBattery[];
+  /** Todas as baterias operacionais do evento, na ordem cadastrada. */
+  eventBatteries?: Zero3EventBattery[];
   batteryTimers?: Zero3Timer[];
   event?: Zero3Event;
   timer?: Zero3Timer;

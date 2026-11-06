@@ -11,15 +11,14 @@ export interface Zero3FinalizeEventBatteryResponse {
   batteryId: string;
   /** @minimum 1 */
   order: number;
+  operationalFinalizedAt: Date;
+  /** @minimum 0 */
+  elapsedMs: number;
   /** @minimum 1 */
-  version: number;
-  /** @minimum 1 */
+  timerVersion: number;
+  /** @minimum 0 */
   resultCount: number;
-  publishedAt: Date;
-  /**
-     * @minLength 64
-     * @maxLength 64
-     */
-  fingerprint: string;
-  alreadyPublished: boolean;
+  /** @minimum 0 */
+  pendingResultCount: number;
+  alreadyFinalized: boolean;
 }

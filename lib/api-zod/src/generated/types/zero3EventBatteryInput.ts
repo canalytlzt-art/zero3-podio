@@ -14,5 +14,7 @@ export interface Zero3EventBatteryInput {
   name: string;
   /** @minimum 1 */
   order: number;
+  /** @nullable */
+  scheduledStartAt?: Date | null;
   registrationIds: string[];
 }

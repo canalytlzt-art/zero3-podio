@@ -1,0 +1,380 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "4_wIDA6N85KzuF-IgBh87"
+uri = "file://generated-artifacts/zero3-public-visual-final/galeria.html"
+type = "html"
+title = "Capturas responsivas — ZERO3 PRO"
+description = "Galeria local de 10 capturas do Preview: TV em 1920×1080, 1024×576, 390 px e 320 px; ranking geral completo; e resultados da bateria no estado atual."
+logical_id = "a520e445-0de6-4f0a-ad39-7f06b800cf3c"
+content_hash = "sha256:6b09825076cfdd5ea6c1bd58db906787d6f16a633ab70997ca9f622e74dcb46e"
+size = 901848
+mtime_ms = 1793846965857
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/a520e445-0de6-4f0a-ad39-7f06b800cf3c/8eb99286-d476-4996-82a3-f3455ea9e8dd"
+storage_version_token = "1793846972304044"
+content_type = "text/html"
+
+[[outputs]]
+id = "Vsl08L6fVzCXTtIAmRhCn"
+uri = "file://generated-artifacts/screenshots/tv-final-1920x1080.jpg"
+type = "image"
+title = "TV ZERO3 — Preview 1920 × 1080"
+description = "Captura do Preview após o ajuste visual da duração e do relógio de Brasília."
+logical_id = "a58343b4-aaa2-41ba-8fe3-366ff50b4f95"
+content_hash = "sha256:45f0e06c7d2f215cbcac58715838ae1af06d9e90311a2fdadea710fa9fce714c"
+size = 89024
+mtime_ms = 1793849838279
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/a58343b4-aaa2-41ba-8fe3-366ff50b4f95/ffa903e0-c196-4c78-860d-f5bb23c5c8e0"
+storage_version_token = "1793849914807628"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "u8Dqm4mZt69LY5w2pqqYk"
+uri = "file://generated-artifacts/screenshots/tv-final-390px.jpg"
+type = "image"
+title = "TV ZERO3 — Preview 390 px"
+description = "Captura móvel do Preview; cronômetro e cartão civil lado a lado."
+logical_id = "be7160bc-946c-4264-8499-e386c2363811"
+content_hash = "sha256:5e6c8f6b79839b188b7ae162931f3e04e18492bf6ffca6be1c0661f3bda470d1"
+size = 27197
+mtime_ms = 1793849848543
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/be7160bc-946c-4264-8499-e386c2363811/489550a1-bf22-441d-9224-ec995155f229"
+storage_version_token = "1793849915344749"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "oatAZRuwoMGPuwXk5N6Vl"
+uri = "file://generated-artifacts/zero3-tv-preview-1920x1080.jpg"
+type = "image"
+title = "TV Preview · 1920×1080"
+description = "Cabeçalho sem cronômetro global; mostra a hora civil de Brasília. O Preview atual não trouxe baterias para exibir os tempos individuais."
+logical_id = "a10e7b6a-7592-4899-9001-40741d0dddbf"
+content_hash = "sha256:47b7b17b6de18cb0d175a7d9c2f7d0d06c537f59b8fe8f1f759322ba6a9a80ed"
+size = 40037
+mtime_ms = 1793922469145
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/a10e7b6a-7592-4899-9001-40741d0dddbf/7b416914-0856-49a0-a46b-4b408036d7b9"
+storage_version_token = "1793922494976183"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "mhl_iAW5Frcg-WdX5kvKq"
+uri = "file://generated-artifacts/zero3-tv-preview-1024x576.jpg"
+type = "image"
+title = "TV Preview · 1024×576"
+description = "Captura em tela compacta do Preview; o evento de demonstração está sem operações de bateria nessa API."
+logical_id = "7b31290f-7647-4f1e-95a5-467060ef1200"
+content_hash = "sha256:f1c5c8b3a0b61a9f569c4b24847435cd9deb4a0fd4f86450bffe551b4f662c78"
+size = 25096
+mtime_ms = 1793922423113
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/7b31290f-7647-4f1e-95a5-467060ef1200/ecdfc318-14f1-4167-ab5a-65681025f87a"
+storage_version_token = "1793922495508923"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "yM901m1NK9oN-W5-GuaD3"
+uri = "file://generated-artifacts/zero3-tv-preview-390x844.jpg"
+type = "image"
+title = "TV Preview · celular 390 px"
+description = "Hora de Brasília centralizada e legível, sem mostrador esportivo no topo."
+logical_id = "b4fb9e0f-7473-415a-8336-b98888abb3e8"
+content_hash = "sha256:deed730e20b495cb4daba45f78c0eb33901b7233a9450582f2219d5811d12536"
+size = 17897
+mtime_ms = 1793922464845
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/b4fb9e0f-7473-415a-8336-b98888abb3e8/3ccc18b4-d863-467c-bcdf-ebbc3d4f35bb"
+storage_version_token = "1793922496038839"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "m2O2kELFzXevZ0HGfaTTq"
+uri = "file://generated-artifacts/zero3-tv-preview-320x800.jpg"
+type = "image"
+title = "TV Preview · celular 320 px"
+description = "Hora de Brasília centralizada; o nome longo do evento quebra linha sem cortar o relógio."
+logical_id = "46bde0d6-fc2f-453b-a46b-cd3dca7e868b"
+content_hash = "sha256:798c454dd127a1270ef60a5b7cb035a1feebf3b90730259b7b1c13e548b8c62a"
+size = 17258
+mtime_ms = 1793922466749
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/46bde0d6-fc2f-453b-a46b-cd3dca7e868b/4196a457-b438-4a13-b33f-12f38dbd0c1e"
+storage_version_token = "1793922496557197"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "roD1-zV6TVMMbM0LaicYZ"
+uri = "file://generated-artifacts/zero3-live-board-results-preview.jpg"
+type = "image"
+title = "Placar ao vivo · Resultados da bateria"
+description = "Captura do Preview com dados fictícios disponíveis."
+logical_id = "e7a1ce75-5685-441f-bd1c-befea1c4722c"
+content_hash = "sha256:8b42d6b77ba580afd52052c1e6c8541f99198f7e90c2ecbf5d87048bc66f6a0c"
+size = 64178
+mtime_ms = 1793922242093
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/e7a1ce75-5685-441f-bd1c-befea1c4722c/7d08b7f4-df57-4f92-a940-7d0d9a127299"
+storage_version_token = "1793922497073613"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "vv7opTtR0xir13HulcfNY"
+uri = "file://generated-artifacts/zero3-live-board-ranking-preview.jpg"
+type = "image"
+title = "Placar ao vivo · Ranking geral"
+description = "Captura do Preview com dados fictícios disponíveis."
+logical_id = "326684d8-4bc8-4458-b5f7-23774c4c81fe"
+content_hash = "sha256:01cc93c6ca088feb711422acb33895325eb6368d89c3f37afddc3b677ef0d868"
+size = 120157
+mtime_ms = 1793922244933
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/326684d8-4bc8-4458-b5f7-23774c4c81fe/84b47d3a-cf6e-4305-97cd-5bdc86ed83de"
+storage_version_token = "1793922497646078"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "S-4wefbs9IXBwZw4KjUaN"
+uri = "file://generated-artifacts/zero3-tv-header-final-1920x1080.jpg"
+type = "image"
+title = "TV · cabeçalho final · 1920×1080"
+description = "Foto original reutilizada à direita com degradê escuro, logotipo ZERO3 PRO, LEADERBOARD 03 PRO, relógio de Brasília central e indicador Ao Vivo. O Preview atual está em modo de demonstração sem baterias ativas; por isso a lista de baterias não aparece nesta captura."
+logical_id = "94b9e23e-ed84-4f4e-99a0-df5df5808ec8"
+content_hash = "sha256:c5f148e3f309af4e83bff0f586e1a6047993b4727d1cb47a909ed66ec4d9d91f"
+size = 47386
+mtime_ms = 1793923338016
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/94b9e23e-ed84-4f4e-99a0-df5df5808ec8/e002c799-0103-41bd-93bb-0f40d654ec60"
+storage_version_token = "1793923372667304"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "EVo_fHo1xU4iTwPgAgzWa"
+uri = "file://generated-artifacts/zero3-tv-header-final-390x844.jpg"
+type = "image"
+title = "TV · cabeçalho final · celular 390 px"
+description = "Versão compacta responsiva; título, identificação de demonstração, relógio e Ao Vivo permanecem legíveis."
+logical_id = "52188562-1fcf-407e-9e0a-ba213ff2fac9"
+content_hash = "sha256:c35278b723095ae804b8caca1c4a4628753b4b825f65b02887c39722b937e36e"
+size = 18986
+mtime_ms = 1793923339840
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/52188562-1fcf-407e-9e0a-ba213ff2fac9/66fa2e4b-0963-440c-a93d-f0d7a7182452"
+storage_version_token = "1793923373143476"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Hgsg8pBKI_k0FgKGR5X40"
+uri = "file://generated-artifacts/zero3-tv-header-final-320x800.jpg"
+type = "image"
+title = "TV · cabeçalho final · celular 320 px"
+description = "Versão estreita: título pode quebrar linha sem cortar o horário ou sobrepor o status."
+logical_id = "1787e2d1-491c-4da5-8494-cee5522eefaf"
+content_hash = "sha256:671da35902968001e9c61a4802ea0b341e79960f1f16d03b4899fa330faa8c25"
+size = 17939
+mtime_ms = 1793923341660
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/1787e2d1-491c-4da5-8494-cee5522eefaf/ef1ca167-d294-4b38-a7b0-61e0ba87f38e"
+storage_version_token = "1793923373636472"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "QK4iRdOhZCRp7JX-EDQie"
+uri = "file://generated-artifacts/live-board-preview-current-state.jpg"
+type = "image"
+title = "Preview do placar ao vivo"
+description = "Captura do Preview com o evento de demonstração disponível. A resposta atual do banco local não contém baterias publicadas, então a nova tabela ainda não é renderizada neste estado."
+logical_id = "39ecac6c-71a3-4368-bcd2-5f97c1288d34"
+content_hash = "sha256:dee445569a98547c900d14c1864d5ced98906a9503a92299fef7a5caece19c33"
+size = 69218
+mtime_ms = 1793960181460
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/39ecac6c-71a3-4368-bcd2-5f97c1288d34/53e0ce3f-b9ad-48ca-9b82-d85d08f6029f"
+storage_version_token = "1793960186852468"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "AF6mLeNnKBDQm0xl03GhF"
+uri = "file://generated-artifacts/live-board-staging-current.png"
+type = "image"
+title = "Placar atual no staging"
+description = "Captura somente para leitura do staging do evento Zero3 GAMES 2026. Ela mostra a versão publicada atual, ainda com cards separados por bateria; não é a versão local da tabela unificada."
+logical_id = "9633a7f8-88e8-422c-b05a-d63320168c9a"
+content_hash = "sha256:ab7d509578ea13805ad56fb752d5c1120efcf3ded1aac96ad1be5c7afa6c3e9b"
+size = 389257
+mtime_ms = 1793960582821
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/9633a7f8-88e8-422c-b05a-d63320168c9a/c7feb814-4cb7-434d-844d-dc834f7854c2"
+storage_version_token = "1793960606989762"
+content_type = "image/png"
+
+[[outputs]]
+id = "2gzQcFDgnwh_YWUlhq6o4"
+uri = "file://generated-artifacts/live-board-staging-unified.png"
+type = "image"
+title = "Tabela unificada no staging"
+description = "Captura após o deploy no staging, com o evento Zero3 GAMES 2026. Mostra uma tabela contínua com BAT, CAT, STATUS, equipe e resultados das provas. Captura da primeira parte da página; os demais registros permanecem abaixo, na rolagem normal."
+logical_id = "0f20280a-03c5-450e-9681-fe37faf99d49"
+content_hash = "sha256:d6e114514bc6b546c08757c0c18020cb3017167c4be7804a551d50a6252b7d39"
+size = 429379
+mtime_ms = 1793961012708
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/0f20280a-03c5-450e-9681-fe37faf99d49/09a68834-1047-4a31-84a3-af73fd054cc7"
+storage_version_token = "1793961030086078"
+content_type = "image/png"
+
+[[outputs]]
+id = "ScAPoiO_EsPnyg0yI7Qia"
+uri = "file://generated-artifacts/zero3-ranking-tie-preview.jpg"
+type = "image"
+title = "Prévia do painel de empate"
+description = "Captura local da interface EventResultsWorkspace com fixture fictícia isolada; mostra aviso não bloqueante, duas equipes empatadas e botão de publicação habilitado. Nenhum dado foi gravado."
+logical_id = "5e40232e-42a2-4568-a5cc-65f7a79a07b3"
+content_hash = "sha256:8798872c5463089b9658b3711c05b4d5f9218c5920605c5a9b857446175a58b1"
+size = 54667
+mtime_ms = 1793962524581
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/5e40232e-42a2-4568-a5cc-65f7a79a07b3/da204451-1e98-4d5a-b51b-f650f867c13c"
+storage_version_token = "1793962889272535"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "mXEMNajjwPbW_z6OX76Ey"
+uri = "file://generated-artifacts/zero3-ranking-headings.jpg"
+type = "image"
+title = "Ranking geral — ZERO3 GAMES 2026"
+description = "Captura local da tela de ranking com os rótulos Carga, Rep, For Time e Condition. Renderizada com uma resposta pública do staging em cache; sem gravações."
+logical_id = "1a50cd2e-53f7-4ac9-aa78-133463f0b3b6"
+content_hash = "sha256:68655db7270f0ef6f4e2aa223e571af3c0cb0f2d958edf3c8c62aa8d7487c333"
+size = 331151
+mtime_ms = 1793967099329
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/1a50cd2e-53f7-4ac9-aa78-133463f0b3b6/33678133-ad3c-4696-b547-e893e7bfa98f"
+storage_version_token = "1793967306923247"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "ki-DvIn79cLzM7tDwuJQB"
+uri = "file://generated-artifacts/publication-confirmation-desktop.jpg"
+type = "image"
+title = "Confirmação de publicação — desktop"
+description = "Captura da prévia visual local com fundo claro opaco e overlay escurecido. Conteúdo ilustrativo; nenhuma publicação foi confirmada."
+logical_id = "8b3a1dfa-5ae4-4a7e-8192-d9f4d5e229a3"
+content_hash = "sha256:5355db9047df72f336719b19e3c515e568656754695f7f0c91e888085a694e15"
+size = 62999
+mtime_ms = 1793968098677
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/8b3a1dfa-5ae4-4a7e-8192-d9f4d5e229a3/392470ce-2edf-472e-b956-65457dd94e2f"
+storage_version_token = "1793968188069967"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "i5_SV1J-moxdxd1nVVGGl"
+uri = "file://generated-artifacts/publication-confirmation-mobile.jpg"
+type = "image"
+title = "Confirmação de publicação — 390 px"
+description = "Prévia em celular: conteúdo rolável em painel próprio, botões visíveis sem sobrepor os avisos. Dados fictícios; nenhuma publicação foi confirmada."
+logical_id = "8a4fddd2-bfa1-48ff-8e9e-080b76bb9477"
+content_hash = "sha256:f434259696667f5f23d8bcac0439e6e6804f77e2c63a69f98dee941316c11473"
+size = 41105
+mtime_ms = 1793968100207
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/8a4fddd2-bfa1-48ff-8e9e-080b76bb9477/a055c64a-628d-4e60-bb5c-d3787055fb7b"
+storage_version_token = "1793968188619544"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "NSj1G0jwqyiCpeE51fGLn"
+uri = "file://generated-artifacts/publication-confirmation-compact.jpg"
+type = "image"
+title = "Confirmação de publicação — 320 px"
+description = "Prévia compacta mostrando os botões persistentes e conteúdo acima rolável, sem sobreposição. Conteúdo ilustrativo; nenhuma publicação foi confirmada."
+logical_id = "98259844-7422-4909-aa45-8d9c718d8d30"
+content_hash = "sha256:187f45a55aa21bb07adbae772244faed3d1f1e585767e7cfa5f386daa2606917"
+size = 25297
+mtime_ms = 1793968101585
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/98259844-7422-4909-aa45-8d9c718d8d30/ec1ab01a-5879-4043-b6db-fc6f19110900"
+storage_version_token = "1793968189146330"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "6MsZdz1k4zRfeXTouRqMb"
+uri = "file://generated-artifacts/leaderboard-normal.jpg"
+type = "image"
+title = "Placar ao vivo — tela normal"
+description = "Captura do Preview em desktop; o ambiente local não possui evento disponível atualmente."
+logical_id = "fb7d6e6f-b0a3-44bd-bbd3-8d3a514b650f"
+content_hash = "sha256:eec77a144e50f87f53eec36fe4b94f3d792b468d520681471bbcca24b3f3dcb8"
+size = 58082
+mtime_ms = 1793968406006
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/fb7d6e6f-b0a3-44bd-bbd3-8d3a514b650f/76d0f8bd-eb9e-41ba-bf06-02cd2b9d1190"
+storage_version_token = "1793968671144516"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "2tVk35QSuskkvziZrEiih"
+uri = "file://generated-artifacts/leaderboard-fullscreen.jpg"
+type = "image"
+title = "Placar ao vivo — modo expandido"
+description = "Captura do Preview em desktop com o estado visual de expansão; sem evento disponível no ambiente local."
+logical_id = "cc54daa2-a172-475f-b1af-7788f8fb0327"
+content_hash = "sha256:e16df3cbce5eeb0ef1b13dde36622481569310fe289780c07a06812b554e6c34"
+size = 54456
+mtime_ms = 1793968460182
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/cc54daa2-a172-475f-b1af-7788f8fb0327/ce524bbe-124f-4301-96e6-2c467a6c7948"
+storage_version_token = "1793968671652382"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "3tX3vhMWelud0RVb1Cw3j"
+uri = "file://generated-artifacts/leaderboard-mobile-normal.jpg"
+type = "image"
+title = "Placar ao vivo — celular normal"
+description = "Captura do Preview com largura de 390 px no estado sem evento."
+logical_id = "e71d4560-0fd0-4556-bc48-0abeb327a0b2"
+content_hash = "sha256:3a75bf3224edd402b9bfaae06c4a63e6acf3499308d2ccac29ee2a5e60378191"
+size = 26824
+mtime_ms = 1793968408006
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/e71d4560-0fd0-4556-bc48-0abeb327a0b2/2d320186-8b8c-4402-afa4-5fc06a7b3e97"
+storage_version_token = "1793968672198635"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "4uOxl___BMpAz7lPmbQMc"
+uri = "file://generated-artifacts/leaderboard-mobile-fullscreen.jpg"
+type = "image"
+title = "Placar ao vivo — celular expandido"
+description = "Captura do Preview com largura de 390 px no estado visual expandido, sem evento disponível."
+logical_id = "e4a90e67-4611-484a-ba5a-f78ec888d027"
+content_hash = "sha256:4631f095e18845c4375c9ab4512bbc76f4c19c323ed6f5392cb3fb82105ccc78"
+size = 27102
+mtime_ms = 1793968467226
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/e4a90e67-4611-484a-ba5a-f78ec888d027/19237e41-5f96-4f9c-af47-ed5a2a349763"
+storage_version_token = "1793968672708714"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "JKgGwdoEGYUnAbuG3f5Sf"
+uri = "file://generated-artifacts/zero3-tv-normal.png"
+type = "image"
+title = "TV — modo normal"
+description = "Captura local de /tv no Preview Replit, 1366×768; ambiente sem evento disponível."
+logical_id = "110f3a2f-3f2c-45cb-92a5-bbbdb03a61df"
+content_hash = "sha256:35ae03418c0a6ebc23850b5731d07c4319241fb9326764a328f4bb39b56c49c5"
+size = 182011
+mtime_ms = 1793970927590
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/110f3a2f-3f2c-45cb-92a5-bbbdb03a61df/b65dd780-b0d9-4f4b-8cbc-f303d8c14367"
+storage_version_token = "1793971084168398"
+content_type = "image/png"
+
+[[outputs]]
+id = "8SH4OCGAVa1f9lMxDJ5-B"
+uri = "file://generated-artifacts/zero3-tv-fullscreen.png"
+type = "image"
+title = "TV — modo expandido"
+description = "Captura local do contêiner da TV em tela cheia nativa, 1366×768; ambiente sem evento disponível."
+logical_id = "ce89c216-d8f8-4ce3-a72e-f659d7805137"
+content_hash = "sha256:86cafa721daffab97b87fa896323e9918f39785ece9975131c9440fa742778c9"
+size = 181904
+mtime_ms = 1793970928114
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/ce89c216-d8f8-4ce3-a72e-f659d7805137/1c2b64eb-f729-4441-8ca4-07352a077837"
+storage_version_token = "1793971084656436"
+content_type = "image/png"
+
+[[outputs]]
+id = "LLYvePwZAfT8tVNMKLrwK"
+uri = "file://generated-artifacts/zero3-tv-proof-ranking-preview.jpg"
+type = "image"
+title = "Prévia da TV após o ajuste"
+description = "Captura local de /tv com eventId; o Preview não possui um evento carregado e mostra ‘Aguardando evento’. A captura confirma o layout, não as colocações com dados reais."
+logical_id = "151402b6-3340-482e-b1dd-417236691765"
+content_hash = "sha256:f3413a5dbaf8b875b8688b499888a9802c8f35d32ae04f163b9c61658ccc6128"
+size = 41368
+mtime_ms = 1793971734394
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/151402b6-3340-482e-b1dd-417236691765/85513282-12c6-448f-9272-4a98040cb8bf"
+storage_version_token = "1793971743192235"
+content_type = "image/jpeg"

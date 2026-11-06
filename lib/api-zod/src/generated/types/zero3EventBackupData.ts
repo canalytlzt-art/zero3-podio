@@ -12,6 +12,7 @@ import type { Zero3EventBackupDataBatteriesItem } from './zero3EventBackupDataBa
 import type { Zero3EventBackupDataBatteryEntriesItem } from './zero3EventBackupDataBatteryEntriesItem';
 import type { Zero3EventBackupDataBatteryPublicationsItem } from './zero3EventBackupDataBatteryPublicationsItem';
 import type { Zero3EventBackupDataBatteryRunsItem } from './zero3EventBackupDataBatteryRunsItem';
+import type { Zero3EventBackupDataBatteryTimeCapAuditItem } from './zero3EventBackupDataBatteryTimeCapAuditItem';
 import type { Zero3EventBackupDataEvent } from './zero3EventBackupDataEvent';
 import type { Zero3EventBackupDataHeatEntriesItem } from './zero3EventBackupDataHeatEntriesItem';
 import type { Zero3EventBackupDataHeatPublicationsItem } from './zero3EventBackupDataHeatPublicationsItem';
@@ -22,6 +23,7 @@ import type { Zero3EventBackupDataImportPeopleItem } from './zero3EventBackupDat
 import type { Zero3EventBackupDataImportTeamsItem } from './zero3EventBackupDataImportTeamsItem';
 import type { Zero3EventBackupDataPodiumVersionsItem } from './zero3EventBackupDataPodiumVersionsItem';
 import type { Zero3EventBackupDataProofsItem } from './zero3EventBackupDataProofsItem';
+import type { Zero3EventBackupDataRankingPublicationsItem } from './zero3EventBackupDataRankingPublicationsItem';
 import type { Zero3EventBackupDataRegistrationAuditItem } from './zero3EventBackupDataRegistrationAuditItem';
 import type { Zero3EventBackupDataRegistrationMembersItem } from './zero3EventBackupDataRegistrationMembersItem';
 import type { Zero3EventBackupDataRegistrationsItem } from './zero3EventBackupDataRegistrationsItem';
@@ -43,6 +45,7 @@ export type Zero3EventBackupData = {
   heatEntries: Zero3EventBackupDataHeatEntriesItem[];
   activeHeats: Zero3EventBackupDataActiveHeatsItem[];
   results: Zero3EventBackupDataResultsItem[];
+  rankingPublications?: Zero3EventBackupDataRankingPublicationsItem[];
   resultRevisions: Zero3EventBackupDataResultRevisionsItem[];
   timers: Zero3EventBackupDataTimersItem[];
   podiumVersions: Zero3EventBackupDataPodiumVersionsItem[];
@@ -53,4 +56,5 @@ export type Zero3EventBackupData = {
   activeBatteries?: Zero3EventBackupDataActiveBatteriesItem[];
   batteryRuns?: Zero3EventBackupDataBatteryRunsItem[];
   batteryPublications?: Zero3EventBackupDataBatteryPublicationsItem[];
+  batteryTimeCapAudit?: Zero3EventBackupDataBatteryTimeCapAuditItem[];
 };

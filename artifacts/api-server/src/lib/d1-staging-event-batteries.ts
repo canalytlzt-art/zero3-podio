@@ -5,6 +5,9 @@ import {
   CreateZero3EventBatteryResponse,
   ControlZero3TimerBody,
   ControlZero3TimerResponse,
+  UpdateZero3EventBatteryTimeCapBody,
+  UpdateZero3EventBatteryTimeCapParams,
+  UpdateZero3EventBatteryTimeCapResponse,
   FinalizeZero3EventBatteryBody,
   FinalizeZero3EventBatteryParams,
   FinalizeZero3EventBatteryResponse,
@@ -27,11 +30,14 @@ import {
   d1Date,
   d1IsoNow,
   d1JsonArray,
+  isD1SchemaNotReady,
   newD1Id,
   requireD1Member,
 } from "./d1-staging-shared";
 import { batteryTimerBlocksStructureChange, resolveBatteryOrderChange } from "./d1-staging-battery-order";
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
+import { workerLogger } from "./worker-logger";
+import { computeBatteryCapStop } from "./battery-time-cap";
 
 const EVENT_ROLES = ["ADMIN", "JUIZ_CHEFE"] as const;
 const ACCESS_ROLES = ["ADMIN", "JUIZ_CHEFE", "JUIZ"] as const;
@@ -72,6 +78,9 @@ type ProofRow = {
 };
 type BatteryRow = {
   id: string; event_id: string; battery_order: number; name: string; created_at: string;
+  scheduled_start_at: string | null;
+  time_cap_ms: number;
+  operational_finalized_at: string | null; operational_finalized_by: string | null;
 };
 type RegistrationRow = {
   id: string; event_id: string; category: string; team_name: string | null;
@@ -83,7 +92,9 @@ type ResultRow = {
   proof_id: string | null; heat_id: string | null; category: string; lane_label: string | null;
   athlete_ids_snapshot: string; athlete_names_snapshot: string; team_name_snapshot: string | null;
   elapsed_ms: number | null; raw_value: string | null; sync_error_ms: number | null;
-  status: string; captured_at: string; revision: number;
+  status: string; published_status: string | null; published_elapsed_ms: number | null;
+  published_raw_value: string | null; published_revision: number | null;
+  captured_at: string; revision: number;
 };
 type RunRow = {
   battery_id: string; event_id: string; state: string; elapsed_ms: number;
@@ -112,6 +123,18 @@ function runElapsed(row: RunRow | null, now: Date) {
     : 0));
 }
 
+export function eventBatteryFinalizedRun(run: RunRow, now: Date) {
+  return {
+    state: (run.state === "CANCELLED" ? "CANCELLED" : "FINISHED") as "FINISHED" | "CANCELLED",
+    elapsedMs: runElapsed(run, now),
+    stoppedAt: now.toISOString(),
+  };
+}
+
+export function isRepeatedBatteryTimerCommand(lastCommandId: string | null, commandId: string) {
+  return lastCommandId === commandId;
+}
+
 function resultDto(row: ResultRow, registration?: EntryRow) {
   const snapshotNames = d1JsonArray(row.athlete_names_snapshot);
   return {
@@ -122,6 +145,10 @@ function resultDto(row: ResultRow, registration?: EntryRow) {
     rawValue: row.raw_value === null ? null : Number(row.raw_value),
     placement: null, points: null, tieRulePending: false, syncErrorMs: row.sync_error_ms,
     status: row.status, capturedAt: d1Date(row.captured_at), revision: row.revision,
+    publishedStatus: row.published_status,
+    publishedElapsedMs: row.published_elapsed_ms,
+    publishedRawValue: row.published_raw_value === null ? null : Number(row.published_raw_value),
+    publishedRevision: row.published_revision,
     names: snapshotNames, teamName: resolveZero3DisplayTeamName(
       registration?.team_name, row.team_name_snapshot, Boolean(registration),
     ), heatName: null,
@@ -220,8 +247,34 @@ async function advanceDuePreparations(DB: D1Database, eventId: string, now: Date
     .bind(now.toISOString(), eventId, now.toISOString()).run();
 }
 
+async function advanceReachedBatteryCaps(DB: D1Database, eventId: string, now: Date) {
+  const running = await DB.prepare(`SELECT r.battery_id,r.event_id,r.elapsed_ms,r.started_at,r.version,
+      b.time_cap_ms
+    FROM zero3_battery_runs r
+    JOIN zero3_batteries b ON b.id=r.battery_id AND b.event_id=r.event_id
+    WHERE r.event_id=? AND r.state='RUNNING' AND r.started_at IS NOT NULL
+      AND b.operational_finalized_at IS NULL`)
+    .bind(eventId).all<Pick<RunRow, "battery_id" | "event_id" | "elapsed_ms" | "started_at" | "version"> & { time_cap_ms: number }>();
+
+  for (const run of running.results) {
+    const capStop = computeBatteryCapStop({
+      state: "RUNNING", elapsedMs: run.elapsed_ms, startedAt: run.started_at,
+      timeCapMs: run.time_cap_ms, nowMs: now.getTime(),
+    });
+    if (!capStop) continue;
+    await DB.prepare(`UPDATE zero3_battery_runs
+      SET state='FINISHED',elapsed_ms=?,started_at=NULL,stopped_at=?,version=version+1,updated_at=?
+      WHERE battery_id=? AND event_id=? AND state='RUNNING' AND version=? AND started_at=?
+        AND EXISTS(SELECT 1 FROM zero3_batteries
+          WHERE id=? AND event_id=? AND time_cap_ms=? AND operational_finalized_at IS NULL)`)
+      .bind(capStop.elapsedMs, capStop.stoppedAt, capStop.stoppedAt, run.battery_id, eventId, run.version,
+        run.started_at, run.battery_id, eventId, run.time_cap_ms).run();
+  }
+}
+
 export async function listD1EventBatteries(DB: D1Database, eventId: string, now = new Date()) {
   await advanceDuePreparations(DB, eventId, now);
+  await advanceReachedBatteryCaps(DB, eventId, now);
   const rows = await readRows(DB, eventId);
   if (!rows.event) return null;
   const proofs = rows.proofs;
@@ -294,10 +347,12 @@ export async function listD1EventBatteries(DB: D1Database, eventId: string, now 
       eventId: battery.event_id,
       order: battery.battery_order,
       name: battery.name,
+      scheduledStartAt: d1Date(battery.scheduled_start_at),
       state: run?.state ?? "IDLE",
       elapsedMs: elapsedByBattery.get(battery.id) ?? 0,
       eventElapsedMs,
       eventLimitMs: EVENT_LIMIT_MS,
+      timeCapMs: battery.time_cap_ms,
       preparationEndsAt: d1Date(run?.preparation_ends_at),
       preparationRemainingMs: run?.state === "PREPARATION" && run.preparation_ends_at
         ? Math.max(0, Date.parse(run.preparation_ends_at) - now.getTime()) : 0,
@@ -324,6 +379,8 @@ export async function listD1EventBatteries(DB: D1Database, eventId: string, now 
         publicationMatchesCurrentSnapshot(publication!, resultDtos, proofLeaderboards)
       ),
       finalized,
+      operationalFinalized: Boolean(battery.operational_finalized_at),
+      operationalFinalizedAt: d1Date(battery.operational_finalized_at),
       finalizationFingerprint: fingerprint,
       finalizationVersion: publication?.version ?? null,
       finalizedAt: d1Date(publication?.published_at),
@@ -338,7 +395,9 @@ export async function getD1ActiveEventBattery(DB: D1Database, eventId: string, n
     .bind(eventId).first<{ battery_id: string | null }>();
   if (!active?.battery_id) return null;
   const batteries = await listD1EventBatteries(DB, eventId, now);
-  return batteries?.find((battery) => battery.id === active.battery_id) ?? null;
+  return batteries?.find((battery) =>
+    battery.id === active.battery_id && !battery.operationalFinalized,
+  ) ?? null;
 }
 
 export async function handleD1StagingEventBatteries(
@@ -347,6 +406,133 @@ export async function handleD1StagingEventBatteries(
   DB: D1Database,
 ): Promise<boolean> {
   const route = req.path.slice("/api/zero3".length);
+  const timeCapMatch = route.match(/^\/events\/([^/]+)\/batteries\/([^/]+)\/time-cap$/);
+  if (timeCapMatch && req.method === "PATCH") {
+    const member = await requireD1Member(req, res, DB, EVENT_ROLES);
+    if (!member) return true;
+    const params = UpdateZero3EventBatteryTimeCapParams.safeParse({
+      eventId: timeCapMatch[1], batteryId: timeCapMatch[2],
+    });
+    const body = UpdateZero3EventBatteryTimeCapBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({
+        error: !params.success ? params.error.message : !body.success ? body.error.message : "Dados inválidos.",
+      });
+      return true;
+    }
+    const { eventId, batteryId } = params.data;
+    const { timeCapMs, expectedTimeCapMs, expectedTimerVersion, commandId } = body.data;
+    const now = new Date();
+    const nowIso = now.toISOString();
+    try {
+      const prior = await DB.prepare(`SELECT battery_id_snapshot,old_time_cap_ms,new_time_cap_ms
+        FROM zero3_battery_time_cap_audit WHERE event_id=? AND command_id=?`)
+        .bind(eventId, commandId).first<{
+          battery_id_snapshot: string; old_time_cap_ms: number; new_time_cap_ms: number;
+        }>();
+      if (prior) {
+        if (prior.battery_id_snapshot !== batteryId ||
+            prior.old_time_cap_ms !== expectedTimeCapMs || prior.new_time_cap_ms !== timeCapMs) {
+          d1ApiError(req, res, 409, "TIME_CAP_COMMAND_CONFLICT", "Este identificador de comando já foi usado para outra alteração.");
+          return true;
+        }
+        const saved = (await listD1EventBatteries(DB, eventId, now))
+          ?.find((item) => item.id === batteryId);
+        if (!saved) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
+        res.json(UpdateZero3EventBatteryTimeCapResponse.parse(saved));
+        return true;
+      }
+
+      const battery = await DB.prepare(`SELECT id,time_cap_ms,operational_finalized_at
+        FROM zero3_batteries WHERE id=? AND event_id=?`)
+        .bind(batteryId, eventId).first<{
+          id: string; time_cap_ms: number; operational_finalized_at: string | null;
+        }>();
+      if (!battery) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
+      if (battery.operational_finalized_at) {
+        d1ApiError(req, res, 409, "BATTERY_OPERATIONAL_FINALIZED", "Uma bateria finalizada não pode ter o limite alterado.");
+        return true;
+      }
+      if (timeCapMs < 1000 || timeCapMs > EVENT_LIMIT_MS) {
+        d1ApiError(req, res, 400, "TIME_CAP_INVALID", "O limite deve estar entre 00:01 e 120:00.");
+        return true;
+      }
+      if (battery.time_cap_ms !== expectedTimeCapMs) {
+        d1ApiError(req, res, 409, "TIME_CAP_VERSION_CONFLICT", "O limite desta bateria mudou em outra tela. Atualize antes de tentar novamente.");
+        return true;
+      }
+
+      await DB.prepare("INSERT OR IGNORE INTO zero3_battery_runs(battery_id,event_id) VALUES(?,?)")
+        .bind(batteryId, eventId).run();
+      const run = await DB.prepare(`SELECT state,elapsed_ms,started_at,version,first_started_at
+        FROM zero3_battery_runs WHERE battery_id=? AND event_id=?`)
+        .bind(batteryId, eventId).first<Pick<RunRow, "state" | "elapsed_ms" | "started_at" | "version" | "first_started_at">>();
+      if (!run) { d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível consultar o cronômetro da bateria."); return true; }
+      if (run.version !== expectedTimerVersion) {
+        d1ApiError(req, res, 409, "TIMER_VERSION_CONFLICT", "O cronômetro mudou em outra tela. Atualize antes de alterar o limite.");
+        return true;
+      }
+      const started = Boolean(run.first_started_at);
+      const elapsedMs = Math.floor(run.elapsed_ms + (run.state === "RUNNING" && run.started_at
+        ? Math.max(0, now.getTime() - Date.parse(run.started_at)) : 0));
+      if (started && (member.role !== "ADMIN" || run.state !== "PAUSED")) {
+        d1ApiError(req, res, 403, "TIME_CAP_CHANGE_REQUIRES_ADMIN_PAUSED", "Após a primeira largada, somente ADMIN pode alterar o limite com o cronômetro pausado.");
+        return true;
+      }
+      if (!started && !["IDLE", "PREPARATION"].includes(run.state)) {
+        d1ApiError(req, res, 409, "TIME_CAP_CHANGE_STATE_CONFLICT", "Antes da primeira largada, altere o limite somente com o cronômetro parado ou na preparação.");
+        return true;
+      }
+      if (timeCapMs <= elapsedMs) {
+        d1ApiError(req, res, 409, "TIME_CAP_BELOW_ELAPSED", "O novo limite precisa ser maior que o tempo já decorrido.");
+        return true;
+      }
+      if (timeCapMs === battery.time_cap_ms) {
+        const current = (await listD1EventBatteries(DB, eventId, now))?.find((item) => item.id === batteryId);
+        if (!current) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
+        res.json(UpdateZero3EventBatteryTimeCapResponse.parse(current));
+        return true;
+      }
+
+      const batch = await DB.batch([
+        DB.prepare(`UPDATE zero3_batteries SET time_cap_ms=?
+          WHERE id=? AND event_id=? AND time_cap_ms=? AND operational_finalized_at IS NULL
+            AND EXISTS(SELECT 1 FROM zero3_battery_runs
+              WHERE battery_id=? AND event_id=? AND version=? AND state=? AND first_started_at IS ?)`)
+          .bind(timeCapMs, batteryId, eventId, expectedTimeCapMs, batteryId, eventId,
+            expectedTimerVersion, run.state, run.first_started_at),
+        DB.prepare(`INSERT INTO zero3_battery_time_cap_audit(
+            id,event_id,battery_id,battery_id_snapshot,command_id,clerk_user_id,role,
+            old_time_cap_ms,new_time_cap_ms,changed_at
+          )
+          SELECT ?,?,?,?,?,?,?,?,?,? WHERE changes()=1`)
+          .bind(newD1Id(), eventId, batteryId, batteryId, commandId, member.clerk_user_id,
+            member.role, expectedTimeCapMs, timeCapMs, nowIso),
+        DB.prepare(`UPDATE zero3_battery_runs SET version=version+1,updated_at=?
+          WHERE battery_id=? AND event_id=? AND version=? AND state=?
+            AND EXISTS(SELECT 1 FROM zero3_battery_time_cap_audit
+              WHERE event_id=? AND command_id=? AND battery_id_snapshot=?)`)
+          .bind(nowIso, batteryId, eventId, expectedTimerVersion, run.state, eventId, commandId, batteryId),
+        changedRowsGuard(DB, eventId),
+      ]);
+      if ((batch[2]?.meta.changes ?? 0) !== 1) {
+        d1ApiError(req, res, 409, "TIME_CAP_VERSION_CONFLICT", "O limite ou o cronômetro mudou antes de salvar. Atualize e tente novamente.");
+        return true;
+      }
+      const saved = (await listD1EventBatteries(DB, eventId, now))
+        ?.find((item) => item.id === batteryId);
+      if (!saved) { d1ApiError(req, res, 500, "API_INTERNAL_ERROR", "O limite foi salvo, mas não foi possível reler a bateria."); return true; }
+      res.json(UpdateZero3EventBatteryTimeCapResponse.parse(saved));
+    } catch (error) {
+      if (isBatteryConstraintConflict(error)) {
+        d1ApiError(req, res, 409, "TIME_CAP_VERSION_CONFLICT", "A alteração do limite entrou em conflito com outro comando. Atualize e tente novamente.");
+      } else {
+        d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível salvar o limite da bateria.");
+      }
+    }
+    return true;
+  }
+
   const timerMatch = route.match(/^\/events\/([^/]+)\/timer$/);
   if (timerMatch && req.method === "PUT" &&
       typeof req.body === "object" && req.body !== null && "expectedBatteryId" in req.body) {
@@ -365,16 +551,21 @@ export async function handleD1StagingEventBatteries(
       const event = await DB.prepare("SELECT id,preparation_seconds FROM zero3_events WHERE id=?")
         .bind(eventId).first<{ id: string; preparation_seconds: number }>();
       if (!event) { res.status(404).json({ error: "Evento não encontrado." }); return true; }
-      const battery = await DB.prepare("SELECT id FROM zero3_batteries WHERE id=? AND event_id=?")
-        .bind(batteryId, eventId).first<{ id: string }>();
+      const battery = await DB.prepare("SELECT id,operational_finalized_at FROM zero3_batteries WHERE id=? AND event_id=?")
+        .bind(batteryId, eventId).first<{ id: string; operational_finalized_at: string | null }>();
       if (!battery) { d1ApiError(req, res, 409, "BATTERY_SELECTION_CONFLICT", "A bateria não pertence a este evento."); return true; }
+      if (battery.operational_finalized_at) {
+        d1ApiError(req, res, 409, "BATTERY_OPERATIONAL_FINALIZED", "Esta bateria já foi finalizada e não pode reiniciar o cronômetro.");
+        return true;
+      }
       await DB.prepare("INSERT OR IGNORE INTO zero3_battery_runs(battery_id,event_id) VALUES(?,?)")
         .bind(batteryId, eventId).run();
       await advanceDuePreparations(DB, eventId, now);
+      await advanceReachedBatteryCaps(DB, eventId, now);
       let run = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE battery_id=? AND event_id=?")
         .bind(batteryId, eventId).first<RunRow>();
       if (!run) { d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível consultar o cronômetro da bateria."); return true; }
-      if (run.last_command_id === parsed.data.commandId) {
+      if (isRepeatedBatteryTimerCommand(run.last_command_id, parsed.data.commandId)) {
         const batteries = await listD1EventBatteries(DB, eventId, now);
         const dto = batteries?.find((item) => item.id === batteryId);
         if (!dto) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
@@ -389,6 +580,7 @@ export async function handleD1StagingEventBatteries(
           version: run.version, updatedAt: d1Date(run.updated_at),
           proofId: null, batteryOrder: null, batteryId,
           eventElapsedMs: dto.eventElapsedMs, eventLimitMs: dto.eventLimitMs,
+          timeCapMs: dto.timeCapMs,
         }));
         return true;
       }
@@ -398,6 +590,13 @@ export async function handleD1StagingEventBatteries(
       }
       const liveElapsed = Math.floor(run.elapsed_ms + (run.state === "RUNNING" && run.started_at
         ? Math.max(0, now.getTime() - Date.parse(run.started_at)) : 0));
+      const batteryTimer = await DB.prepare("SELECT time_cap_ms FROM zero3_batteries WHERE id=? AND event_id=?")
+        .bind(batteryId, eventId).first<{ time_cap_ms: number }>();
+      if (!batteryTimer) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
+      const capStop = computeBatteryCapStop({
+        state: run.state, elapsedMs: run.elapsed_ms, startedAt: run.started_at,
+        timeCapMs: batteryTimer.time_cap_ms, nowMs: now.getTime(),
+      });
       const allRuns = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE event_id=?")
         .bind(eventId).all<RunRow>();
       const eventElapsedMs = allRuns.results.reduce((sum, item) => sum + runElapsed(item, now), 0);
@@ -405,10 +604,6 @@ export async function handleD1StagingEventBatteries(
         "preparation_started_at" | "first_started_at" | "stopped_at">;
       switch (parsed.data.action) {
         case "prepare":
-          if (eventElapsedMs >= EVENT_LIMIT_MS) {
-            d1ApiError(req, res, 409, "EVENT_TIME_LIMIT", "O limite de 2 horas do evento foi atingido.");
-            return true;
-          }
           if (run.state !== "IDLE") {
             res.status(400).json({ error: "Este comando não é válido para o estado atual." }); return true;
           }
@@ -419,10 +614,6 @@ export async function handleD1StagingEventBatteries(
           };
           break;
         case "start":
-          if (eventElapsedMs >= EVENT_LIMIT_MS) {
-            d1ApiError(req, res, 409, "EVENT_TIME_LIMIT", "O limite de 2 horas do evento foi atingido.");
-            return true;
-          }
           if (run.state !== "IDLE") {
             res.status(400).json({ error: "Este comando não é válido para o estado atual." }); return true;
           }
@@ -431,13 +622,16 @@ export async function handleD1StagingEventBatteries(
           break;
         case "pause":
           if (run.state !== "RUNNING") { res.status(400).json({ error: "O cronômetro não está em execução." }); return true; }
-          next = { state: "PAUSED", elapsed_ms: liveElapsed, started_at: null, preparation_ends_at: run.preparation_ends_at,
-            preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:nowIso };
+          next = capStop
+            ? { state: "FINISHED", elapsed_ms: capStop.elapsedMs, started_at: null, preparation_ends_at: run.preparation_ends_at,
+                preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:capStop.stoppedAt }
+            : { state: "PAUSED", elapsed_ms: Math.min(liveElapsed, batteryTimer.time_cap_ms), started_at: null, preparation_ends_at: run.preparation_ends_at,
+                preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:nowIso };
           break;
         case "resume":
           if (run.state !== "PAUSED") { res.status(400).json({ error: "O cronômetro não está pausado." }); return true; }
-          if (eventElapsedMs >= EVENT_LIMIT_MS) {
-            d1ApiError(req, res, 409, "EVENT_TIME_LIMIT", "O limite de 2 horas do evento foi atingido.");
+          if (run.elapsed_ms >= batteryTimer.time_cap_ms) {
+            d1ApiError(req, res, 409, "BATTERY_TIME_CAP_REACHED", "O limite desta bateria já foi atingido.");
             return true;
           }
           next = { state: "RUNNING", elapsed_ms: run.elapsed_ms, started_at: nowIso, preparation_ends_at: run.preparation_ends_at,
@@ -447,16 +641,35 @@ export async function handleD1StagingEventBatteries(
           if (!["RUNNING", "PAUSED"].includes(run.state)) {
             res.status(400).json({ error: "O cronômetro não está em execução ou pausado." }); return true;
           }
-          next = { state: "FINISHED", elapsed_ms: liveElapsed, started_at: null, preparation_ends_at: run.preparation_ends_at,
-            preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:nowIso };
+          next = capStop
+            ? { state: "FINISHED", elapsed_ms: capStop.elapsedMs, started_at: null, preparation_ends_at: run.preparation_ends_at,
+                preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:capStop.stoppedAt }
+            : { state: "FINISHED", elapsed_ms: Math.min(liveElapsed, batteryTimer.time_cap_ms), started_at: null, preparation_ends_at: run.preparation_ends_at,
+                preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:nowIso };
+          break;
+        case "cancel":
+          if (!["IDLE", "PREPARATION", "RUNNING", "PAUSED"].includes(run.state)) {
+            res.status(400).json({ error: "Esta bateria já está finalizada ou cancelada." }); return true;
+          }
+          next = {
+            state: "CANCELLED",
+            elapsed_ms: run.state === "RUNNING"
+              ? Math.min(liveElapsed, batteryTimer.time_cap_ms)
+              : run.state === "PAUSED" ? Math.min(run.elapsed_ms, batteryTimer.time_cap_ms) : 0,
+            started_at: null,
+            preparation_ends_at: null,
+            preparation_started_at: run.preparation_started_at,
+            first_started_at: run.first_started_at,
+            stopped_at: nowIso,
+          };
           break;
         case "reset":
-          if (run.state !== "IDLE" && run.state !== "PREPARATION") {
-            res.status(409).json({ error: "O tempo acumulado não pode ser apagado após o início da prova." });
+          if (!["IDLE", "PREPARATION", "PAUSED", "FINISHED", "CANCELLED"].includes(run.state)) {
+            res.status(409).json({ error: "Pause, finalize ou cancele a bateria antes de voltar para Não iniciada." });
             return true;
           }
-          next = { state: "IDLE", elapsed_ms: 0, started_at: null, preparation_ends_at: run.preparation_ends_at,
-            preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:run.stopped_at };
+          next = { state: "IDLE", elapsed_ms: 0, started_at: null, preparation_ends_at: null,
+            preparation_started_at:null,first_started_at:run.first_started_at,stopped_at:nowIso };
           break;
       }
       const saved = await DB.prepare(`UPDATE zero3_battery_runs
@@ -464,11 +677,13 @@ export async function handleD1StagingEventBatteries(
             first_started_at=?,stopped_at=?,version=version+1,
             last_command_id=?,updated_at=?
         WHERE battery_id=? AND event_id=? AND version=?
-          AND (last_command_id IS NULL OR last_command_id<>?)`)
+          AND (last_command_id IS NULL OR last_command_id<>?)
+          AND EXISTS(SELECT 1 FROM zero3_batteries
+            WHERE id=? AND event_id=? AND operational_finalized_at IS NULL)`)
         .bind(next.state, next.elapsed_ms, next.started_at, next.preparation_ends_at,
           next.preparation_started_at,next.first_started_at,next.stopped_at,
           parsed.data.commandId, nowIso, batteryId, eventId, parsed.data.expectedVersion,
-          parsed.data.commandId).run();
+          parsed.data.commandId,batteryId,eventId).run();
       run = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE battery_id=? AND event_id=?")
         .bind(batteryId, eventId).first<RunRow>();
       if ((saved.meta.changes ?? 0) !== 1) {
@@ -491,6 +706,7 @@ export async function handleD1StagingEventBatteries(
         version: run.version, updatedAt: d1Date(run.updated_at),
         proofId: null, batteryOrder: null, batteryId,
         eventElapsedMs: dto.eventElapsedMs, eventLimitMs: dto.eventLimitMs,
+        timeCapMs: dto.timeCapMs,
       }));
     } catch {
       d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível atualizar o cronômetro da bateria.");
@@ -527,6 +743,22 @@ export async function handleD1StagingEventBatteries(
         return true;
       }
       const currentRegistrationIds = battery.registrations.map((item) => item.id);
+      const hasScheduledStartUpdate = body.data.scheduledStartAt !== undefined;
+      const currentScheduledStartAt = battery.scheduledStartAt
+        ? new Date(battery.scheduledStartAt).toISOString()
+        : null;
+      if (hasScheduledStartUpdate && body.data.expectedScheduledStartAt === undefined) {
+        res.status(400).json({ error: "Confirme o horário previsto atual antes de alterá-lo." });
+        return true;
+      }
+      const expectedScheduledStartAt = body.data.expectedScheduledStartAt
+        ? new Date(body.data.expectedScheduledStartAt).toISOString()
+        : null;
+      if (hasScheduledStartUpdate && expectedScheduledStartAt !== currentScheduledStartAt) {
+        d1ApiError(req, res, 409, "BATTERY_SCHEDULE_CHANGED",
+          "A programação mudou em outra tela. Atualize antes de salvar.");
+        return true;
+      }
       if (body.data.expectedName !== battery.name ||
           body.data.expectedOrder !== battery.order ||
           !sameStringSet(body.data.expectedRegistrationIds, currentRegistrationIds)) {
@@ -534,7 +766,7 @@ export async function handleD1StagingEventBatteries(
         return true;
       }
       const compositionChanged = !sameStringSet(body.data.registrationIds, currentRegistrationIds);
-      if (compositionChanged && (battery.state !== "IDLE" || battery.results.length > 0 || battery.finalized)) {
+      if (compositionChanged && (battery.state !== "IDLE" || battery.results.length > 0 || battery.operationalFinalized)) {
         d1ApiError(req, res, 409, "BATTERY_NOT_EDITABLE",
           "A composição só pode ser alterada antes do início, sem resultados nem publicação. Nome e número da bateria podem ser editados separadamente.");
         return true;
@@ -558,7 +790,8 @@ export async function handleD1StagingEventBatteries(
       const otherBattery = decision.kind === "swap"
         ? batteries.find((item) => item.id === decision.other.id)
         : undefined;
-      if (batteryTimerBlocksStructureChange(battery.state) ||
+      if (((body.data.name.trim() !== battery.name || body.data.order !== battery.order || compositionChanged) &&
+            batteryTimerBlocksStructureChange(battery.state)) ||
           (otherBattery && batteryTimerBlocksStructureChange(otherBattery.state))) {
         d1ApiError(req, res, 409, "BATTERY_TIMER_ACTIVE",
           "Pare a preparação ou cronômetro em execução antes de alterar a ordem. O tempo pausado é preservado.");
@@ -599,7 +832,16 @@ export async function handleD1StagingEventBatteries(
       const nextName = body.data.name.trim();
       const nextOrder = body.data.order;
       const metadataChanged = nextName !== battery.name || nextOrder !== battery.order;
-      if (!metadataChanged && !compositionChanged) {
+      const nextScheduledStartAt = hasScheduledStartUpdate && body.data.scheduledStartAt
+        ? new Date(body.data.scheduledStartAt).toISOString()
+        : hasScheduledStartUpdate ? null : currentScheduledStartAt;
+      const scheduleChanged = hasScheduledStartUpdate && nextScheduledStartAt !== currentScheduledStartAt;
+      if (scheduleChanged && battery.operationalFinalized) {
+        d1ApiError(req, res, 409, "BATTERY_OPERATIONAL_FINALIZED",
+          "A programação de uma bateria finalizada não pode ser alterada.");
+        return true;
+      }
+      if (!metadataChanged && !compositionChanged && !scheduleChanged) {
         res.json(UpdateZero3EventBatteryResponse.parse(battery));
         return true;
       }
@@ -629,17 +871,21 @@ export async function handleD1StagingEventBatteries(
           WHERE event_id=? AND battery_order=? AND id<>?)`;
       const targetFreeBindings = isSwap ? [] as const : [params.data.eventId, nextOrder, battery.id] as const;
       const firstUpdate = DB.prepare(`UPDATE zero3_batteries
-        SET name=?,battery_order=?
-        WHERE id=? AND event_id=? AND name=? AND battery_order=?
+        SET name=?,battery_order=?,scheduled_start_at=?
+        WHERE id=? AND event_id=? AND name=? AND battery_order=? AND scheduled_start_at IS ?
           AND NOT EXISTS(SELECT 1 FROM zero3_battery_runs
-            WHERE battery_id=? AND event_id=? AND state IN ('PREPARATION','RUNNING'))
+            WHERE battery_id=? AND event_id=? AND state IN ('PREPARATION','RUNNING')
+              AND ?=1)
           ${targetFreeSql}
           ${compositionGuardSql}`)
         .bind(
           isSwap || compositionChanged ? marker : nextName,
           initialOrder,
+          nextScheduledStartAt,
           battery.id, params.data.eventId, body.data.expectedName, body.data.expectedOrder,
-          battery.id, params.data.eventId,
+          currentScheduledStartAt,
+          battery.id, params.data.eventId, body.data.name.trim() !== battery.name ||
+            body.data.order !== battery.order || compositionChanged ? 1 : 0,
           ...targetFreeBindings,
           ...compositionGuardBindings,
         );
@@ -827,88 +1073,132 @@ export async function handleD1StagingEventBatteries(
       });
       return true;
     }
+    let finalizationStage = "load_battery";
     try {
       const batteries = await listD1EventBatteries(DB, params.data.eventId);
       const battery = batteries?.find((item) => item.id === params.data.batteryId);
       if (!battery) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada neste evento."); return true; }
-      if (battery.proofs.length !== 4 || battery.proofs.some((proof) => !proof.configured)) {
-        d1ApiError(req, res, 409, "PROOFS_NOT_CONFIGURED", "Configure as quatro provas do evento antes de finalizar a bateria.");
+      const respondFinalized = (current: typeof battery, alreadyFinalized: boolean) =>
+        FinalizeZero3EventBatteryResponse.parse({
+          eventId: current.eventId,
+          batteryId: current.id,
+          order: current.order,
+          operationalFinalizedAt: current.operationalFinalizedAt ?? d1IsoNow(),
+          elapsedMs: current.elapsedMs,
+          timerVersion: Math.max(1, current.timerVersion),
+          resultCount: current.results.length,
+          pendingResultCount: current.pendingResultCount,
+          alreadyFinalized,
+        });
+      if (battery.operationalFinalized) {
+        // Repair a stale TV selection on retries without changing the archived
+        // battery, its timer, registrations, results, or publication history.
+        await DB.prepare(`UPDATE zero3_active_batteries
+          SET battery_id=NULL,updated_at=?
+          WHERE event_id=? AND battery_id=?`)
+          .bind(d1IsoNow(), battery.eventId, battery.id).run();
+        res.json(respondFinalized(battery, true));
         return true;
       }
       if (body.data.expectedFingerprint !== battery.finalizationFingerprint) {
-        d1ApiError(req, res, 409, "BATTERY_CHANGED", "Os resultados mudaram. Atualize a bateria antes de finalizar.");
+        d1ApiError(req, res, 409, "BATTERY_CHANGED", "A bateria ou seus resultados mudaram. Atualize antes de finalizar.");
         return true;
       }
-      if (battery.expectedResultCount === 0 || battery.reviewedResultCount !== battery.expectedResultCount) {
-        d1ApiError(req, res, 409, "BATTERY_RESULTS_INCOMPLETE",
-          `Há ${battery.pendingResultCount} resultado(s) faltando ou sem revisão nas quatro provas.`);
+      if (battery.registrations.length === 0) {
+        d1ApiError(req, res, 409, "BATTERY_EMPTY", "Adicione ao menos uma inscrição antes de finalizar a bateria.");
         return true;
       }
-      if (battery.results.some((result) => result.status === "DNS" || result.status === "DNF")) {
-        d1ApiError(req, res, 409, "EXCEPTION_RULE_PENDING",
-          "DNS/DNF ainda não tem regra oficial de pontuação configurada; a bateria não pode ser finalizada.");
+      finalizationStage = "load_timer";
+      const existingRun = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE battery_id=? AND event_id=?")
+        .bind(battery.id, battery.eventId).first<RunRow>();
+      const stamp = d1IsoNow();
+      const run: RunRow = existingRun ?? {
+        battery_id: battery.id,
+        event_id: battery.eventId,
+        state: "IDLE",
+        elapsed_ms: 0,
+        started_at: null,
+        preparation_ends_at: null,
+        version: 0,
+        last_command_id: null,
+        updated_at: stamp,
+        preparation_started_at: null,
+        first_started_at: null,
+        stopped_at: null,
+      };
+      const nextRun = eventBatteryFinalizedRun(run, new Date(stamp));
+      finalizationStage = "commit_finalization";
+      await DB.batch([
+        DB.prepare(`INSERT OR IGNORE INTO zero3_battery_runs(battery_id,event_id)
+          SELECT ?,? WHERE EXISTS(
+            SELECT 1 FROM zero3_batteries
+            WHERE id=? AND event_id=? AND operational_finalized_at IS NULL
+          )`).bind(battery.id, battery.eventId, battery.id, battery.eventId),
+        DB.prepare(`UPDATE zero3_battery_runs
+          SET state=?,elapsed_ms=?,started_at=NULL,preparation_ends_at=NULL,
+              stopped_at=?,version=version+1,updated_at=?
+          WHERE battery_id=? AND event_id=? AND version=?
+            AND EXISTS(SELECT 1 FROM zero3_batteries
+              WHERE id=? AND event_id=? AND operational_finalized_at IS NULL)`)
+          .bind(nextRun.state, nextRun.elapsedMs, nextRun.stoppedAt, stamp,
+            battery.id, battery.eventId, run.version, battery.id, battery.eventId),
+        changedRowsGuard(DB, battery.eventId),
+        DB.prepare(`UPDATE zero3_batteries
+          SET operational_finalized_at=?,operational_finalized_by=?
+          WHERE id=? AND event_id=? AND operational_finalized_at IS NULL
+            AND EXISTS(SELECT 1 FROM zero3_battery_runs
+              WHERE battery_id=? AND event_id=? AND version=? AND state IN ('FINISHED','CANCELLED'))`)
+          .bind(stamp, member.clerk_user_id, battery.id, battery.eventId,
+            battery.id, battery.eventId, run.version + 1),
+        changedRowsGuard(DB, battery.eventId),
+        DB.prepare(`UPDATE zero3_active_batteries
+          SET battery_id=NULL,updated_at=?
+          WHERE event_id=? AND battery_id=?`)
+          .bind(stamp, battery.eventId, battery.id),
+      ]);
+      finalizationStage = "verify_persisted_state";
+      const refreshed = await listD1EventBatteries(DB, battery.eventId);
+      const saved = refreshed?.find((item) => item.id === battery.id);
+      if (!saved?.operationalFinalized) {
+        d1ApiError(req, res, 409, "BATTERY_FINALIZATION_CONFLICT",
+          "A bateria mudou durante a finalização. Atualize e confira o estado atual.");
         return true;
       }
-      const unresolvedTie = battery.proofLeaderboards.some((proofBoard) =>
-        proofBoard.leaderboards.some((leaderboard) =>
-          leaderboard.entries.some((entry) =>
-            entry.status === "TIE_RULE_PENDING" ||
-            entry.proofScores.some((score) => score.status === "TIE_RULE_PENDING"),
-          ),
-        ),
-      );
-      if (unresolvedTie) {
-        d1ApiError(req, res, 409, "TIE_RULE_PENDING", "Resolva os critérios oficiais de desempate antes de finalizar.");
-        return true;
+      res.json(respondFinalized(saved, false));
+    } catch (cause) {
+      if (isBatteryConstraintConflict(cause)) {
+        const current = await listD1EventBatteries(DB, params.data.eventId).catch(() => null);
+        const finalized = current?.find((item) => item.id === params.data.batteryId);
+        if (finalized?.operationalFinalized) {
+          res.json(FinalizeZero3EventBatteryResponse.parse({
+            eventId: finalized.eventId,
+            batteryId: finalized.id,
+            order: finalized.order,
+            operationalFinalizedAt: finalized.operationalFinalizedAt ?? d1IsoNow(),
+            elapsedMs: finalized.elapsedMs,
+            timerVersion: Math.max(1, finalized.timerVersion),
+            resultCount: finalized.results.length,
+            pendingResultCount: finalized.pendingResultCount,
+            alreadyFinalized: true,
+          }));
+          return true;
+        }
+        d1ApiError(req, res, 409, "BATTERY_FINALIZATION_CONFLICT",
+          "O cronômetro ou a bateria mudou durante a finalização. Nenhuma alteração parcial foi mantida; atualize e tente novamente.");
+      } else {
+        workerLogger.error({
+          error: cause,
+          requestId: (req as Request & { id?: string }).id,
+          method: req.method,
+          path: route,
+          stage: finalizationStage,
+        }, "D1 battery finalization failed");
+        d1ApiError(req, res, 503,
+          isD1SchemaNotReady(cause) ? "D1_SCHEMA_NOT_READY" : "DATABASE_UNAVAILABLE",
+          isD1SchemaNotReady(cause)
+            ? "O schema D1 está desatualizado e precisa das migrations de finalização operacional."
+            : "Não foi possível finalizar a bateria do evento.");
       }
-      const existing = await DB.prepare(`SELECT * FROM zero3_battery_publications
-        WHERE battery_id=? AND result_fingerprint=?`)
-        .bind(battery.id, battery.finalizationFingerprint).first<PublicationRow>();
-      const latest = await DB.prepare(`SELECT * FROM zero3_battery_publications
-        WHERE battery_id=? ORDER BY version DESC LIMIT 1`)
-        .bind(battery.id).first<PublicationRow>();
-      if (latest && battery.finalized && battery.finalizationCurrent) {
-        res.json(FinalizeZero3EventBatteryResponse.parse({
-          eventId: battery.eventId, batteryId: battery.id, order: battery.order,
-          version: latest.version, resultCount: latest.result_count,
-          publishedAt: d1Date(latest.published_at), fingerprint: latest.result_fingerprint,
-          alreadyPublished: true,
-        }));
-        return true;
-      }
-      if (existing && latest?.id === existing.id) {
-        res.json(FinalizeZero3EventBatteryResponse.parse({
-          eventId: battery.eventId, batteryId: battery.id, order: battery.order,
-          version: existing.version, resultCount: existing.result_count,
-          publishedAt: d1Date(existing.published_at), fingerprint: existing.result_fingerprint,
-          alreadyPublished: true,
-        }));
-        return true;
-      }
-      const version = (latest?.version ?? 0) + 1;
-      const publishedAt = d1IsoNow();
-      const inserted = await DB.prepare(`INSERT INTO zero3_battery_publications
-        (id,event_id,battery_id,version,result_fingerprint,result_count,results_json,leaderboards_json,published_by,published_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING RETURNING *`)
-        .bind(newD1Id(), battery.eventId, battery.id, version, battery.finalizationFingerprint,
-          battery.results.length, JSON.stringify(battery.results), JSON.stringify(battery.proofLeaderboards),
-          member.email, publishedAt)
-        .first<PublicationRow>();
-      const saved = inserted ?? await DB.prepare(`SELECT * FROM zero3_battery_publications
-        WHERE battery_id=? AND result_fingerprint=?`)
-        .bind(battery.id, battery.finalizationFingerprint).first<PublicationRow>();
-      if (!saved) {
-        d1ApiError(req, res, 409, "BATTERY_FINALIZATION_CONFLICT", "A bateria foi finalizada em outra operação. Atualize e confira o estado atual.");
-        return true;
-      }
-      res.json(FinalizeZero3EventBatteryResponse.parse({
-        eventId: battery.eventId, batteryId: battery.id, order: battery.order,
-        version: saved.version, resultCount: saved.result_count,
-        publishedAt: d1Date(saved.published_at), fingerprint: saved.result_fingerprint,
-        alreadyPublished: !inserted,
-      }));
-    } catch {
-      d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível finalizar a bateria do evento.");
     }
     return true;
   }
@@ -969,9 +1259,12 @@ export async function handleD1StagingEventBatteries(
       }
       const batteryId = newD1Id();
       const stamp = d1IsoNow();
+      const scheduledStartAt = body.data.scheduledStartAt
+        ? new Date(body.data.scheduledStartAt).toISOString()
+        : null;
       await DB.batch([
-        DB.prepare("INSERT INTO zero3_batteries(id,event_id,battery_order,name,created_at) VALUES(?,?,?,?,?)")
-          .bind(batteryId, event.id, body.data.order, body.data.name.trim(), stamp),
+        DB.prepare("INSERT INTO zero3_batteries(id,event_id,battery_order,name,scheduled_start_at,created_at) VALUES(?,?,?,?,?,?)")
+          .bind(batteryId, event.id, body.data.order, body.data.name.trim(), scheduledStartAt, stamp),
         ...registrationIds.map((registrationId) => DB.prepare(`INSERT INTO zero3_battery_entries
           (battery_id,registration_id,lane_label,assigned_at)
           SELECT ?,id,lane_label,? FROM zero3_registrations WHERE id=? AND event_id=? AND confirmation_status<>'CANCELLED'`)

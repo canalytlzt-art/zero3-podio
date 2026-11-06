@@ -24,6 +24,7 @@ import {
   zero3RegistrationAuditTable,
   zero3RegistrationMembersTable,
   zero3ResultRevisionsTable,
+  zero3RankingPublicationsTable,
   zero3ResultsTable,
   zero3TimersTable,
   db,
@@ -56,7 +57,7 @@ async function readEventBackup(
 
   const [
     proofs, registrations, registrationMembers, registrationAudit, importBatches,
-    heats, activeHeats, results, timers, podiumVersions,
+    heats, activeHeats, results, rankingPublications, timers, podiumVersions,
   ] = await Promise.all([
     database.select().from(zero3ProofsTable).where(eq(zero3ProofsTable.eventId, eventId)),
     database.select().from(zero3RegistrationsTable).where(eq(zero3RegistrationsTable.eventId, eventId)),
@@ -66,6 +67,7 @@ async function readEventBackup(
     database.select().from(zero3HeatsTable).where(eq(zero3HeatsTable.eventId, eventId)),
     database.select().from(zero3ActiveHeatsTable).where(eq(zero3ActiveHeatsTable.eventId, eventId)),
     database.select().from(zero3ResultsTable).where(eq(zero3ResultsTable.eventId, eventId)),
+    database.select().from(zero3RankingPublicationsTable).where(eq(zero3RankingPublicationsTable.eventId, eventId)),
     database.select().from(zero3TimersTable).where(eq(zero3TimersTable.eventId, eventId)),
     database.select().from(zero3PodiumsTable).where(eq(zero3PodiumsTable.eventId, eventId)),
   ]);
@@ -113,6 +115,7 @@ async function readEventBackup(
     heatEntries: heatEntries as unknown as EventBackupRow[],
     activeHeats: activeHeats as unknown as EventBackupRow[],
     results: results as unknown as EventBackupRow[],
+    rankingPublications: rankingPublications as unknown as EventBackupRow[],
     resultRevisions: resultRevisions as unknown as EventBackupRow[],
     timers: timers as unknown as EventBackupRow[],
     podiumVersions: podiumVersions as unknown as EventBackupRow[],
@@ -123,6 +126,7 @@ async function readEventBackup(
     activeBatteries: [],
     batteryRuns: [],
     batteryPublications: [],
+    batteryTimeCapAudit: [],
   };
   return createZero3EventBackup(event as unknown as EventBackupRow, data);
 }

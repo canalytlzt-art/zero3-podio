@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { eventBatteryTimerControl } from "./event-battery-timer-controls.ts";
+import {
+  eventBatteryTimerActions,
+  eventBatteryTimerControl,
+  eventBatteryTimerStatusAction,
+  eventBatteryTimerStatusChoices,
+} from "./event-battery-timer-controls.ts";
 
 test("starts an idle battery through its preparation countdown", () => {
   assert.deepEqual(eventBatteryTimerControl("IDLE"), {
@@ -30,4 +35,45 @@ test("allows a paused timer to resume and leaves a finished time frozen", () => 
   });
   assert.equal(eventBatteryTimerControl("FINISHED"), null);
   assert.equal(eventBatteryTimerControl("UNKNOWN"), null);
+});
+
+test("exposes pause and stop as separate commands while running", () => {
+  assert.deepEqual(eventBatteryTimerActions("RUNNING"), [
+    { action: "pause", label: "Pausar" },
+    { action: "finish", label: "Parar" },
+    { action: "cancel", label: "Cancelar bateria" },
+  ]);
+});
+
+test("exposes resume and stop separately after a pause", () => {
+  assert.deepEqual(eventBatteryTimerActions("PAUSED"), [
+    { action: "resume", label: "Retomar" },
+    { action: "finish", label: "Parar" },
+    { action: "reset", label: "Voltar para Não iniciada" },
+    { action: "cancel", label: "Cancelar bateria" },
+  ]);
+});
+
+test("finished and cancelled clocks can be explicitly reset without touching results", () => {
+  assert.deepEqual(eventBatteryTimerActions("FINISHED"), [
+    { action: "reset", label: "Voltar para Não iniciada" },
+  ]);
+  assert.deepEqual(eventBatteryTimerActions("CANCELLED"), [
+    { action: "reset", label: "Voltar para Não iniciada" },
+  ]);
+  assert.deepEqual(eventBatteryTimerActions("UNKNOWN"), []);
+});
+
+test("status choices map to explicit shared-timer commands", () => {
+  assert.equal(eventBatteryTimerStatusAction("IDLE", "RUNNING"), "prepare");
+  assert.equal(eventBatteryTimerStatusAction("RUNNING", "PAUSED"), "pause");
+  assert.equal(eventBatteryTimerStatusAction("PAUSED", "RUNNING"), "resume");
+  assert.equal(eventBatteryTimerStatusAction("RUNNING", "FINISHED"), "finish");
+  assert.equal(eventBatteryTimerStatusAction("RUNNING", "CANCELLED"), "cancel");
+  assert.equal(eventBatteryTimerStatusAction("FINISHED", "IDLE"), "reset");
+  assert.equal(eventBatteryTimerStatusAction("RUNNING", "IDLE"), null);
+  assert.deepEqual(
+    eventBatteryTimerStatusChoices("RUNNING").map((choice) => choice.label),
+    ["Em andamento", "Pausada", "Finalizada", "Cancelada"],
+  );
 });

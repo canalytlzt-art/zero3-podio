@@ -17,6 +17,8 @@ export interface Zero3EventBattery {
   /** @minimum 1 */
   order: number;
   name: string;
+  /** @nullable */
+  scheduledStartAt: Date | null;
   state: Zero3TimerState;
   /** @minimum 0 */
   elapsedMs: number;
@@ -24,6 +26,11 @@ export interface Zero3EventBattery {
   eventElapsedMs: number;
   /** @minimum 0 */
   eventLimitMs: number;
+  /**
+     * @minimum 1
+     * @maximum 7200000
+     */
+  timeCapMs: number;
   /** @nullable */
   preparationEndsAt: Date | null;
   /** @minimum 0 */
@@ -60,6 +67,9 @@ export interface Zero3EventBattery {
   finalizationVersion: number | null;
   /** @nullable */
   finalizedAt: Date | null;
+  operationalFinalized?: boolean;
+  /** @nullable */
+  operationalFinalizedAt?: Date | null;
   /** @minimum 0 */
   timerVersion: number;
   updatedAt: Date;
