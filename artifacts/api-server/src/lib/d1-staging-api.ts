@@ -22,7 +22,11 @@ import {
 import { hasSignedInUserSession } from "./auth-session";
 import { workerLogger } from "./worker-logger";
 import { isD1SchemaNotReady } from "./d1-staging-shared";
-import { calculateAllResultPlacements } from "./zero3-scoring";
+import {
+  calculateAllResultPlacements,
+  rankingPodiumsFromSnapshot,
+  scoreTieBreaksFromSnapshot,
+} from "./zero3-scoring";
 import {
   buildBatteryLeaderboards,
   evaluateBatteryReadiness,
@@ -186,7 +190,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     completedEventBatteries: [], eventBatteries: [], batteryTimers: [],
   });
 
-  const [proofResult, regResult, resultResult, athleteResult, podiumResult, activeResult, heatResult, heatEntryResult, heatRunResult, publicationResult] = await Promise.all([
+  const [proofResult, regResult, resultResult, athleteResult, podiumResult, activeResult, heatResult, heatEntryResult, heatRunResult, publicationResult, rankingPublication] = await Promise.all([
     DB.prepare("SELECT * FROM zero3_proofs WHERE event_id = ? ORDER BY proof_order").bind(event.id).all<ProofRow>(),
     DB.prepare("SELECT * FROM zero3_registrations WHERE event_id = ? ORDER BY created_at").bind(event.id).all<RegistrationRow>(),
     DB.prepare("SELECT * FROM zero3_results WHERE event_id = ? ORDER BY captured_at DESC").bind(event.id).all<ResultRow>(),
@@ -225,6 +229,9 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     DB.prepare(`SELECT * FROM zero3_heat_publications
       WHERE event_id=? ORDER BY proof_id,battery_order,version DESC`)
       .bind(event.id).all<HeatPublicationRow>(),
+    DB.prepare(`SELECT leaderboards_json FROM zero3_ranking_publications
+      WHERE event_id=? ORDER BY version DESC LIMIT 1`)
+      .bind(event.id).first<{leaderboards_json: string}>(),
   ]);
   const proofs = proofResult.results;
   const registrations = regResult.results.filter((row) => row.confirmation_status !== "CANCELLED");
@@ -308,6 +315,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       : [],
   );
   const scoring = calculateAllResultPlacements({
+    eventId,
     categories: jsonArray(event.categories),
     eventStatus: event.status,
     proofs: proofs.map((proof) => ({
@@ -316,6 +324,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     })),
     registrations: registrationsDto,
     results: eventLeaderboardResults,
+    tieBreaks: scoreTieBreaksFromSnapshot(rankingPublication?.leaderboards_json ?? null),
   });
   const placement = scoring.placements;
   const heatIds = [...new Set(results.flatMap((row) => row.heat_id ? [row.heat_id] : []))];
@@ -345,7 +354,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
   for (const podium of podiumResult.results) {
     if (!latestPodium.has(podium.category)) latestPodium.set(podium.category, podium.registration_ids);
   }
-  const podiums = [...latestPodium].map(([category, json]) => ({
+  const manuallyPublishedPodiums = [...latestPodium].map(([category, json]) => ({
     category, places: nullableStringArray(json).flatMap((registrationId, index) => {
       if (!registrationId) return [];
       const reg = registrationsById.get(registrationId);
@@ -354,6 +363,9 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       }];
     }),
   }));
+  const podiums = rankingPublication
+    ? rankingPodiumsFromSnapshot(scoring.leaderboards)
+    : manuallyPublishedPodiums;
   const selectedRows = activeResult.results.filter((row) => row.heat_id);
   const firstSelected = selectedRows[0];
   const selectedOrder = firstSelected ? (firstSelected.battery_order ?? firstSelected.heat_order) : null;
@@ -581,11 +593,11 @@ async function loadD1RankingPublicationState(DB: D1Database, eventId: string) {
       DB.prepare(`SELECT he.heat_id,he.registration_id FROM zero3_heat_entries he
         JOIN zero3_heats h ON h.id=he.heat_id WHERE h.event_id=?`).bind(eventId)
         .all<{heat_id:string;registration_id:string}>(),
-      DB.prepare(`SELECT id,version,fingerprint,result_count,published_at,published_by
+       DB.prepare(`SELECT id,version,fingerprint,result_count,published_at,published_by,leaderboards_json
         FROM zero3_ranking_publications WHERE event_id=? ORDER BY version DESC LIMIT 1`)
         .bind(eventId).first<{
           id:string;version:number;fingerprint:string;result_count:number;
-          published_at:string;published_by:string;
+           published_at:string;published_by:string;leaderboards_json:string;
         }>(),
     ]);
   if (!event) return null;
@@ -643,7 +655,7 @@ async function loadD1RankingPublicationState(DB: D1Database, eventId: string) {
       ),
     };
   });
-  const plan = await buildRankingPublicationPlan({
+  const planInput = {
     eventId,
     eventStatus: event.status,
     version: latest?.version ?? 0,
@@ -657,8 +669,10 @@ async function loadD1RankingPublicationState(DB: D1Database, eventId: string) {
     })),
     registrations,
     results,
-  });
-  return { event, plan, latest, resultRows: resultRows.results };
+    persistedTieBreaks: scoreTieBreaksFromSnapshot(latest?.leaderboards_json ?? null),
+  };
+  const plan = await buildRankingPublicationPlan(planInput);
+  return { event, plan, planInput, latest, resultRows: resultRows.results };
 }
 
 export function d1StagingApi(
@@ -700,6 +714,7 @@ export function d1StagingApi(
               affected: state.plan.affected,
               issues: state.plan.issues,
               resultStates: state.plan.resultStates,
+              ties: state.plan.ties,
               fingerprint: state.plan.fingerprint,
               canPublish: state.plan.canPublish,
             }));
@@ -712,10 +727,13 @@ export function d1StagingApi(
             return;
           }
           const latestVersion = state.latest?.version ?? 0;
+          const publicationPlan = await buildRankingPublicationPlan({
+            ...state.planInput,
+            ...(body.data.tieBreaks !== undefined ? { tieBreaksOverride: body.data.tieBreaks } : {}),
+          });
+          publicationFingerprint = publicationPlan.fingerprint;
           if (
-            state.latest &&
-            body.data.expectedVersion + 1 === latestVersion &&
-            state.latest.fingerprint === body.data.expectedFingerprint
+            state.latest?.fingerprint === publicationPlan.fingerprint
           ) {
             res.json(PublishZero3RankingResponse.parse({
               eventId: params.data.eventId,
@@ -738,20 +756,20 @@ export function d1StagingApi(
             });
             return;
           }
-          if (!state.plan.canPublish) {
+          if (!publicationPlan.canPublish) {
             res.status(400).json({
               code: "RANKING_PUBLICATION_BLOCKED",
-              error: state.plan.eligibleResultCount === 0
+              error: publicationPlan.eligibleResultCount === 0
                 ? "Não há resultados revisados novos para publicar."
                 : "Há pendências que impedem a publicação do ranking.",
-              issues: state.plan.issues,
+              issues: publicationPlan.issues,
             });
             return;
           }
 
           const nextVersion = latestVersion + 1;
           const stamp = new Date().toISOString();
-          const candidatesById = new Map(state.plan.candidates.map((candidate) => [candidate.id, candidate]));
+          const candidatesById = new Map(publicationPlan.candidates.map((candidate) => [candidate.id, candidate]));
           const candidateRows = state.resultRows
             .filter((row) => candidatesById.has(row.id))
             .map((row) => ({
@@ -805,9 +823,9 @@ export function d1StagingApi(
               )
             RETURNING id`)
             .bind(
-              crypto.randomUUID(), params.data.eventId, nextVersion, state.plan.fingerprint,
-              state.plan.results.length, JSON.stringify(state.plan.results),
-              JSON.stringify(state.plan.leaderboards), member.clerk_user_id, stamp,
+              crypto.randomUUID(), params.data.eventId, nextVersion, publicationPlan.fingerprint,
+              publicationPlan.results.length, JSON.stringify(publicationPlan.results),
+              JSON.stringify(publicationPlan.leaderboards), member.clerk_user_id, stamp,
               params.data.eventId, latestVersion, params.data.eventId, candidateJson, candidateJson,
             );
           const update = DB.prepare(`UPDATE zero3_results
@@ -817,7 +835,7 @@ export function d1StagingApi(
               AND EXISTS (
                 SELECT 1 FROM zero3_ranking_publications
                 WHERE event_id=? AND version=? AND fingerprint=?
-              )`).bind(candidateJson, params.data.eventId, nextVersion, state.plan.fingerprint);
+              )`).bind(candidateJson, params.data.eventId, nextVersion, publicationPlan.fingerprint);
           publicationStage = "commit_publication";
           const [insertResult, updateResult] = await DB.batch([
             insert,
@@ -827,7 +845,7 @@ export function d1StagingApi(
           if ((insertResult.meta.changes ?? 0) !== 1) {
             const duplicate = await DB.prepare(`SELECT id,version,fingerprint,result_count,published_at,published_by
               FROM zero3_ranking_publications WHERE event_id=? AND fingerprint=? LIMIT 1`)
-              .bind(params.data.eventId, body.data.expectedFingerprint)
+              .bind(params.data.eventId, publicationPlan.fingerprint)
               .first<{id:string;version:number;fingerprint:string;result_count:number;published_at:string;published_by:string}>();
             if (duplicate) {
               res.json(PublishZero3RankingResponse.parse({
@@ -854,10 +872,10 @@ export function d1StagingApi(
           res.json(PublishZero3RankingResponse.parse({
             eventId: params.data.eventId,
             version: nextVersion,
-            resultCount: state.plan.results.length,
+            resultCount: publicationPlan.results.length,
             publishedAt: date(stamp),
             publishedBy: member.clerk_user_id,
-            fingerprint: state.plan.fingerprint,
+            fingerprint: publicationPlan.fingerprint,
             alreadyPublished: false,
           }));
         } catch (cause) {

@@ -25,6 +25,34 @@ export type ScoreResult = {
   status: string;
 };
 
+export type ScoreTieBreakResolution = {
+  key: string;
+  orderedRegistrationIds: string[];
+};
+
+export type ScoreTieGroup = {
+  key: string;
+  scope: "PROOF" | "OVERALL";
+  category: ScoreCategory;
+  proofId: string | null;
+  proofOrder: number | null;
+  proofName: string | null;
+  value: number;
+  exactValue: string;
+  registrationIds: string[];
+  orderedRegistrationIds: string[] | null;
+};
+export type RankingPodiumPlace = {
+  place: number;
+  registrationId: string;
+  teamName: string | null;
+  athleteNames: string[];
+};
+export type RankingPodium = {
+  category: string;
+  places: RankingPodiumPlace[];
+};
+
 export type ProofScore = {
   resultId: string | null;
   proofId: string;
@@ -56,6 +84,7 @@ export type CategoryLeaderboard = {
   proofCount: number;
   status: "PARTIAL" | "FINAL" | "EXCEPTION_RULE_PENDING" | "TIE_RULE_PENDING" | "CONFIGURATION_PENDING";
   entries: LeaderboardEntry[];
+  ties: ScoreTieGroup[];
 };
 
 export type ResultPlacement = {
@@ -69,23 +98,179 @@ const configured = (proof: ScoreProof) =>
   Boolean(proof.name.trim()) &&
   (proof.direction === "LOWER" || proof.direction === "HIGHER");
 
-const valueOf = (value: ScoreResult["rawValue"]) => {
-  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
+type ExactDecimal = {
+  coefficient: bigint;
+  scale: number;
+  canonical: string;
+  numeric: number;
 };
+
+function exactDecimal(value: ScoreResult["rawValue"]): ExactDecimal | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text || text.length > 256) return null;
+  const match = /^([+-]?)(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(text);
+  if (!match) return null;
+  const exponent = Number(match[4] ?? 0);
+  if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 100) return null;
+  const fraction = match[3] ?? "";
+  const digits = `${match[2]}${fraction}`.replace(/^0+(?=\d)/, "");
+  let coefficient = BigInt(digits || "0") * (match[1] === "-" ? -1n : 1n);
+  let scale = fraction.length - exponent;
+  if (scale < 0) {
+    coefficient *= 10n ** BigInt(-scale);
+    scale = 0;
+  }
+  while (scale > 0 && coefficient % 10n === 0n) {
+    coefficient /= 10n;
+    scale -= 1;
+  }
+  const absolute = (coefficient < 0n ? -coefficient : coefficient).toString();
+  const sign = coefficient < 0n ? "-" : "";
+  const canonical = scale === 0
+    ? `${sign}${absolute}`
+    : (() => {
+        const padded = absolute.padStart(scale + 1, "0");
+        const whole = padded.slice(0, -scale);
+        const decimal = padded.slice(-scale).replace(/0+$/, "");
+        return `${sign}${whole}${decimal ? `.${decimal}` : ""}`;
+      })();
+  const numeric = Number(canonical);
+  if (!Number.isFinite(numeric)) return null;
+  return { coefficient, scale, canonical, numeric };
+}
+
+function compareDecimals(left: ExactDecimal, right: ExactDecimal) {
+  const scale = Math.max(left.scale, right.scale);
+  const leftInteger = left.coefficient * 10n ** BigInt(scale - left.scale);
+  const rightInteger = right.coefficient * 10n ** BigInt(scale - right.scale);
+  return leftInteger < rightInteger ? -1 : leftInteger > rightInteger ? 1 : 0;
+}
+
+const valueOf = (value: ScoreResult["rawValue"]) => exactDecimal(value)?.numeric ?? null;
+
+function tieKey(input: {
+  scope: ScoreTieGroup["scope"];
+  eventId: string;
+  category: string;
+  proofId: string | null;
+  value: string;
+  registrationIds: string[];
+}) {
+  return JSON.stringify({
+    scope: input.scope,
+    eventId: input.eventId,
+    category: input.category,
+    proofId: input.proofId,
+    value: input.value,
+    registrationIds: [...input.registrationIds].sort(),
+  });
+}
+
+function validTieBreak(
+  group: Pick<ScoreTieGroup, "key" | "registrationIds">,
+  resolutions: readonly ScoreTieBreakResolution[],
+) {
+  const resolution = resolutions.find((item) => item.key === group.key);
+  if (!resolution || resolution.orderedRegistrationIds.length !== group.registrationIds.length) return null;
+  const expected = new Set(group.registrationIds);
+  if (
+    new Set(resolution.orderedRegistrationIds).size !== expected.size ||
+    resolution.orderedRegistrationIds.some((registrationId) => !expected.has(registrationId))
+  ) return null;
+  return resolution.orderedRegistrationIds;
+}
+
+/**
+ * Publication snapshots already store the calculated leaderboard JSON. Keep
+ * manual arbitration there so decisions are versioned with the ranking and no
+ * additional data-store migration is required. Stale keys are ignored by the
+ * scorer when the tied mark or its members change.
+ */
+export function scoreTieBreaksFromSnapshot(snapshot: unknown): ScoreTieBreakResolution[] {
+  if (typeof snapshot === "string") {
+    try {
+      return scoreTieBreaksFromSnapshot(JSON.parse(snapshot));
+    } catch (cause) {
+      throw new Error("Publicação do ranking armazenada está inválida.", { cause });
+    }
+  }
+  if (!Array.isArray(snapshot)) return [];
+  const resolutions: ScoreTieBreakResolution[] = [];
+  for (const board of snapshot) {
+    if (!board || typeof board !== "object" || Array.isArray(board)) continue;
+    const ties = (board as Record<string, unknown>).ties;
+    if (!Array.isArray(ties)) continue;
+    for (const tie of ties) {
+      if (!tie || typeof tie !== "object" || Array.isArray(tie)) continue;
+      const row = tie as Record<string, unknown>;
+      if (
+        typeof row.key === "string" &&
+        Array.isArray(row.orderedRegistrationIds) &&
+        row.orderedRegistrationIds.every((value) => typeof value === "string")
+      ) {
+        resolutions.push({
+          key: row.key,
+          orderedRegistrationIds: row.orderedRegistrationIds as string[],
+        });
+      }
+    }
+  }
+  return resolutions;
+}
+
+/** Derive the public event podium from the same versioned ranking snapshot. */
+export function rankingPodiumsFromSnapshot(snapshot: unknown): RankingPodium[] {
+  if (typeof snapshot === "string") {
+    try {
+      return rankingPodiumsFromSnapshot(JSON.parse(snapshot));
+    } catch (cause) {
+      throw new Error("Publicação do ranking armazenada está inválida.", { cause });
+    }
+  }
+  if (!Array.isArray(snapshot)) return [];
+  return snapshot.flatMap((board) => {
+    if (!board || typeof board !== "object" || Array.isArray(board)) return [];
+    const row = board as Record<string, unknown>;
+    if (typeof row.category !== "string" || !Array.isArray(row.entries)) return [];
+    const places = row.entries.flatMap((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+      const item = entry as Record<string, unknown>;
+      if (
+        typeof item.registrationId !== "string" ||
+        typeof item.overallPlace !== "number" ||
+        !Number.isInteger(item.overallPlace) ||
+        item.overallPlace < 1 ||
+        item.overallPlace > 3 ||
+        typeof item.totalPoints !== "number"
+      ) return [];
+      return [{
+        place: item.overallPlace,
+        registrationId: item.registrationId,
+        teamName: typeof item.teamName === "string" ? item.teamName : null,
+        athleteNames: Array.isArray(item.athleteNames)
+          ? item.athleteNames.filter((name): name is string => typeof name === "string")
+          : [],
+      }];
+    }).sort((a, b) => a.place - b.place);
+    return places.length ? [{ category: row.category, places }] : [];
+  });
+}
 
 /**
  * Points are derived from the current validated results every time; corrections
  * therefore replace the previous ranking instead of adding points a second time.
- * Any metric tie blocks points for that proof until an official tie rule exists.
+ * Exact proof ties share competition places and points unless an explicit
+ * manual arbitration order is supplied for that still-valid tie group.
  */
 export function calculateCategoryLeaderboard(input: {
+  eventId?: string;
   category: ScoreCategory;
   eventStatus: string;
   proofs: ScoreProof[];
   registrations: ScoreRegistration[];
   results: ScoreResult[];
+  tieBreaks?: readonly ScoreTieBreakResolution[];
 }): CategoryLeaderboard {
   const proofs = input.proofs.slice().sort((a, b) => a.order - b.order);
   const registrations = input.registrations.filter(
@@ -95,8 +280,9 @@ export function calculateCategoryLeaderboard(input: {
     (result) => result.proofId !== null && result.proofId !== undefined,
   );
   const placementByResultId = new Map<string, ResultPlacement>();
-  const proofHasTie = new Set<string>();
+  const ties: ScoreTieGroup[] = [];
   const proofResults = new Map<string, ScoreResult>();
+  const tieBreaks = input.tieBreaks ?? [];
 
   for (const result of results) {
     if (result.proofId) {
@@ -114,34 +300,49 @@ export function calculateCategoryLeaderboard(input: {
           valueOf(result.rawValue) !== null &&
           registrations.some((registration) => registration.id === result.registrationId),
       )
-      .map((result) => ({ result, value: valueOf(result.rawValue) as number }))
-      .sort((a, b) =>
-        proof.direction === "LOWER" ? a.value - b.value : b.value - a.value,
-      );
+      .map((result) => ({ result, value: exactDecimal(result.rawValue)! }))
+      .sort((a, b) => proof.direction === "LOWER"
+        ? compareDecimals(a.value, b.value)
+        : compareDecimals(b.value, a.value));
 
-    const hasTie = ranked.some(
-      (item, index) => index > 0 && item.value === ranked[index - 1]?.value,
-    );
-    if (hasTie) {
-      proofHasTie.add(proof.id);
-      for (const item of ranked) {
-        placementByResultId.set(item.result.id, {
-          placement: null,
-          points: null,
-          tiePending: true,
+    for (let start = 0; start < ranked.length;) {
+      let end = start + 1;
+       while (end < ranked.length && compareDecimals(ranked[end]!.value, ranked[start]!.value) === 0) end += 1;
+      const tiedRows = ranked.slice(start, end);
+      const registrationIds = tiedRows.map(({ result }) => result.registrationId);
+      const groupKey = tieKey({
+        scope: "PROOF",
+        eventId: input.eventId ?? "",
+        category: input.category,
+        proofId: proof.id,
+        value: tiedRows[0]!.value.canonical,
+        registrationIds,
+      });
+      let orderedRegistrationIds: string[] | null = null;
+      if (tiedRows.length > 1) {
+        orderedRegistrationIds = validTieBreak({ key: groupKey, registrationIds }, tieBreaks);
+        ties.push({
+          key: groupKey,
+          scope: "PROOF",
+          category: input.category,
+          proofId: proof.id,
+          proofOrder: proof.order,
+          proofName: proof.name,
+          value: tiedRows[0]!.value.numeric,
+          exactValue: tiedRows[0]!.value.canonical,
+          registrationIds: [...registrationIds].sort(),
+          orderedRegistrationIds,
         });
       }
-      continue;
+      const placementByRegistration = orderedRegistrationIds
+        ? new Map(orderedRegistrationIds.map((registrationId, index) => [registrationId, start + index + 1]))
+        : null;
+      for (const { result } of tiedRows) {
+        const place = placementByRegistration?.get(result.registrationId) ?? start + 1;
+        placementByResultId.set(result.id, { placement: place, points: place, tiePending: false });
+      }
+      start = end;
     }
-
-    ranked.forEach(({ result }, index) => {
-      const place = index + 1;
-      placementByResultId.set(result.id, {
-        placement: place,
-        points: place,
-        tiePending: false,
-      });
-    });
   }
 
   const proofConfigured = proofs.length > 0 && proofs.every(configured);
@@ -149,7 +350,6 @@ export function calculateCategoryLeaderboard(input: {
     let completedProofs = 0;
     let scoredProofs = 0;
     let pointSum = 0;
-    let entryTiePending = false;
     let entryConfigurationPending = false;
     let entryPublicationPending = false;
     let entryExceptionRulePending = false;
@@ -161,7 +361,6 @@ export function calculateCategoryLeaderboard(input: {
       const placement = result ? placementByResultId.get(result.id) : undefined;
       if (!isConfigured) entryConfigurationPending = true;
       if (placement?.points !== null && placement?.points !== undefined) completedProofs += 1;
-      if (placement?.tiePending) entryTiePending = true;
       if (result?.status === "PUBLICATION_PENDING") entryPublicationPending = true;
       if (result?.status === "DNS" || result?.status === "DNF") entryExceptionRulePending = true;
       if (placement?.points !== null && placement?.points !== undefined) {
@@ -212,9 +411,7 @@ export function calculateCategoryLeaderboard(input: {
       overallPlace: null,
       status: entryConfigurationPending
         ? "CONFIGURATION_PENDING"
-        : entryTiePending
-          ? "TIE_RULE_PENDING"
-          : entryExceptionRulePending
+        : entryExceptionRulePending
             ? "EXCEPTION_RULE_PENDING"
             : entryPublicationPending
               ? "PUBLICATION_PENDING"
@@ -229,47 +426,59 @@ export function calculateCategoryLeaderboard(input: {
     proofConfigured &&
     entries.length > 0 &&
     entries.every((entry) => entry.status === "FINAL");
-  let overallTiePending = false;
-  if (allComplete && entries.length > 0) {
-    const totals = new Set<number>();
-    for (const entry of entries) {
-      if (entry.totalPoints === null || totals.has(entry.totalPoints)) {
-        overallTiePending = true;
-        break;
-      }
-      totals.add(entry.totalPoints);
-    }
-  }
-  if (overallTiePending) {
-    for (const entry of entries) entry.status = "TIE_RULE_PENDING";
-  }
-
-  if (!overallTiePending) {
-    const rankedEntries = entries
-      .filter((entry) => entry.totalPoints !== null)
-      .slice()
-      .sort((a, b) =>
-        (a.totalPoints ?? Number.POSITIVE_INFINITY) -
-          (b.totalPoints ?? Number.POSITIVE_INFINITY) ||
-        a.registrationId.localeCompare(b.registrationId),
-      );
-    let previousTotal: number | null = null;
-    let previousPlace = 0;
-    rankedEntries.forEach((entry, index) => {
-      if (entry.totalPoints !== previousTotal) previousPlace = index + 1;
-      entry.overallPlace = previousPlace;
-      previousTotal = entry.totalPoints;
+  const rankedEntries = entries
+    .filter((entry) => entry.totalPoints !== null)
+    .slice()
+    .sort((a, b) => (a.totalPoints ?? Number.POSITIVE_INFINITY) - (b.totalPoints ?? Number.POSITIVE_INFINITY));
+  for (let start = 0; start < rankedEntries.length;) {
+    let end = start + 1;
+    while (end < rankedEntries.length && rankedEntries[end]?.totalPoints === rankedEntries[start]?.totalPoints) end += 1;
+    const tiedEntries = rankedEntries.slice(start, end);
+    const total = tiedEntries[0]?.totalPoints;
+    if (tiedEntries.length > 1 && total !== null && total !== undefined) {
+      const registrationIds = tiedEntries.map((entry) => entry.registrationId);
+      const groupKey = tieKey({
+        scope: "OVERALL",
+        eventId: input.eventId ?? "",
+        category: input.category,
+        proofId: null,
+        value: String(total),
+        registrationIds,
       });
+      const orderedRegistrationIds = validTieBreak({ key: groupKey, registrationIds }, tieBreaks);
+      ties.push({
+        key: groupKey,
+        scope: "OVERALL",
+        category: input.category,
+        proofId: null,
+        proofOrder: null,
+        proofName: null,
+        value: total,
+        exactValue: String(total),
+        registrationIds: [...registrationIds].sort(),
+        orderedRegistrationIds,
+      });
+      if (orderedRegistrationIds) {
+        const entryById = new Map(tiedEntries.map((entry) => [entry.registrationId, entry]));
+        orderedRegistrationIds.forEach((registrationId, index) => {
+          const entry = entryById.get(registrationId);
+          if (entry) entry.overallPlace = start + index + 1;
+        });
+      } else {
+        for (const entry of tiedEntries) entry.overallPlace = start + 1;
+      }
+    } else {
+      const entry = tiedEntries[0];
+      if (entry) entry.overallPlace = start + 1;
+    }
+    start = end;
   }
 
   const hasConfigurationPending = !proofConfigured;
-  const hasProofTie = proofHasTie.size > 0 || overallTiePending;
   const hasExceptionRulePending = entries.some((entry) => entry.status === "EXCEPTION_RULE_PENDING");
   const status: CategoryLeaderboard["status"] = hasConfigurationPending
     ? "CONFIGURATION_PENDING"
-    : hasProofTie
-      ? "TIE_RULE_PENDING"
-      : hasExceptionRulePending
+    : hasExceptionRulePending
         ? "EXCEPTION_RULE_PENDING"
         : allComplete
           ? "FINAL"
@@ -280,18 +489,31 @@ export function calculateCategoryLeaderboard(input: {
     if (b.status === "FINAL" && a.status !== "FINAL") return 1;
     if (a.totalPoints === null && b.totalPoints !== null) return 1;
     if (b.totalPoints === null && a.totalPoints !== null) return -1;
-    return (a.totalPoints ?? Number.POSITIVE_INFINITY) - (b.totalPoints ?? Number.POSITIVE_INFINITY);
+    if (a.totalPoints !== null && b.totalPoints !== null && a.totalPoints !== b.totalPoints) {
+      return a.totalPoints - b.totalPoints;
+    }
+    const tie = ties.find((item) =>
+      item.scope === "OVERALL" &&
+      item.orderedRegistrationIds &&
+      item.registrationIds.includes(a.registrationId) &&
+      item.registrationIds.includes(b.registrationId),
+    );
+    return tie?.orderedRegistrationIds
+      ? tie.orderedRegistrationIds.indexOf(a.registrationId) - tie.orderedRegistrationIds.indexOf(b.registrationId)
+      : 0;
   });
 
-  return { category: input.category, proofCount: proofs.length, status, entries };
+  return { category: input.category, proofCount: proofs.length, status, entries, ties };
 }
 
 export function calculateAllResultPlacements(input: {
+  eventId?: string;
   categories: ScoreCategory[];
   eventStatus: string;
   proofs: ScoreProof[];
   registrations: ScoreRegistration[];
   results: ScoreResult[];
+  tieBreaks?: readonly ScoreTieBreakResolution[];
 }) {
   const leaderboards = input.categories.map((category) =>
     calculateCategoryLeaderboard({ ...input, category }),

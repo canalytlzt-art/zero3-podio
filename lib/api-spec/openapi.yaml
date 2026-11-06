@@ -2012,7 +2012,42 @@ components:
           maxLength: 64
           pattern: "^[a-f0-9]{64}$"
         expectedVersion: { type: integer, minimum: 0 }
+        tieBreaks:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3TieBreakResolution" }
       required: [expectedFingerprint, expectedVersion]
+    Zero3TieBreakResolution:
+      type: object
+      properties:
+        key: { type: string, minLength: 1 }
+        orderedRegistrationIds:
+          type: array
+          minItems: 2
+          uniqueItems: true
+          items: { type: string }
+      required: [key, orderedRegistrationIds]
+    Zero3RankingTieGroup:
+      type: object
+      properties:
+        key: { type: string, minLength: 1 }
+        scope: { type: string, enum: [PROOF, OVERALL] }
+        category: { $ref: "#/components/schemas/Zero3Category" }
+        proofId: { type: ["string", "null"] }
+        proofOrder: { type: ["integer", "null"], minimum: 1 }
+        proofName: { type: ["string", "null"] }
+        value: { type: number, minimum: 0 }
+        exactValue: { type: string, minLength: 1 }
+        registrationIds:
+          type: array
+          minItems: 2
+          uniqueItems: true
+          items: { type: string }
+        orderedRegistrationIds:
+          type: ["array", "null"]
+          minItems: 2
+          uniqueItems: true
+          items: { type: string }
+      required: [key, scope, category, proofId, proofOrder, proofName, value, exactValue, registrationIds, orderedRegistrationIds]
     Zero3RankingPublicationAffectedScope:
       type: object
       properties:
@@ -2058,9 +2093,12 @@ components:
         resultStates:
           type: array
           items: { $ref: "#/components/schemas/Zero3RankingResultState" }
+        ties:
+          type: array
+          items: { $ref: "#/components/schemas/Zero3RankingTieGroup" }
         fingerprint: { type: string, minLength: 64, maxLength: 64 }
         canPublish: { type: boolean }
-      required: [eventId, version, publishedAt, publishedBy, eligibleResultCount, partialResultCount, affected, issues, resultStates, fingerprint, canPublish]
+      required: [eventId, version, publishedAt, publishedBy, eligibleResultCount, partialResultCount, affected, issues, resultStates, ties, fingerprint, canPublish]
     Zero3RankingPublicationResult:
       type: object
       properties:

@@ -96,6 +96,8 @@ import { hasSignedInUserSession } from "../lib/auth-session";
 import { workerLogger } from "../lib/worker-logger";
 import {
   calculateAllResultPlacements,
+  rankingPodiumsFromSnapshot,
+  scoreTieBreaksFromSnapshot,
   type ResultPlacement,
   type ScoreProof,
 } from "../lib/zero3-scoring";
@@ -317,7 +319,7 @@ async function eventResults(
 }
 
 async function eventScoring(event: EventRow) {
-  const [proofRows, allRegistrationRows, allResultRows] = await Promise.all([
+  const [proofRows, allRegistrationRows, allResultRows, latestRankingRows] = await Promise.all([
     ensureProofSlots(event.id),
     db
       .select()
@@ -327,6 +329,10 @@ async function eventScoring(event: EventRow) {
       .select()
       .from(zero3ResultsTable)
       .where(eq(zero3ResultsTable.eventId, event.id)),
+    db.select().from(zero3RankingPublicationsTable)
+      .where(eq(zero3RankingPublicationsTable.eventId, event.id))
+      .orderBy(desc(zero3RankingPublicationsTable.version))
+      .limit(1),
   ]);
   const registrationRows = allRegistrationRows.filter(
     (registration) => registration.confirmationStatus !== "CANCELLED",
@@ -345,6 +351,7 @@ async function eventScoring(event: EventRow) {
     direction: proof.direction,
   }));
   const calculated = calculateAllResultPlacements({
+    eventId: event.id,
     categories: event.categories,
     eventStatus: event.status,
     proofs,
@@ -356,6 +363,7 @@ async function eventScoring(event: EventRow) {
       rawValue: result.publishedRawValue,
       status: result.publishedStatus ?? "PROVISIONAL",
     })),
+    tieBreaks: scoreTieBreaksFromSnapshot(latestRankingRows[0]?.leaderboardsJson ?? null),
   });
   return {
     proofs: proofRows.map(proofDto),
@@ -372,6 +380,8 @@ async function eventScoring(event: EventRow) {
     resultRows,
     leaderboards: calculated.leaderboards,
     placements: calculated.placements,
+    hasRankingPublication: latestRankingRows.length > 0,
+    publishedPodiums: rankingPodiumsFromSnapshot(calculated.leaderboards),
   };
 }
 
@@ -430,7 +440,7 @@ async function loadPgRankingPublicationState(
     };
   });
   const latest = latestRows[0];
-  const plan = await buildRankingPublicationPlan({
+  const planInput = {
     eventId,
     eventStatus: selectedEvent.status,
     version: latest?.version ?? 0,
@@ -447,8 +457,10 @@ async function loadPgRankingPublicationState(
       active: true,
     })),
     results: resultInputs,
-  });
-  return { event: selectedEvent, plan, latest, resultRows: allResultRows };
+    persistedTieBreaks: scoreTieBreaksFromSnapshot(latest?.leaderboardsJson ?? null),
+  };
+  const plan = await buildRankingPublicationPlan(planInput);
+  return { event: selectedEvent, plan, planInput, latest, resultRows: allResultRows };
 }
 
 function rankingPublicationPreviewDto(
@@ -466,6 +478,7 @@ function rankingPublicationPreviewDto(
     affected: plan.affected,
     issues: plan.issues,
     resultStates: plan.resultStates,
+    ties: plan.ties,
     fingerprint: plan.fingerprint,
     canPublish: plan.canPublish,
   });
@@ -1601,9 +1614,18 @@ router.post(
       });
       return;
     }
+    const state = await loadPgRankingPublicationState(params.data.eventId);
+    if (!state) {
+      res.status(404).json({ error: "Evento não encontrado." });
+      return;
+    }
+    const publicationPlan = await buildRankingPublicationPlan({
+      ...state.planInput,
+      ...(body.data.tieBreaks !== undefined ? { tieBreaksOverride: body.data.tieBreaks } : {}),
+    });
     const [duplicate] = await db.select().from(zero3RankingPublicationsTable).where(and(
       eq(zero3RankingPublicationsTable.eventId, params.data.eventId),
-      eq(zero3RankingPublicationsTable.fingerprint, body.data.expectedFingerprint),
+      eq(zero3RankingPublicationsTable.fingerprint, publicationPlan.fingerprint),
     )).limit(1);
     if (duplicate) {
       res.json(PublishZero3RankingResponse.parse({
@@ -1617,12 +1639,6 @@ router.post(
       }));
       return;
     }
-
-    const state = await loadPgRankingPublicationState(params.data.eventId);
-    if (!state) {
-      res.status(404).json({ error: "Evento não encontrado." });
-      return;
-    }
     const latestVersion = state.latest?.version ?? 0;
     if (
       body.data.expectedVersion !== latestVersion ||
@@ -1634,13 +1650,13 @@ router.post(
       });
       return;
     }
-    if (!state.plan.canPublish) {
+    if (!publicationPlan.canPublish) {
       res.status(400).json({
         code: "RANKING_PUBLICATION_BLOCKED",
-        error: state.plan.eligibleResultCount === 0
+        error: publicationPlan.eligibleResultCount === 0
           ? "Não há resultados revisados novos para publicar."
           : "Há pendências que impedem a publicação do ranking.",
-        issues: state.plan.issues,
+        issues: publicationPlan.issues,
       });
       return;
     }
@@ -1659,15 +1675,22 @@ router.post(
         await tx.execute(sql`SELECT id FROM zero3_events WHERE id = ${params.data.eventId} FOR UPDATE`);
         const [existing] = await tx.select().from(zero3RankingPublicationsTable).where(and(
           eq(zero3RankingPublicationsTable.eventId, params.data.eventId),
-          eq(zero3RankingPublicationsTable.fingerprint, body.data.expectedFingerprint),
+          eq(zero3RankingPublicationsTable.fingerprint, publicationPlan.fingerprint),
         )).limit(1);
         if (existing) return { record: existing, alreadyPublished: true };
         const freshState = await loadPgRankingPublicationState(params.data.eventId, tx);
+        const freshPublicationPlan = freshState
+          ? await buildRankingPublicationPlan({
+              ...freshState.planInput,
+              ...(body.data.tieBreaks !== undefined ? { tieBreaksOverride: body.data.tieBreaks } : {}),
+            })
+          : null;
         if (
           !freshState ||
           (freshState.latest?.version ?? 0) !== latestVersion ||
           freshState.plan.fingerprint !== body.data.expectedFingerprint ||
-          !freshState.plan.canPublish
+          !freshPublicationPlan?.canPublish ||
+          freshPublicationPlan.fingerprint !== publicationPlan.fingerprint
         ) {
           throw new Error("RANKING_PUBLICATION_STALE");
         }
@@ -1675,16 +1698,16 @@ router.post(
         const [inserted] = await tx.insert(zero3RankingPublicationsTable).values({
           eventId: params.data.eventId,
           version: nextVersion,
-          fingerprint: freshState.plan.fingerprint,
-          resultCount: freshState.plan.results.length,
-          resultsJson: freshState.plan.results,
-          leaderboardsJson: freshState.plan.leaderboards,
+          fingerprint: freshPublicationPlan.fingerprint,
+          resultCount: freshPublicationPlan.results.length,
+          resultsJson: freshPublicationPlan.results,
+          leaderboardsJson: freshPublicationPlan.leaderboards,
           publishedBy: actorId,
           publishedAt: stamp,
         }).onConflictDoNothing().returning();
         if (!inserted) throw new Error("RANKING_PUBLICATION_STALE");
 
-        for (const candidate of freshState.plan.candidates) {
+        for (const candidate of freshPublicationPlan.candidates) {
           const [updated] = await tx.update(zero3ResultsTable).set({
             publishedStatus: "VALIDATED",
             publishedElapsedMs: candidate.elapsedMs,
@@ -2405,7 +2428,7 @@ router.get(
         proofs: scoring.proofs,
         registrations: scoring.registrations,
         leaderboards: scoring.leaderboards,
-        podiums,
+         podiums: scoring.hasRankingPublication ? scoring.publishedPodiums : podiums,
         activeHeats,
       }),
     );

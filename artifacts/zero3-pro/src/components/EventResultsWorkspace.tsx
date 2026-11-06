@@ -19,7 +19,14 @@ import {
   useUpdateZero3Result,
   usePublishZero3Ranking,
 } from '@workspace/api-client-react';
-import type { Zero3EventBattery, Zero3Proof, Zero3Registration, Zero3Result } from '@workspace/api-client-react';
+import type {
+  Zero3EventBattery,
+  Zero3Proof,
+  Zero3RankingPublicationPreview,
+  Zero3Registration,
+  Zero3Result,
+  Zero3TieBreakResolution,
+} from '@workspace/api-client-react';
 import { ArrowLeft, Check, ChevronRight, CircleAlert, Clock3, RefreshCw, Upload } from 'lucide-react';
 import { formatEventResultValue, groupResultsQueue, summarizeRegistrationResults } from '@/lib/event-results-workspace';
 import { getHttpErrorStatus, pollingIntervalAfterError, shouldRefetchAfterError, shouldRetryZero3Query } from '@/lib/api-error-policy';
@@ -31,6 +38,43 @@ type QueueItem = {
   battery: Zero3EventBattery | null;
   lane: string | null;
 };
+type TieBreakEdit = { mode: 'MANUAL'; order: string[] } | { mode: 'SHARED' };
+
+function publicationTieBreaks(
+  preview: Zero3RankingPublicationPreview | undefined,
+  edits: Record<string, TieBreakEdit>,
+): Zero3TieBreakResolution[] {
+  return (preview?.ties ?? []).flatMap((tie) => {
+    const edit = edits[tie.key];
+    const order = edit?.mode === 'SHARED'
+      ? null
+      : edit?.mode === 'MANUAL'
+        ? edit.order
+        : tie.orderedRegistrationIds;
+    if (
+      !order ||
+      order.length !== tie.registrationIds.length ||
+      new Set(order).size !== tie.registrationIds.length ||
+      order.some((registrationId) => !tie.registrationIds.includes(registrationId))
+    ) return [];
+    return [{ key: tie.key, orderedRegistrationIds: order }];
+  });
+}
+
+function hasIncompleteTieBreak(
+  preview: Zero3RankingPublicationPreview | undefined,
+  edits: Record<string, TieBreakEdit>,
+) {
+  return (preview?.ties ?? []).some((tie) => {
+    const edit = edits[tie.key];
+    return edit?.mode === 'MANUAL' && (
+      edit.order.length !== tie.registrationIds.length ||
+      edit.order.some((registrationId) => !registrationId) ||
+      new Set(edit.order).size !== tie.registrationIds.length ||
+      edit.order.some((registrationId) => !tie.registrationIds.includes(registrationId))
+    );
+  });
+}
 
 const timerLabels: Record<string, string> = {
   IDLE: 'Não iniciado',
@@ -142,6 +186,7 @@ export function EventResultsWorkspace({
   const [publicationDialogOpen, setPublicationDialogOpen] = useState(false);
   const [publicationError, setPublicationError] = useState('');
   const [publicationNotice, setPublicationNotice] = useState('');
+  const [tieBreakEdits, setTieBreakEdits] = useState<Record<string, TieBreakEdit>>({});
   const initialSelectionApplied = useRef(false);
   const initialProofFocused = useRef(false);
 
@@ -195,6 +240,14 @@ export function EventResultsWorkspace({
     return () => window.cancelAnimationFrame(frame);
   }, [initialProofId, selectedId]);
 
+  useEffect(() => {
+    const activeTieKeys = new Set((publicationQuery.data?.ties ?? []).map((tie) => tie.key));
+    setTieBreakEdits((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([key]) => activeTieKeys.has(key)));
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [publicationQuery.data?.fingerprint]);
+
   const refreshAll = () => {
     void batteryQuery.refetch();
     void registrationQuery.refetch();
@@ -211,12 +264,14 @@ export function EventResultsWorkspace({
   const confirmPublishRanking = () => {
     const preview = publicationQuery.data;
     if (!preview?.canPublish || !canPublishRanking) return;
+    if (hasIncompleteTieBreak(preview, tieBreakEdits)) return;
     setPublicationError('');
     publishRanking.mutate({
       eventId,
       data: {
         expectedFingerprint: preview.fingerprint,
         expectedVersion: preview.version,
+        tieBreaks: publicationTieBreaks(preview, tieBreakEdits),
       },
     }, {
       onSuccess: (published) => {
@@ -420,6 +475,21 @@ export function EventResultsWorkspace({
     ? proofs.map((proof) => resultFor(selected.registration.id, proof.id, selectedBattery))
     : [];
   const publicationPreview = publicationQuery.data;
+  const incompleteTieBreak = hasIncompleteTieBreak(publicationPreview, tieBreakEdits);
+  const registrationName = (registrationId: string) => {
+    const registration = registrations.find((item) => item.id === registrationId);
+    return registration?.teamName || registration?.athleteNames.join(' / ') || registrationId;
+  };
+  const tieLabel = (tie: NonNullable<typeof publicationPreview>['ties'][number]) =>
+    tie.scope === 'OVERALL'
+      ? `Soma total · ${tie.category}`
+      : `${tie.proofName || `Prova ${tie.proofOrder ?? ''}`} · ${tie.category}`;
+  const editTiePosition = (tieKey: string, order: string[], position: number, registrationId: string) => {
+    setTieBreakEdits((current) => ({
+      ...current,
+      [tieKey]: { mode: 'MANUAL', order: order.map((value, index) => index === position ? registrationId : value) },
+    }));
+  };
 
   return (
     <section className={`event-results-workspace${mobileDetail ? ' mobile-detail' : ''}`} aria-label="Resultados por bateria">
@@ -444,19 +514,27 @@ export function EventResultsWorkspace({
                 ))}</ul>
               ) : <p>Nenhuma alteração revisada está elegível.</p>}
             </div>
-            {publicationPreview.issues.length > 0 && (
+            {publicationPreview.ties.length > 0 && (
+              <p className="erw-tie-dialog-note" role="status">
+                Há empate(s) exato(s). Sem decisão manual, os participantes compartilham colocação e pontos; isso não impede a publicação.
+              </p>
+            )}
+            {publicationPreview.issues.some((issue) => !issue.code.startsWith('TIE_')) && (
               <div className="erw-publication-issues" aria-label="Pendências da publicação">
                 <strong>Pendências e avisos</strong>
-                <ul>{publicationPreview.issues.map((issue, index) => (
+                <ul>{publicationPreview.issues.filter((issue) => !issue.code.startsWith('TIE_')).map((issue, index) => (
                   <li key={`${issue.code}-${issue.resultId ?? index}`} className={issue.blocking ? 'is-blocking' : ''}>
                     {issue.blocking ? 'Bloqueio: ' : 'Aviso: '}{issue.message}
                   </li>
                 ))}</ul>
               </div>
             )}
+            {incompleteTieBreak && (
+              <p className="erw-tie-dialog-note" role="alert">Complete todas as posições da decisão manual ou escolha manter a colocação compartilhada.</p>
+            )}
             <footer>
               <button className="button small" type="button" disabled={publishRanking.isPending} onClick={() => setPublicationDialogOpen(false)}>Cancelar</button>
-              <button className="button primary small" type="button" disabled={!publicationPreview.canPublish || publishRanking.isPending} onClick={confirmPublishRanking} data-testid="button-confirm-publish-ranking">
+              <button className="button primary small" type="button" disabled={!publicationPreview.canPublish || incompleteTieBreak || publishRanking.isPending} onClick={confirmPublishRanking} data-testid="button-confirm-publish-ranking">
                 {publishRanking.isPending ? 'Publicando…' : 'Confirmar publicação'}
               </button>
             </footer>
@@ -474,6 +552,110 @@ export function EventResultsWorkspace({
             <strong>{publicationPreview?.eligibleResultCount ?? '—'} revisados para publicar</strong>
             <small>{publicationPreview?.partialResultCount ?? 0} parciais ou faltantes · revisão {publicationPreview?.version ?? 0}</small>
           </div>
+          {publicationPreview?.ties.length ? (
+            <section className="erw-tie-advisory" role="status" aria-label="Aviso de empates">
+              <p><CircleAlert size={15} aria-hidden="true" /> Há marcas empatadas. A arbitragem pode definir a ordem manualmente; sem decisão, os empatados compartilham colocação e pontos. A publicação permanece disponível.</p>
+              <details>
+                <summary>Consultar {publicationPreview.ties.length} empate(s) e decisão da arbitragem</summary>
+                <div className="erw-tie-list">
+                  {publicationPreview.ties.map((tie) => {
+                    const edit = tieBreakEdits[tie.key];
+                    const order = edit?.mode === 'MANUAL'
+                      ? edit.order
+                      : edit?.mode === 'SHARED'
+                        ? null
+                        : tie.orderedRegistrationIds;
+                    const manualApplied = Boolean(order && order.length === tie.registrationIds.length &&
+                      new Set(order).size === tie.registrationIds.length &&
+                      order.every((registrationId) => tie.registrationIds.includes(registrationId)));
+                    return (
+                      <article className="erw-tie-item" key={tie.key}>
+                        <div className="erw-tie-item-head">
+                          <strong>{tieLabel(tie)} · {tie.exactValue}</strong>
+                          <span>
+                            {edit?.mode === 'SHARED'
+                              ? 'Alteração pendente'
+                              : edit?.mode === 'MANUAL'
+                                ? manualApplied ? 'Ordem manual pendente' : 'Edição incompleta'
+                                : tie.orderedRegistrationIds ? 'Ordem manual aplicada' : 'Colocação compartilhada'}
+                          </span>
+                        </div>
+                        <p>{tie.registrationIds.map(registrationName).join(' · ')}</p>
+                        {manualApplied && order && <small>{edit?.mode === 'MANUAL' ? 'Ordem proposta' : 'Ordem aplicada'}: {order.map(registrationName).join(' → ')}</small>}
+                        {edit?.mode === 'MANUAL' && (
+                          <div className="erw-tie-positions">
+                            {tie.registrationIds.map((_, position) => (
+                              <label key={`${tie.key}:${position}`}>
+                                <span>{position + 1}º</span>
+                                <select
+                                  value={order?.[position] ?? ''}
+                                  aria-label={`${tieLabel(tie)} posição ${position + 1}`}
+                                  onChange={(event) => editTiePosition(tie.key, edit.order, position, event.currentTarget.value)}
+                                >
+                                  <option value="">Selecione participante</option>
+                                  {tie.registrationIds.map((registrationId) => (
+                                    <option
+                                      key={registrationId}
+                                      value={registrationId}
+                                      disabled={edit.order.some((selectedId, index) => selectedId === registrationId && index !== position)}
+                                    >
+                                      {registrationName(registrationId)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ))}
+                            <small>
+                              {manualApplied
+                                ? 'A ordem só passa a valer quando o ranking for publicado.'
+                                : 'Complete a ordem ou descarte a edição. Ela só será gravada ao publicar o ranking.'}
+                            </small>
+                          </div>
+                        )}
+                        <div className="erw-tie-actions">
+                          {edit?.mode !== 'MANUAL' && (
+                            <button
+                              className="button small"
+                              type="button"
+                              onClick={() => setTieBreakEdits((current) => ({
+                                ...current,
+                                [tie.key]: { mode: 'MANUAL', order: tie.orderedRegistrationIds ? [...tie.orderedRegistrationIds] : Array(tie.registrationIds.length).fill('') },
+                              }))}
+                            >
+                              {tie.orderedRegistrationIds ? 'Editar ordem manual' : 'Definir ordem manual'}
+                            </button>
+                          )}
+                          {edit?.mode === 'MANUAL' && (
+                            <>
+                              <button className="button small" type="button" onClick={() => setTieBreakEdits((current) => {
+                                const next = { ...current }; delete next[tie.key]; return next;
+                              })}>Descartar edição</button>
+                              <button className="button small" type="button" onClick={() => setTieBreakEdits((current) => ({
+                                ...current,
+                                [tie.key]: { mode: 'SHARED' },
+                              }))}>Usar colocação compartilhada</button>
+                            </>
+                          )}
+                          {edit?.mode === 'SHARED' && (
+                            tie.orderedRegistrationIds ? (
+                              <button className="button small" type="button" onClick={() => setTieBreakEdits((current) => {
+                                const next = { ...current }; delete next[tie.key]; return next;
+                              })}>Cancelar remoção da ordem salva</button>
+                            ) : (
+                              <button className="button small" type="button" onClick={() => setTieBreakEdits((current) => ({
+                                ...current,
+                                [tie.key]: { mode: 'MANUAL', order: Array(tie.registrationIds.length).fill('') },
+                              }))}>Definir ordem manual</button>
+                            )
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </details>
+            </section>
+          ) : null}
           {canPublishRanking && (
             <button
               className="button primary small"
@@ -487,7 +669,7 @@ export function EventResultsWorkspace({
           )}
           {publicationQuery.isError && <p className="erw-publication-error" role="alert">Falha ao carregar a prévia. A publicação está indisponível até atualizar os dados.</p>}
           {publicationError && <p className="erw-publication-error" role="alert">{publicationError}</p>}
-          {publicationPreview?.issues.map((issue, index) => (
+          {publicationPreview?.issues.filter((issue) => !issue.code.startsWith('TIE_')).map((issue, index) => (
             <p className={issue.blocking ? 'erw-publication-error' : 'erw-publication-note'} key={`${issue.code}-${issue.resultId ?? index}`}>
               {issue.blocking ? 'Bloqueio: ' : 'Aviso: '}{issue.message}
             </p>

@@ -1147,6 +1147,13 @@ export interface Zero3ResultUpdate {
   expectedRevision?: number;
 }
 
+export interface Zero3TieBreakResolution {
+  /** @minLength 1 */
+  key: string;
+  /** @minItems 2 */
+  orderedRegistrationIds: string[];
+}
+
 export interface Zero3RankingPublicationInput {
   /**
      * @minLength 64
@@ -1156,6 +1163,42 @@ export interface Zero3RankingPublicationInput {
   expectedFingerprint: string;
   /** @minimum 0 */
   expectedVersion: number;
+  tieBreaks?: Zero3TieBreakResolution[];
+}
+
+export type Zero3RankingTieGroupScope = typeof Zero3RankingTieGroupScope[keyof typeof Zero3RankingTieGroupScope];
+
+
+export const Zero3RankingTieGroupScope = {
+  PROOF: 'PROOF',
+  OVERALL: 'OVERALL',
+} as const;
+
+export interface Zero3RankingTieGroup {
+  /** @minLength 1 */
+  key: string;
+  scope: Zero3RankingTieGroupScope;
+  category: Zero3Category;
+  /** @nullable */
+  proofId: string | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  proofOrder: number | null;
+  /** @nullable */
+  proofName: string | null;
+  /** @minimum 0 */
+  value: number;
+  /** @minLength 1 */
+  exactValue: string;
+  /** @minItems 2 */
+  registrationIds: string[];
+  /**
+     * @minItems 2
+     * @nullable
+     */
+  orderedRegistrationIds: string[] | null;
 }
 
 export interface Zero3RankingPublicationAffectedScope {
@@ -1208,6 +1251,7 @@ export interface Zero3RankingPublicationPreview {
   affected: Zero3RankingPublicationAffectedScope[];
   issues: Zero3RankingPublicationIssue[];
   resultStates: Zero3RankingResultState[];
+  ties: Zero3RankingTieGroup[];
   /**
      * @minLength 64
      * @maxLength 64

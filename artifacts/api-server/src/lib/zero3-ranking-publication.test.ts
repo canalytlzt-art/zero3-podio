@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildRankingPublicationPlan } from "./zero3-ranking-publication";
+import { scoreTieBreaksFromSnapshot } from "./zero3-scoring";
 
 const proofs = [
   { id: "proof-1", order: 1, name: "Prova 1", metricType: "TIME", unit: "s", direction: "LOWER" },
@@ -97,7 +98,7 @@ test("partial rows are not published and missing result cells remain partial", a
   assert.equal(plan.resultStates[0]?.state, "PARCIAL");
 });
 
-test("ties, invalid links, and unconfigured exceptions block publishing", async () => {
+test("ties add one non-blocking advisory while invalid links and exceptions still block", async () => {
   const plan = await buildRankingPublicationPlan({
     eventId: "event-1",
     eventStatus: "ACTIVE",
@@ -113,7 +114,137 @@ test("ties, invalid links, and unconfigured exceptions block publishing", async 
   });
 
   assert.equal(plan.canPublish, false);
-  assert.ok(plan.issues.some((issue) => issue.code === "TIE_RULE_PENDING" && issue.blocking));
+  assert.ok(plan.issues.some((issue) => issue.code === "TIE_SHARED_PLACEMENT" && !issue.blocking));
   assert.ok(plan.issues.some((issue) => issue.code === "RESULT_ASSOCIATION_INVALID" && issue.blocking));
   assert.ok(plan.issues.some((issue) => issue.code === "EXCEPTION_RULE_PENDING" && issue.blocking));
+});
+
+test("event-wide publication permits exact ties and includes shared points in one snapshot", async () => {
+  const plan = await buildRankingPublicationPlan({
+    eventId: "event-1",
+    eventStatus: "ACTIVE",
+    version: 0,
+    proofs,
+    registrations,
+    results: [
+      result({ id: "result-a", registrationId: "rx-a", rawValue: "65.250", batteryId: "battery-1" }),
+      result({ id: "result-b", registrationId: "rx-b", rawValue: "65.25", batteryId: "battery-2" }),
+    ],
+  });
+  const rx = plan.leaderboards.find((board) => board.category === "RX");
+  assert.equal(plan.canPublish, true);
+  assert.equal(plan.ties.filter((tie) => tie.scope === "PROOF" && tie.proofId === "proof-1").length, 1);
+  assert.equal(plan.ties.find((tie) => tie.scope === "PROOF" && tie.proofId === "proof-1")?.exactValue, "65.25");
+  assert.equal(plan.issues.filter((issue) => issue.code.startsWith("TIE_")).every((issue) => !issue.blocking), true);
+  assert.equal(rx?.entries.find((entry) => entry.registrationId === "rx-a")?.proofScores[0]?.points, 1);
+  assert.equal(rx?.entries.find((entry) => entry.registrationId === "rx-b")?.proofScores[0]?.points, 1);
+});
+
+test("a new mark from another battery re-ranks already-published results without accumulating points", async () => {
+  const eventRegistrations = [...registrations, {
+    id: "rx-c",
+    category: "RX",
+    teamName: "Equipe C",
+    athleteNames: ["Atleta C"],
+    laneLabel: "P04",
+    active: true,
+  }];
+  const priorA = result({
+    id: "result-a",
+    registrationId: "rx-a",
+    rawValue: "65",
+    publishedStatus: "VALIDATED",
+    publishedRawValue: "65",
+    publishedElapsedMs: 65_000,
+    publishedRevision: 2,
+    batteryId: "battery-1",
+  });
+  const priorB = result({
+    id: "result-b",
+    registrationId: "rx-b",
+    rawValue: "66",
+    publishedStatus: "VALIDATED",
+    publishedRawValue: "66",
+    publishedElapsedMs: 66_000,
+    publishedRevision: 2,
+    batteryId: "battery-1",
+  });
+  const newResult = result({
+    id: "result-c",
+    registrationId: "rx-c",
+    category: "RX",
+    rawValue: "64",
+    batteryId: "battery-2",
+  });
+  const first = await buildRankingPublicationPlan({
+    eventId: "event-1", eventStatus: "ACTIVE", version: 5, proofs,
+    registrations: eventRegistrations, results: [priorA, priorB, newResult],
+  });
+  assert.equal(first.canPublish, true);
+  const rx = first.leaderboards.find((board) => board.category === "RX");
+  assert.equal(rx?.entries.find((entry) => entry.registrationId === "rx-c")?.proofScores[0]?.points, 1);
+  assert.equal(rx?.entries.find((entry) => entry.registrationId === "rx-a")?.proofScores[0]?.points, 2);
+  assert.equal(rx?.entries.find((entry) => entry.registrationId === "rx-b")?.proofScores[0]?.points, 3);
+
+  const publishedRows = [priorA, priorB, newResult].map((row) => ({
+    ...row,
+    publishedStatus: "VALIDATED",
+    publishedRawValue: row.rawValue,
+    publishedElapsedMs: row.elapsedMs,
+    publishedRevision: row.revision,
+  }));
+  const repeated = await buildRankingPublicationPlan({
+    eventId: "event-1", eventStatus: "ACTIVE", version: 6, proofs,
+    registrations: eventRegistrations, results: publishedRows,
+  });
+  assert.equal(repeated.candidates.length, 0);
+  assert.deepEqual(repeated.results, first.results);
+  assert.equal(repeated.fingerprint, first.fingerprint);
+  assert.equal(repeated.leaderboards.find((board) => board.category === "RX")
+    ?.entries.find((entry) => entry.registrationId === "rx-b")?.totalPoints, 3);
+});
+
+test("manual tie ordering is included in the publication fingerprint and reused from its snapshot", async () => {
+  const tiedResults = [
+    result({ id: "result-a", registrationId: "rx-a", rawValue: "65.25", publishedStatus: "VALIDATED", publishedRawValue: "65.25", publishedElapsedMs: 65_250, publishedRevision: 2 }),
+    result({ id: "result-b", registrationId: "rx-b", rawValue: "65.25", publishedStatus: "VALIDATED", publishedRawValue: "65.25", publishedElapsedMs: 65_250, publishedRevision: 2 }),
+  ];
+  const base = await buildRankingPublicationPlan({
+    eventId: "event-1", eventStatus: "ACTIVE", version: 3, proofs, registrations, results: tiedResults,
+  });
+  const tie = base.ties.find((item) => item.scope === "PROOF" && item.proofId === "proof-1");
+  assert.ok(tie);
+  const resolution = { key: tie.key, orderedRegistrationIds: ["rx-b", "rx-a"] };
+  const adjudicated = await buildRankingPublicationPlan({
+    eventId: "event-1", eventStatus: "ACTIVE", version: 3, proofs, registrations, results: tiedResults,
+    tieBreaksOverride: [resolution],
+  });
+  assert.equal(adjudicated.canPublish, true);
+  assert.notEqual(adjudicated.fingerprint, base.fingerprint);
+  assert.equal(adjudicated.leaderboards.find((board) => board.category === "RX")
+    ?.entries.find((entry) => entry.registrationId === "rx-b")?.proofScores[0]?.points, 1);
+  const decisions = scoreTieBreaksFromSnapshot(adjudicated.leaderboards);
+  const reloaded = await buildRankingPublicationPlan({
+    eventId: "event-1", eventStatus: "ACTIVE", version: 4, proofs, registrations, results: tiedResults,
+    persistedTieBreaks: decisions,
+  });
+  assert.equal(reloaded.fingerprint, adjudicated.fingerprint);
+  assert.equal(reloaded.ties.find((item) => item.key === tie.key)?.orderedRegistrationIds?.join(","), "rx-b,rx-a");
+});
+
+test("malformed manual ordering is a separate blocking validation", async () => {
+  const plan = await buildRankingPublicationPlan({
+    eventId: "event-1",
+    eventStatus: "ACTIVE",
+    version: 0,
+    proofs,
+    registrations,
+    results: [
+      result({ id: "result-a", registrationId: "rx-a", rawValue: "65.25" }),
+      result({ id: "result-b", registrationId: "rx-b", rawValue: "65.25" }),
+    ],
+    tieBreaksOverride: [{ key: "not-a-live-tie", orderedRegistrationIds: ["rx-a", "rx-b"] }],
+  });
+  assert.equal(plan.canPublish, false);
+  assert.ok(plan.issues.some((issue) => issue.code === "TIE_BREAK_RESOLUTION_INVALID" && issue.blocking));
 });

@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   calculateAllResultPlacements,
   calculateCategoryLeaderboard,
+  rankingPodiumsFromSnapshot,
+  scoreTieBreaksFromSnapshot,
   type ScoreProof,
   type ScoreRegistration,
   type ScoreResult,
@@ -129,7 +131,7 @@ test("provisional proof results earn no points while existing official points ca
   assert.equal(alpha?.overallPlace, 1);
 });
 
-test("ties without a defined official rule block proof points and final standings", () => {
+test("exact proof ties share place and points without blocking the ranking", () => {
   const results = resultRows();
   const tie = results.find((result) => result.id === "rx-Bravo-p2");
   assert.ok(tie);
@@ -141,15 +143,46 @@ test("ties without a defined official rule block proof points and final standing
     registrations,
     results,
   });
-  assert.equal(board.status, "TIE_RULE_PENDING");
-  assert.equal(
-    board.entries.find((entry) => entry.registrationId === "rx-Alfa")?.proofScores[1]?.points,
-    null,
-  );
+  assert.equal(board.status, "FINAL");
+  assert.equal(board.entries.find((entry) => entry.registrationId === "rx-Alfa")?.proofScores[1]?.points, 1);
+  assert.equal(board.entries.find((entry) => entry.registrationId === "rx-Bravo")?.proofScores[1]?.points, 1);
+  assert.equal(board.entries.find((entry) => entry.registrationId === "rx-Charlie")?.proofScores[1]?.points, 3);
   assert.equal(
     board.entries.find((entry) => entry.registrationId === "rx-Bravo")?.proofScores[1]?.status,
-    "TIE_RULE_PENDING",
+    "VALIDATED",
   );
+  assert.equal(board.ties.filter((tie) => tie.scope === "PROOF" && tie.proofId === "p2").length, 1);
+});
+
+test("manual arbitration order assigns sequential points and survives a ranking snapshot", () => {
+  const results = resultRows();
+  const bravo = results.find((result) => result.id === "rx-Bravo-p2");
+  const alpha = results.find((result) => result.id === "rx-Alfa-p2");
+  assert.ok(bravo && alpha);
+  bravo.rawValue = alpha.rawValue;
+  const input = { eventId: "event-1", category: "RX", eventStatus: "FINISHED", proofs, registrations, results };
+  const unresolved = calculateCategoryLeaderboard(input);
+  const tie = unresolved.ties.find((item) => item.scope === "PROOF" && item.proofId === "p2");
+  assert.ok(tie);
+  const resolution = { key: tie.key, orderedRegistrationIds: ["rx-Bravo", "rx-Alfa"] };
+  const adjudicated = calculateCategoryLeaderboard({ ...input, tieBreaks: [resolution] });
+  assert.equal(adjudicated.entries.find((entry) => entry.registrationId === "rx-Bravo")?.proofScores[1]?.points, 1);
+  assert.equal(adjudicated.entries.find((entry) => entry.registrationId === "rx-Alfa")?.proofScores[1]?.points, 2);
+  assert.deepEqual(scoreTieBreaksFromSnapshot([adjudicated]), [resolution]);
+  const republished = calculateCategoryLeaderboard({
+    ...input,
+    tieBreaks: scoreTieBreaksFromSnapshot([adjudicated]),
+  });
+  assert.equal(republished.entries.find((entry) => entry.registrationId === "rx-Bravo")?.proofScores[1]?.points, 1);
+  assert.equal(republished.ties.find((item) => item.key === tie.key)?.orderedRegistrationIds?.join(","), "rx-Bravo,rx-Alfa");
+  const otherEvent = calculateCategoryLeaderboard({
+    ...input,
+    eventId: "event-2",
+    tieBreaks: [resolution],
+  });
+  assert.notEqual(otherEvent.ties.find((item) => item.scope === "PROOF" && item.proofId === "p2")?.key, tie.key);
+  assert.equal(otherEvent.entries.find((entry) => entry.registrationId === "rx-Alfa")?.proofScores[1]?.points, 1);
+  assert.equal(otherEvent.entries.find((entry) => entry.registrationId === "rx-Bravo")?.proofScores[1]?.points, 1);
 });
 
 test("recomputes from corrected values rather than accumulating old points", () => {
@@ -176,7 +209,7 @@ test("recomputes from corrected values rather than accumulating old points", () 
   assert.equal(second.entries.find((entry) => entry.registrationId === "rx-Bravo")?.totalPoints, 7);
 });
 
-test("a tie in the four-proof sum signals the missing official tie rule", () => {
+test("an overall point tie shares the place and does not block the final ranking", () => {
   const ranksByProof = [
     [1, 2, 3, 4, 5],
     [2, 1, 3, 4, 5],
@@ -206,11 +239,48 @@ test("a tie in the four-proof sum signals the missing official tie rule", () => 
   });
   const alfa=board.entries.find((entry)=>entry.teamName==="Alfa");
   const bravo=board.entries.find((entry)=>entry.teamName==="Bravo");
-  assert.equal(board.status, "TIE_RULE_PENDING");
+  assert.equal(board.status, "FINAL");
   assert.equal(alfa?.totalPoints,10);
   assert.equal(bravo?.totalPoints,10);
-  assert.equal(alfa?.status,"TIE_RULE_PENDING");
-  assert.equal(alfa?.overallPlace, null);
+  assert.equal(alfa?.status,"FINAL");
+  assert.equal(alfa?.overallPlace, 2);
+  assert.equal(bravo?.overallPlace, 2);
+  assert.equal(board.ties.filter((tie) => tie.scope === "OVERALL").length, 1);
+});
+
+test("manual overall arbitration changes only the displayed place, not summed proof points", () => {
+  const ranksByProof = [
+    [1, 2, 3, 4, 5],
+    [2, 1, 3, 4, 5],
+    [3, 4, 1, 2, 5],
+    [4, 3, 1, 2, 5],
+  ];
+  const scRegistrations = registrations.filter((registration) => registration.category === "SC");
+  const results = scRegistrations.flatMap((registration, teamIndex) =>
+    proofs.map((proof, proofIndex) => {
+      const rank = ranksByProof[proofIndex]?.[teamIndex];
+      assert.ok(rank !== undefined);
+      return {
+        id: `${registration.id}-${proof.id}`,
+        registrationId: registration.id,
+        proofId: proof.id,
+        rawValue: proof.direction === "LOWER" ? rank : 6 - rank,
+        status: "VALIDATED",
+      };
+    }),
+  );
+  const input = { category: "SC", eventStatus: "FINISHED", proofs, registrations, results };
+  const unresolved = calculateCategoryLeaderboard(input);
+  const tie = unresolved.ties.find((item) => item.scope === "OVERALL" && item.value === 10);
+  assert.ok(tie);
+  const resolved = calculateCategoryLeaderboard({
+    ...input,
+    tieBreaks: [{ key: tie.key, orderedRegistrationIds: ["sc-Bravo", "sc-Alfa"] }],
+  });
+  assert.equal(resolved.entries.find((entry) => entry.registrationId === "sc-Bravo")?.overallPlace, 2);
+  assert.equal(resolved.entries.find((entry) => entry.registrationId === "sc-Alfa")?.overallPlace, 3);
+  assert.equal(resolved.entries.find((entry) => entry.registrationId === "sc-Bravo")?.totalPoints, 10);
+  assert.equal(resolved.entries.find((entry) => entry.registrationId === "sc-Alfa")?.totalPoints, 10);
 });
 
 test("partial event rankings expose current overall places before event completion", () => {
@@ -262,6 +332,134 @@ test("partial overall ties share a provisional place instead of an arbitrary ord
   assert.equal(bravo?.totalPoints, 5);
   assert.equal(alpha?.overallPlace, 2);
   assert.equal(bravo?.overallPlace, 2);
+});
+
+test("unrounded marks remain distinct and missing values do not create false ties", () => {
+  const twoRegistrations = registrations.filter((registration) => registration.category === "RX").slice(0, 2);
+  const proof = proofs[0]!;
+  const distinct = calculateCategoryLeaderboard({
+    category: "RX",
+    eventStatus: "ACTIVE",
+    proofs: [proof],
+    registrations: twoRegistrations,
+    results: [
+      { id: "precise-1", registrationId: twoRegistrations[0]!.id, proofId: proof.id, rawValue: "65.251", status: "VALIDATED" },
+      { id: "precise-2", registrationId: twoRegistrations[1]!.id, proofId: proof.id, rawValue: "65.254", status: "VALIDATED" },
+    ],
+  });
+  assert.equal(distinct.ties.length, 0);
+  assert.deepEqual(distinct.entries.map((entry) => entry.proofScores[0]?.points), [1, 2]);
+  const missing = calculateCategoryLeaderboard({
+    category: "RX",
+    eventStatus: "ACTIVE",
+    proofs: [proof],
+    registrations: twoRegistrations,
+    results: [
+      { id: "only-one-mark", registrationId: twoRegistrations[0]!.id, proofId: proof.id, rawValue: "65.251", status: "VALIDATED" },
+    ],
+  });
+  assert.equal(missing.ties.length, 0);
+  assert.equal(missing.entries.find((entry) => entry.registrationId === twoRegistrations[1]!.id)?.proofScores[0]?.status, "MISSING");
+
+  const beyondFloatPrecision = calculateCategoryLeaderboard({
+    category: "RX",
+    eventStatus: "ACTIVE",
+    proofs: [proof],
+    registrations: twoRegistrations,
+    results: [
+      { id: "large-1", registrationId: twoRegistrations[0]!.id, proofId: proof.id, rawValue: "9007199254740992", status: "VALIDATED" },
+      { id: "large-2", registrationId: twoRegistrations[1]!.id, proofId: proof.id, rawValue: "9007199254740993", status: "VALIDATED" },
+    ],
+  });
+  assert.equal(beyondFloatPrecision.ties.length, 0);
+  assert.deepEqual(beyondFloatPrecision.entries.map((entry) => entry.proofScores[0]?.points), [1, 2]);
+});
+
+test("event-wide places include all 13 registrations instead of restarting by battery", () => {
+  const thirteen = Array.from({ length: 13 }, (_, index) => ({
+    id: `registration-${String(index + 1).padStart(2, "0")}`,
+    category: "SC",
+    teamName: `Equipe ${index + 1}`,
+    athleteNames: [],
+    laneLabel: null,
+  }));
+  const proof = proofs[0]!;
+  const board = calculateCategoryLeaderboard({
+    category: "SC",
+    eventStatus: "ACTIVE",
+    proofs: [proof],
+    registrations: thirteen,
+    results: thirteen.map((registration, index) => ({
+      id: `result-${registration.id}`,
+      registrationId: registration.id,
+      proofId: proof.id,
+      rawValue: 100 + index,
+      status: "VALIDATED",
+    })),
+  });
+  const last = board.entries.find((entry) => entry.registrationId === "registration-13");
+  assert.equal(last?.proofScores[0]?.placement, 13);
+  assert.equal(last?.proofScores[0]?.points, 13);
+});
+
+test("four proof placements 13, 4, 7, and 2 sum to 26 event points", () => {
+  const targetPlacements = [13, 4, 7, 2];
+  const thirteen = Array.from({ length: 13 }, (_, index) => ({
+    id: `rx-registration-${String(index + 1).padStart(2, "0")}`,
+    category: "RX",
+    teamName: `Equipe ${index + 1}`,
+    athleteNames: [],
+    laneLabel: `P${String(index + 1).padStart(2, "0")}`,
+  }));
+  const results = thirteen.flatMap((registration, teamIndex) =>
+    proofs.map((proof, proofIndex) => {
+      const targetPlace = targetPlacements[proofIndex]!;
+      const place = teamIndex === 12
+        ? targetPlace
+        : teamIndex < targetPlace - 1
+          ? teamIndex + 1
+          : teamIndex + 2;
+      return {
+        id: `${registration.id}:${proof.id}`,
+        registrationId: registration.id,
+        proofId: proof.id,
+        rawValue: proof.direction === "LOWER" ? place : 14 - place,
+        status: "VALIDATED",
+      };
+    }),
+  );
+  const board = calculateCategoryLeaderboard({
+    eventId: "event-13",
+    category: "RX",
+    eventStatus: "FINISHED",
+    proofs,
+    registrations: thirteen,
+    results,
+  });
+  const target = board.entries.find((entry) => entry.registrationId === "rx-registration-13");
+  assert.deepEqual(target?.proofScores.map((score) => score.points), targetPlacements);
+  assert.equal(target?.totalPoints, 26);
+});
+
+test("public event podium is derived from the same published leaderboard, including shared places", () => {
+  const podiums = rankingPodiumsFromSnapshot([{
+    category: "RX",
+    entries: [
+      { registrationId: "rx-a", teamName: "Equipe A", athleteNames: ["Atleta A"], overallPlace: 1, totalPoints: 4 },
+      { registrationId: "rx-b", teamName: "Equipe B", athleteNames: ["Atleta B"], overallPlace: 1, totalPoints: 4 },
+      { registrationId: "rx-c", teamName: "Equipe C", athleteNames: ["Atleta C"], overallPlace: 3, totalPoints: 6 },
+      { registrationId: "rx-d", teamName: "Equipe D", athleteNames: ["Atleta D"], overallPlace: 4, totalPoints: 8 },
+      { registrationId: "rx-pending", teamName: "Pendente", athleteNames: [], overallPlace: null, totalPoints: null },
+    ],
+  }]);
+  assert.deepEqual(podiums, [{
+    category: "RX",
+    places: [
+      { place: 1, registrationId: "rx-a", teamName: "Equipe A", athleteNames: ["Atleta A"] },
+      { place: 1, registrationId: "rx-b", teamName: "Equipe B", athleteNames: ["Atleta B"] },
+      { place: 3, registrationId: "rx-c", teamName: "Equipe C", athleteNames: ["Atleta C"] },
+    ],
+  }]);
 });
 
 test("DNS/DNF without an event exception rule cannot make the classification final", () => {

@@ -8,6 +8,7 @@
 import type { Zero3RankingPublicationAffectedScope } from './zero3RankingPublicationAffectedScope';
 import type { Zero3RankingPublicationIssue } from './zero3RankingPublicationIssue';
 import type { Zero3RankingResultState } from './zero3RankingResultState';
+import type { Zero3RankingTieGroup } from './zero3RankingTieGroup';
 
 export interface Zero3RankingPublicationPreview {
   eventId: string;
@@ -24,6 +25,7 @@ export interface Zero3RankingPublicationPreview {
   affected: Zero3RankingPublicationAffectedScope[];
   issues: Zero3RankingPublicationIssue[];
   resultStates: Zero3RankingResultState[];
+  ties: Zero3RankingTieGroup[];
   /**
      * @minLength 64
      * @maxLength 64

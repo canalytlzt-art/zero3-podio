@@ -1053,3 +1053,133 @@ body:has(.live-board-page) {
 .live-board-page .lb-view-heading p { color: #625e6c; }
 .live-board-page .lb-footer { color: #625e6c; }
 .live-board-page .lb-footer span:first-child { color: #34303b; }
+
+/* Event battery results share one table; battery and category identity repeat per registration. */
+.live-board-page .lb-event-battery-unified-wrap {
+  overflow-x: auto;
+  border: 1px solid #d7d1df;
+  border-radius: 8px;
+  background: #fff;
+}
+.live-board-page .lb-event-battery-unified-table {
+  width: 100%;
+  min-width: 1040px;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.live-board-page .lb-event-battery-unified-table th,
+.live-board-page .lb-event-battery-unified-table td {
+  padding: 10px 11px;
+  text-align: left;
+  vertical-align: middle;
+}
+.live-board-page .lb-event-battery-unified-table th {
+  color: #585264;
+  border-bottom: 1px solid #d9d4e2;
+  background: #f7f5fa;
+  font: 700 9px/1.35 Consolas, 'Courier New', monospace;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.live-board-page .lb-event-battery-unified-table th:first-child,
+.live-board-page .lb-event-battery-unified-table td:first-child { width: 6%; }
+.live-board-page .lb-event-battery-unified-table th:nth-child(2),
+.live-board-page .lb-event-battery-unified-table td:nth-child(2) { width: 6%; }
+.live-board-page .lb-event-battery-unified-table th:nth-child(3),
+.live-board-page .lb-event-battery-unified-table td:nth-child(3) { width: 14%; }
+.live-board-page .lb-event-battery-unified-table th:nth-child(4),
+.live-board-page .lb-event-battery-unified-table td:nth-child(4) { width: 26%; }
+.live-board-page .lb-event-battery-unified-table th:nth-child(n + 5),
+.live-board-page .lb-event-battery-unified-table td:nth-child(n + 5) { width: 12%; }
+.live-board-page .lb-event-battery-unified-table th > span,
+.live-board-page .lb-event-battery-unified-table th > small { display: block; }
+.live-board-page .lb-event-battery-unified-table th > small {
+  margin-top: 4px;
+  color: #77727e;
+  font: 500 9px/1.35 Consolas, 'Courier New', monospace;
+  letter-spacing: 0;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+.live-board-page .lb-event-battery-unified-table td {
+  color: #302d36;
+  border-top: 1px solid #e7e2ed;
+  font-size: 10px;
+}
+.live-board-page .lb-event-battery-unified-table tbody tr:first-child td { border-top: 0; }
+.live-board-page .lb-event-battery-unified-table tbody tr:hover { background: #fbf9fe; }
+.live-board-page .lb-event-battery-unified-table tbody tr.is-requested { background: #f7f3ff; }
+.live-board-page .lb-battery-code {
+  display: inline-grid;
+  min-width: 32px;
+  min-height: 27px;
+  place-items: center;
+  padding: 0 5px;
+  color: #4b2a87;
+  border-radius: 3px;
+  background: #efe7fb;
+  font: 700 10px Consolas, 'Courier New', monospace;
+}
+.live-board-page .lb-event-battery-unified-table .lb-event-battery-category-tag {
+  margin: 0;
+  padding: 4px 6px;
+  font-size: 9px;
+}
+.live-board-page .lb-event-battery-unified-table .lb-operational-status {
+  padding: 5px 7px;
+  font-size: 9px;
+  text-transform: none;
+}
+.live-board-page .lb-event-battery-unified-table .lb-event-battery-team {
+  min-width: 0;
+}
+.live-board-page .lb-event-battery-unified-table .lb-event-battery-team strong {
+  color: #181720;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.live-board-page .lb-event-battery-unified-table .lb-event-battery-team small {
+  margin-top: 3px;
+  color: #625e6c;
+  font-size: 9px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.live-board-page .lb-event-battery-unified-table td > strong {
+  color: #302044;
+  font: 700 11px/1.35 Consolas, 'Courier New', monospace;
+  overflow-wrap: anywhere;
+}
+.live-board-page .lb-event-battery-unified-table td > small {
+  color: #625e6c;
+  font-size: 8px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.live-board-page .lb-event-battery-unified-table td > small.is-provisional { color: #583aab; font-weight: 700; }
+.live-board-page .lb-event-battery-unified-table .lb-event-battery-no-result { color: #77727e; }
+.live-board-page .lb-event-battery-note {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  color: #3f3453;
+  border-left: 3px solid #583aab;
+  border-radius: 3px;
+  background: #f3edf9;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .live-board-page .lb-event-battery-unified-table { min-width: 1040px; }
+  .live-board-page .lb-event-battery-unified-table th,
+  .live-board-page .lb-event-battery-unified-table td { padding: 9px 8px; }
+  .live-board-page .lb-event-battery-unified-table .lb-operational-status { padding: 4px 5px; }
+}
+
+@media (min-width: 1920px) {
+  .live-board-page .lb-event-battery-unified-table th { padding: 14px 16px; font-size: 11px; }
+  .live-board-page .lb-event-battery-unified-table td { padding: 15px 16px; font-size: 13px; }
+  .live-board-page .lb-event-battery-unified-table .lb-event-battery-team strong { font-size: 15px; }
+  .live-board-page .lb-event-battery-unified-table .lb-event-battery-team small,
+  .live-board-page .lb-event-battery-unified-table td > small { font-size: 11px; }
+}

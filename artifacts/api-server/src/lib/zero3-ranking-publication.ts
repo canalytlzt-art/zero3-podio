@@ -1,4 +1,10 @@
-import { calculateAllResultPlacements, type ScoreProof, type ScoreRegistration, type ScoreResult } from "./zero3-scoring";
+import {
+  calculateAllResultPlacements,
+  type ScoreProof,
+  type ScoreRegistration,
+  type ScoreResult,
+  type ScoreTieBreakResolution,
+} from "./zero3-scoring";
 
 export type RankingPublicationProof = ScoreProof;
 export type RankingPublicationRegistration = ScoreRegistration & { active: boolean };
@@ -43,6 +49,7 @@ export type RankingPublicationPlan = {
     state: "PARCIAL" | "REVISADO" | "PUBLICADO";
     previouslyPublished: boolean;
   }>;
+  ties: ReturnType<typeof calculateAllResultPlacements>["leaderboards"][number]["ties"];
   affected: Array<{
     proofId: string;
     proofOrder: number;
@@ -89,6 +96,8 @@ export async function buildRankingPublicationPlan(input: {
   proofs: RankingPublicationProof[];
   registrations: RankingPublicationRegistration[];
   results: RankingPublicationResult[];
+  persistedTieBreaks?: ScoreTieBreakResolution[];
+  tieBreaksOverride?: ScoreTieBreakResolution[];
 }): Promise<RankingPublicationPlan> {
   const proofs = input.proofs.slice().sort((a, b) => a.order - b.order);
   const activeRegistrations = input.registrations.filter((registration) => registration.active);
@@ -125,7 +134,7 @@ export async function buildRankingPublicationPlan(input: {
         id: row.id,
         registrationId: row.registrationId,
         proofId: row.proofId,
-        rawValue: row.publishedRawValue,
+        rawValue: numericValue(row.publishedRawValue),
         status: row.publishedStatus,
         category: row.category,
         revision: row.publishedRevision,
@@ -205,27 +214,55 @@ export async function buildRankingPublicationPlan(input: {
     rawValue: result.rawValue,
     status: result.status,
   }));
+  const selectedTieBreaks = input.tieBreaksOverride ?? input.persistedTieBreaks ?? [];
   const calculated = calculateAllResultPlacements({
+    eventId: input.eventId,
     categories: [...new Set(activeRegistrations.map((registration) => registration.category))],
     eventStatus: input.eventStatus,
     proofs,
     registrations: activeRegistrations,
     results: scoreResults,
+    tieBreaks: selectedTieBreaks,
   });
-  for (const board of calculated.leaderboards) {
-    if (board.status === "TIE_RULE_PENDING") {
+  const ties = calculated.leaderboards.flatMap((board) => board.ties);
+  const appliedTieBreaks = ties.flatMap((tie) =>
+    tie.orderedRegistrationIds
+      ? [{ key: tie.key, orderedRegistrationIds: tie.orderedRegistrationIds }]
+      : [],
+  );
+  if (input.tieBreaksOverride !== undefined) {
+    const appliedKeys = new Set(appliedTieBreaks.map((item) => item.key));
+    const submittedKeys = input.tieBreaksOverride.map((item) => item.key);
+    if (
+      new Set(submittedKeys).size !== submittedKeys.length ||
+      submittedKeys.some((key) => !appliedKeys.has(key)) ||
+      appliedTieBreaks.length !== input.tieBreaksOverride.length
+    ) {
       issues.push({
-        code: "TIE_RULE_PENDING",
-        message: `A categoria ${board.category} contém empate sem regra oficial de desempate.`,
+        code: "TIE_BREAK_RESOLUTION_INVALID",
+        message: "A ordem manual precisa corresponder exatamente aos participantes do empate atual.",
         blocking: true,
         resultId: null,
       });
     }
+  }
+  for (const board of calculated.leaderboards) {
     if (board.status === "EXCEPTION_RULE_PENDING") {
       issues.push({
         code: "EXCEPTION_RULE_PENDING",
         message: `A categoria ${board.category} tem exceção sem regra oficial de pontuação.`,
         blocking: true,
+        resultId: null,
+      });
+    }
+    for (const tie of board.ties) {
+      const scope = tie.scope === "OVERALL"
+        ? "soma total"
+        : tie.proofName || `Prova ${tie.proofOrder ?? ""}`;
+      issues.push({
+        code: tie.orderedRegistrationIds ? "TIE_MANUAL_ORDER_APPLIED" : "TIE_SHARED_PLACEMENT",
+        message: `Empate exato em ${scope} · ${tie.category} · ${tie.value}: ${tie.orderedRegistrationIds ? "ordem manual aplicada" : "participantes compartilham colocação e pontos"}. A publicação continua disponível.`,
+        blocking: false,
         resultId: null,
       });
     }
@@ -245,7 +282,6 @@ export async function buildRankingPublicationPlan(input: {
   }));
   const fingerprintMaterial = JSON.stringify({
     eventId: input.eventId,
-    version: input.version,
     proofs,
     registrations: activeRegistrations.map((registration) => ({
       id: registration.id,
@@ -254,7 +290,10 @@ export async function buildRankingPublicationPlan(input: {
     results: [...baseByCell.values()].sort((a, b) =>
       `${a.registrationId}:${a.proofId ?? ""}`.localeCompare(`${b.registrationId}:${b.proofId ?? ""}`),
     ),
-    candidates: candidates.map(({ id, revision }) => ({ id, revision })).sort((a, b) => a.id.localeCompare(b.id)),
+    tieBreaks: appliedTieBreaks.slice().sort((a, b) =>
+      a.key.localeCompare(b.key) ||
+      a.orderedRegistrationIds.join("\u0000").localeCompare(b.orderedRegistrationIds.join("\u0000")),
+    ),
   });
   const fingerprint = await sha256(fingerprintMaterial);
   const blockingIssue = issues.some((issue) => issue.blocking);
@@ -264,6 +303,7 @@ export async function buildRankingPublicationPlan(input: {
     eligibleResultCount: candidates.length,
     partialResultCount,
     resultStates,
+    ties,
     affected: [...affectedCounts.values()].map(({ proof, category, count }) => ({
       proofId: proof.id,
       proofOrder: proof.order,
@@ -272,7 +312,7 @@ export async function buildRankingPublicationPlan(input: {
       resultCount: count,
     })).sort((a, b) => a.proofOrder - b.proofOrder || a.category.localeCompare(b.category)),
     issues,
-    canPublish: candidates.length > 0 && !blockingIssue,
+    canPublish: (candidates.length > 0 || ties.length > 0) && !blockingIssue,
     results: [...baseByCell.values()],
     candidates,
     leaderboards: calculated.leaderboards,

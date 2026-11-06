@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Zero3TieBreakResolution } from './zero3TieBreakResolution';
 
 export interface Zero3RankingPublicationInput {
   /**
@@ -15,4 +16,5 @@ export interface Zero3RankingPublicationInput {
   expectedFingerprint: string;
   /** @minimum 0 */
   expectedVersion: number;
+  tieBreaks?: Zero3TieBreakResolution[];
 }

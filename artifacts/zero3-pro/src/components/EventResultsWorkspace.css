@@ -16,6 +16,25 @@
 .erw-publication-scope,.erw-publication-issues{margin-top:14px}
 .erw-publication-scope ul,.erw-publication-issues ul{display:grid;gap:6px;margin:8px 0 0;padding-left:20px;color:var(--muted-foreground,#c0bbc8);line-height:1.45;overflow-wrap:anywhere}
 .erw-publication-issues li.is-blocking{color:#ff9ca6}
+.erw-tie-dialog-note{margin:14px 0 0;padding:10px 12px;border-left:3px solid #c39945;border-radius:4px;background:rgba(195,153,69,.1);color:#705727;font-size:12px;line-height:1.5}
+.erw-tie-advisory{display:grid;gap:9px;padding:10px;border:1px solid #e5d4a9;border-radius:8px;background:#faf4e4;color:#594b2b}
+.erw-tie-advisory>p{display:flex;align-items:flex-start;gap:7px;margin:0;font-size:11px;line-height:1.45}
+.erw-tie-advisory>p svg{flex:0 0 auto;margin-top:1px;color:#9b7734}
+.erw-tie-advisory details{border-top:1px solid rgba(136,105,42,.2);padding-top:7px}
+.erw-tie-advisory summary{cursor:pointer;font-size:10px;font-weight:700}
+.erw-tie-list{display:grid;gap:8px;margin-top:8px}
+.erw-tie-item{display:grid;gap:6px;padding:9px;border:1px solid rgba(136,105,42,.2);border-radius:6px;background:rgba(255,255,255,.55)}
+.erw-tie-item-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.erw-tie-item-head strong{font-size:10px;line-height:1.4}
+.erw-tie-item-head span,.erw-tie-item>small{color:#6e5b31;font-size:9px;line-height:1.4}
+.erw-tie-item p{margin:0;color:#635a45;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+.erw-tie-positions{display:grid;gap:6px;padding-top:4px}
+.erw-tie-positions label{display:grid;grid-template-columns:28px minmax(0,1fr);align-items:center;gap:6px}
+.erw-tie-positions label>span{font:10px var(--font-data,monospace);font-weight:700}
+.erw-tie-positions select{min-width:0;width:100%;min-height:32px;padding:5px 7px;border:1px solid #d9c99d;border-radius:5px;background:#fffdf6;color:#37342e;font-size:10px}
+.erw-tie-positions>small{color:#806b3e;font-size:9px;line-height:1.4}
+.erw-tie-actions{display:flex;flex-wrap:wrap;gap:6px}
+.erw-tie-actions .button{min-height:28px;padding:5px 7px;font-size:9px}
 .erw-publication-dialog footer{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
 @media(max-width:520px){.erw-publication-counts{grid-template-columns:1fr}.erw-publication-dialog{padding:18px}.erw-publication-dialog footer{flex-wrap:wrap}.erw-publication-dialog footer .button{flex:1}}
 .event-results-workspace {

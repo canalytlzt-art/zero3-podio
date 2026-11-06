@@ -168,3 +168,59 @@ mtime_ms = 1793923341660
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/1787e2d1-491c-4da5-8494-cee5522eefaf/ef1ca167-d294-4b38-a7b0-61e0ba87f38e"
 storage_version_token = "1793923373636472"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "QK4iRdOhZCRp7JX-EDQie"
+uri = "file://generated-artifacts/live-board-preview-current-state.jpg"
+type = "image"
+title = "Preview do placar ao vivo"
+description = "Captura do Preview com o evento de demonstração disponível. A resposta atual do banco local não contém baterias publicadas, então a nova tabela ainda não é renderizada neste estado."
+logical_id = "39ecac6c-71a3-4368-bcd2-5f97c1288d34"
+content_hash = "sha256:dee445569a98547c900d14c1864d5ced98906a9503a92299fef7a5caece19c33"
+size = 69218
+mtime_ms = 1793960181460
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/39ecac6c-71a3-4368-bcd2-5f97c1288d34/53e0ce3f-b9ad-48ca-9b82-d85d08f6029f"
+storage_version_token = "1793960186852468"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "AF6mLeNnKBDQm0xl03GhF"
+uri = "file://generated-artifacts/live-board-staging-current.png"
+type = "image"
+title = "Placar atual no staging"
+description = "Captura somente para leitura do staging do evento Zero3 GAMES 2026. Ela mostra a versão publicada atual, ainda com cards separados por bateria; não é a versão local da tabela unificada."
+logical_id = "9633a7f8-88e8-422c-b05a-d63320168c9a"
+content_hash = "sha256:ab7d509578ea13805ad56fb752d5c1120efcf3ded1aac96ad1be5c7afa6c3e9b"
+size = 389257
+mtime_ms = 1793960582821
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/9633a7f8-88e8-422c-b05a-d63320168c9a/c7feb814-4cb7-434d-844d-dc834f7854c2"
+storage_version_token = "1793960606989762"
+content_type = "image/png"
+
+[[outputs]]
+id = "2gzQcFDgnwh_YWUlhq6o4"
+uri = "file://generated-artifacts/live-board-staging-unified.png"
+type = "image"
+title = "Tabela unificada no staging"
+description = "Captura após o deploy no staging, com o evento Zero3 GAMES 2026. Mostra uma tabela contínua com BAT, CAT, STATUS, equipe e resultados das provas. Captura da primeira parte da página; os demais registros permanecem abaixo, na rolagem normal."
+logical_id = "0f20280a-03c5-450e-9681-fe37faf99d49"
+content_hash = "sha256:d6e114514bc6b546c08757c0c18020cb3017167c4be7804a551d50a6252b7d39"
+size = 429379
+mtime_ms = 1793961012708
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/0f20280a-03c5-450e-9681-fe37faf99d49/09a68834-1047-4a31-84a3-af73fd054cc7"
+storage_version_token = "1793961030086078"
+content_type = "image/png"
+
+[[outputs]]
+id = "ScAPoiO_EsPnyg0yI7Qia"
+uri = "file://generated-artifacts/zero3-ranking-tie-preview.jpg"
+type = "image"
+title = "Prévia do painel de empate"
+description = "Captura local da interface EventResultsWorkspace com fixture fictícia isolada; mostra aviso não bloqueante, duas equipes empatadas e botão de publicação habilitado. Nenhum dado foi gravado."
+logical_id = "5e40232e-42a2-4568-a5cc-65f7a79a07b3"
+content_hash = "sha256:8798872c5463089b9658b3711c05b4d5f9218c5920605c5a9b857446175a58b1"
+size = 54667
+mtime_ms = 1793962524581
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/5e40232e-42a2-4568-a5cc-65f7a79a07b3/da204451-1e98-4d5a-b51b-f650f867c13c"
+storage_version_token = "1793962889272535"
+content_type = "image/jpeg"

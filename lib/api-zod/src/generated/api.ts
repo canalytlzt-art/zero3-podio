@@ -2179,6 +2179,17 @@ export const getZero3RankingPublicationResponseAffectedItemCategoryMax = 32;
 
 
 
+
+export const getZero3RankingPublicationResponseTiesItemCategoryMax = 32;
+
+
+export const getZero3RankingPublicationResponseTiesItemValueMin = 0;
+
+
+export const getZero3RankingPublicationResponseTiesItemRegistrationIdsMin = 2;
+
+export const getZero3RankingPublicationResponseTiesItemOrderedRegistrationIdsMin = 2;
+
 export const getZero3RankingPublicationResponseFingerprintMin = 64;
 export const getZero3RankingPublicationResponseFingerprintMax = 64;
 
@@ -2210,6 +2221,18 @@ export const GetZero3RankingPublicationResponse = zod.object({
   "state": zod.enum(['PARCIAL', 'REVISADO', 'PUBLICADO']),
   "previouslyPublished": zod.boolean()
 })),
+  "ties": zod.array(zod.object({
+  "key": zod.string().min(1),
+  "scope": zod.enum(['PROOF', 'OVERALL']),
+  "category": zod.string().min(1).max(getZero3RankingPublicationResponseTiesItemCategoryMax),
+  "proofId": zod.string().nullable(),
+  "proofOrder": zod.number().int().min(1).nullable(),
+  "proofName": zod.string().nullable(),
+  "value": zod.number().min(getZero3RankingPublicationResponseTiesItemValueMin),
+  "exactValue": zod.string().min(1),
+  "registrationIds": zod.array(zod.string()).min(getZero3RankingPublicationResponseTiesItemRegistrationIdsMin),
+  "orderedRegistrationIds": zod.array(zod.string()).min(getZero3RankingPublicationResponseTiesItemOrderedRegistrationIdsMin).nullable()
+})),
   "fingerprint": zod.string().min(getZero3RankingPublicationResponseFingerprintMin).max(getZero3RankingPublicationResponseFingerprintMax),
   "canPublish": zod.boolean()
 })
@@ -2230,10 +2253,17 @@ export const publishZero3RankingBodyExpectedFingerprintRegExp = new RegExp('^[a-
 export const publishZero3RankingBodyExpectedVersionMin = 0;
 
 
+export const publishZero3RankingBodyTieBreaksItemOrderedRegistrationIdsMin = 2;
+
+
 
 export const PublishZero3RankingBody = zod.object({
   "expectedFingerprint": zod.string().min(publishZero3RankingBodyExpectedFingerprintMin).max(publishZero3RankingBodyExpectedFingerprintMax).regex(publishZero3RankingBodyExpectedFingerprintRegExp),
-  "expectedVersion": zod.number().int().min(publishZero3RankingBodyExpectedVersionMin)
+  "expectedVersion": zod.number().int().min(publishZero3RankingBodyExpectedVersionMin),
+  "tieBreaks": zod.array(zod.object({
+  "key": zod.string().min(1),
+  "orderedRegistrationIds": zod.array(zod.string()).min(publishZero3RankingBodyTieBreaksItemOrderedRegistrationIdsMin)
+})).optional()
 })
 
 
