@@ -19,6 +19,7 @@ import type {
 import { tvHrefForEvent } from '@/lib/tv-navigation';
 import { inspectPublicBoardPayload, isPublicBoardJsonParseError } from '@/lib/public-board-response';
 import { eventBatteryCode } from '@/lib/event-battery-code';
+import { cancelledProofLabel } from '@/lib/zero3-result-display';
 import {
   publicBatteryOperationalLabel,
   publicBatteryOperationalState,
@@ -175,9 +176,11 @@ function BatteryResultRow({ result, place, proof }: {
   proof?: Zero3Proof;
 }) {
   const team = result.teamName || result.names.join(' · ') || 'Equipe sem nome';
-  const status = statusLabel(result.status);
+  const status = cancelledProofLabel(result.status, result.rawValue) ?? statusLabel(result.status);
   const displayValue = result.status === 'DNS' || result.status === 'DNF'
-    ? result.status
+    ? cancelledProofLabel(result.status, result.rawValue) && result.rawValue != null
+      ? formatSnapshotValue(result.rawValue, proof)
+      : result.status
     : formatSnapshotValue(result.rawValue, proof);
   return (
     <tr data-testid={`row-battery-result-${result.id}`}>
@@ -503,9 +506,12 @@ function ProofPoints({ proof, score, registrationId }: {
 }) {
   const heading = rankingProofHeadings[proof.order] ?? `P${proof.order}`;
   const pending = !score || score.points == null;
+  const cancelledLabel = cancelledProofLabel("VALIDATED", score?.value);
   const value = score?.points != null
     ? `${score.points} pt`
-    : score?.status === 'DNS' || score?.status === 'DNF'
+    : cancelledLabel
+      ? formatSnapshotValue(score?.value, proof)
+      : score?.status === 'DNS' || score?.status === 'DNF'
       ? score.status
       : pending ? '—' : statusLabel(score.status);
   return (
@@ -513,7 +519,7 @@ function ProofPoints({ proof, score, registrationId }: {
       <span title={proof.name} aria-label={`${heading}: ${proof.name}`}>{heading}</span>
       <strong>{value}</strong>
       {score?.placement != null && <small>{score.placement}º lugar</small>}
-      {pending && <small>{score ? statusLabel(score.status) : 'Pendente'}</small>}
+      {pending && <small>{cancelledLabel ?? (score ? statusLabel(score.status) : 'Pendente')}</small>}
     </div>
   );
 }

@@ -16,4 +16,5 @@ export const Zero3TimerCommandAction = {
   resume: 'resume',
   finish: 'finish',
   reset: 'reset',
+  cancel: 'cancel',
 } as const;

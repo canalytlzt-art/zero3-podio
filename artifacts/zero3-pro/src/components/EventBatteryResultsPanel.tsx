@@ -14,6 +14,7 @@ import { batteryIssueHref, type BatteryReadinessIssue } from '@/lib/event-batter
 import { eventBatteryCode } from '@/lib/event-battery-code';
 import { getHttpErrorStatus } from '@/lib/api-error-policy';
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
+import { cancelledProofLabel } from '@/lib/zero3-result-display';
 import { Link } from 'wouter';
 
 interface EventBatteryResultsPanelProps {
@@ -42,6 +43,8 @@ function formatValue(value: number | null, proof: Zero3Proof) {
 
 function resultLabel(result: Zero3EventBattery['results'][number] | undefined) {
   if (!result) return 'Faltando resultado';
+  const cancelled = cancelledProofLabel(result.status, result.rawValue);
+  if (cancelled) return cancelled;
   if (result.status === 'PROVISIONAL') return 'Provisório · aguarda revisão';
   if (result.status === 'VALIDATED') {
     return result.publishedRevision === result.revision

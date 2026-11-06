@@ -52,6 +52,7 @@ export const Zero3TimerState = {
   RUNNING: 'RUNNING',
   PAUSED: 'PAUSED',
   FINISHED: 'FINISHED',
+  CANCELLED: 'CANCELLED',
 } as const;
 
 export interface Zero3Me {
@@ -1086,6 +1087,7 @@ export const Zero3TimerCommandAction = {
   resume: 'resume',
   finish: 'finish',
   reset: 'reset',
+  cancel: 'cancel',
 } as const;
 
 export interface Zero3TimerCommand {

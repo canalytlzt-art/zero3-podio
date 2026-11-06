@@ -99,6 +99,31 @@ test("partial rows are not published and missing result cells remain partial", a
   assert.equal(plan.resultStates[0]?.state, "PARCIAL");
 });
 
+test("zero is preserved as a cancelled proof while valid results can still be published", async () => {
+  const plan = await buildRankingPublicationPlan({
+    eventId: "event-1",
+    eventStatus: "ACTIVE",
+    version: 1,
+    proofs,
+    registrations,
+    results: [
+      result({ rawValue: "0.000" }),
+      result({ id: "result-valid", registrationId: "rx-b", rawValue: "65.25" }),
+    ],
+  });
+
+  assert.equal(plan.canPublish, true);
+  assert.equal(plan.eligibleResultCount, 1);
+  assert.equal(plan.candidates.some((candidate) => Number(candidate.rawValue) === 0), false);
+  assert.ok(plan.results.some((candidate) => Number(candidate.rawValue) === 0 && candidate.status === "DNF"));
+  assert.ok(plan.issues.some((issue) =>
+    issue.code === "EXCEPTION_RULE_PENDING" &&
+    issue.resultId === "result-1" &&
+    !issue.blocking &&
+    issue.message.includes("Prova cancelada"),
+  ));
+});
+
 test("ties add one non-blocking advisory while invalid links and exceptions still block", async () => {
   const plan = await buildRankingPublicationPlan({
     eventId: "event-1",

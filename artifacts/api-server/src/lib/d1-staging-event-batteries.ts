@@ -125,10 +125,14 @@ function runElapsed(row: RunRow | null, now: Date) {
 
 export function eventBatteryFinalizedRun(run: RunRow, now: Date) {
   return {
-    state: "FINISHED" as const,
+    state: (run.state === "CANCELLED" ? "CANCELLED" : "FINISHED") as "FINISHED" | "CANCELLED",
     elapsedMs: runElapsed(run, now),
     stoppedAt: now.toISOString(),
   };
+}
+
+export function isRepeatedBatteryTimerCommand(lastCommandId: string | null, commandId: string) {
+  return lastCommandId === commandId;
 }
 
 function resultDto(row: ResultRow, registration?: EntryRow) {
@@ -561,7 +565,7 @@ export async function handleD1StagingEventBatteries(
       let run = await DB.prepare("SELECT * FROM zero3_battery_runs WHERE battery_id=? AND event_id=?")
         .bind(batteryId, eventId).first<RunRow>();
       if (!run) { d1ApiError(req, res, 503, "DATABASE_UNAVAILABLE", "Não foi possível consultar o cronômetro da bateria."); return true; }
-      if (run.last_command_id === parsed.data.commandId) {
+      if (isRepeatedBatteryTimerCommand(run.last_command_id, parsed.data.commandId)) {
         const batteries = await listD1EventBatteries(DB, eventId, now);
         const dto = batteries?.find((item) => item.id === batteryId);
         if (!dto) { d1ApiError(req, res, 404, "BATTERY_NOT_FOUND", "Bateria não encontrada."); return true; }
@@ -600,10 +604,6 @@ export async function handleD1StagingEventBatteries(
         "preparation_started_at" | "first_started_at" | "stopped_at">;
       switch (parsed.data.action) {
         case "prepare":
-          if (eventElapsedMs >= EVENT_LIMIT_MS) {
-            d1ApiError(req, res, 409, "EVENT_TIME_LIMIT", "O limite de 2 horas do evento foi atingido.");
-            return true;
-          }
           if (run.state !== "IDLE") {
             res.status(400).json({ error: "Este comando não é válido para o estado atual." }); return true;
           }
@@ -614,10 +614,6 @@ export async function handleD1StagingEventBatteries(
           };
           break;
         case "start":
-          if (eventElapsedMs >= EVENT_LIMIT_MS) {
-            d1ApiError(req, res, 409, "EVENT_TIME_LIMIT", "O limite de 2 horas do evento foi atingido.");
-            return true;
-          }
           if (run.state !== "IDLE") {
             res.status(400).json({ error: "Este comando não é válido para o estado atual." }); return true;
           }
@@ -636,10 +632,6 @@ export async function handleD1StagingEventBatteries(
           if (run.state !== "PAUSED") { res.status(400).json({ error: "O cronômetro não está pausado." }); return true; }
           if (run.elapsed_ms >= batteryTimer.time_cap_ms) {
             d1ApiError(req, res, 409, "BATTERY_TIME_CAP_REACHED", "O limite desta bateria já foi atingido.");
-            return true;
-          }
-          if (eventElapsedMs >= EVENT_LIMIT_MS) {
-            d1ApiError(req, res, 409, "EVENT_TIME_LIMIT", "O limite de 2 horas do evento foi atingido.");
             return true;
           }
           next = { state: "RUNNING", elapsed_ms: run.elapsed_ms, started_at: nowIso, preparation_ends_at: run.preparation_ends_at,
@@ -1155,7 +1147,7 @@ export async function handleD1StagingEventBatteries(
           SET operational_finalized_at=?,operational_finalized_by=?
           WHERE id=? AND event_id=? AND operational_finalized_at IS NULL
             AND EXISTS(SELECT 1 FROM zero3_battery_runs
-              WHERE battery_id=? AND event_id=? AND version=? AND state='FINISHED')`)
+              WHERE battery_id=? AND event_id=? AND version=? AND state IN ('FINISHED','CANCELLED'))`)
           .bind(stamp, member.clerk_user_id, battery.id, battery.eventId,
             battery.id, battery.eventId, run.version + 1),
         changedRowsGuard(DB, battery.eventId),

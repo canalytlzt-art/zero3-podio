@@ -15,4 +15,5 @@ export const Zero3TimerState = {
   RUNNING: 'RUNNING',
   PAUSED: 'PAUSED',
   FINISHED: 'FINISHED',
+  CANCELLED: 'CANCELLED',
 } as const;

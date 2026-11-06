@@ -361,6 +361,7 @@ export function calculateCategoryLeaderboard(input: {
           result.proofId === proof.id &&
           result.status === "VALIDATED" &&
           valueOf(result.rawValue) !== null &&
+          exactDecimal(result.rawValue)?.coefficient !== 0n &&
           registrations.some((registration) => registration.id === result.registrationId),
       )
       .map((result) => ({ result, value: exactDecimal(result.rawValue)! }))
@@ -420,12 +421,16 @@ export function calculateCategoryLeaderboard(input: {
     const proofScores = proofs.map((proof): ProofScore => {
       const result = proofResults.get(`${registration.id}:${proof.id}`);
       const resultValue = result ? valueOf(result.rawValue) : null;
+      const cancelledMark = result?.status === "VALIDATED" &&
+        exactDecimal(result.rawValue)?.coefficient === 0n;
       const isConfigured = configured(proof);
       const placement = result ? placementByResultId.get(result.id) : undefined;
       if (!isConfigured) entryConfigurationPending = true;
       if (placement?.points !== null && placement?.points !== undefined) completedProofs += 1;
       if (result?.status === "PUBLICATION_PENDING") entryPublicationPending = true;
-      if (result?.status === "DNS" || result?.status === "DNF") entryExceptionRulePending = true;
+      if (result?.status === "DNS" || result?.status === "DNF" || cancelledMark) {
+        entryExceptionRulePending = true;
+      }
       if (placement?.points !== null && placement?.points !== undefined) {
         scoredProofs += 1;
         pointSum += placement.points;
@@ -440,6 +445,7 @@ export function calculateCategoryLeaderboard(input: {
         status = "VALIDATED";
       } else if (result?.status === "DNS") status = "DNS";
       else if (result?.status === "DNF") status = "DNF";
+      else if (cancelledMark) status = "DNF";
       else if (result?.status === "VALIDATED") status = "MISSING";
       else if (result) status = "PROVISIONAL";
 

@@ -28,3 +28,9 @@ Scheduled start is also attached to the stable battery ID and event, but remains
 **Why:** The user explicitly distinguished expected start time from recorded timer start and prohibited inventing intervals or coupling schedule edits to timer commands.
 
 **How to apply:** Persist an optional scheduled instant on the event battery. Convert operator-entered local time using `America/Sao_Paulo`; keep timer state and CAP fields independent and only suggest an order for new batteries without renumbering existing ones.
+
+The Worker D1 path stores independent runs by stable battery ID. The Replit/Node PostgreSQL path still has one event-level timer and cannot safely honor battery/proof-scoped timer commands; do not treat Preview testing as proof of independent battery timers.
+
+**Why:** The older route can otherwise accept a command targeted at one battery while mutating the shared event timer.
+
+**How to apply:** Use the Worker D1 path to validate per-battery operation. Until PostgreSQL is migrated, reject scoped commands there with an explicit conflict rather than returning a false success.

@@ -143,6 +143,9 @@ export async function handleD1StagingControls(
         case "reset":
           next = { state: "IDLE", elapsed_ms: 0, started_at: null, preparation_ends_at: null };
           break;
+        case "cancel":
+          d1ApiError(req, res, 409, "BATTERY_TIMER_UNAVAILABLE", "Cancelamento requer o cronômetro independente da bateria no ambiente D1.");
+          return true;
       }
       const saved = await DB.prepare(`UPDATE zero3_heat_runs SET state=?,elapsed_ms=?,started_at=?,
         preparation_ends_at=?,version=version+1,last_command_id=?,updated_at=?

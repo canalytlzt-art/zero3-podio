@@ -1452,6 +1452,16 @@ router.put(
       });
       return;
     }
+    if (
+      body.data.expectedBatteryId ||
+      body.data.expectedProofId ||
+      body.data.expectedBatteryOrder !== undefined
+    ) {
+      res.status(409).json({
+        error: "Este backend usa um cronômetro por evento e não pode operar com segurança um cronômetro por bateria. Nenhum timer foi alterado; use o backend D1 de staging.",
+      });
+      return;
+    }
     const [event] = await db
       .select()
       .from(zero3EventsTable)
@@ -1554,6 +1564,8 @@ router.put(
             preparationEndsAt: null,
           };
           break;
+        case "cancel":
+          throw new Error("TIMER_INVALID_ACTION");
       }
       const [saved] = await tx
         .update(zero3TimersTable)

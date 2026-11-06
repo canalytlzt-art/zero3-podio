@@ -4,7 +4,7 @@ import {
   formatBrasiliaDateTime,
   publicBatteryOperationalLabel,
   publicBatteryOperationalState,
-} from "./public-battery-status";
+} from "./public-battery-status.ts";
 
 test("public operational status follows the timer and explicit operational finalization", () => {
   const status = (state: string, operationalFinalized = false, elapsedMs = 0, timeCapMs = 7_200_000) =>
@@ -14,9 +14,10 @@ test("public operational status follows the timer and explicit operational final
   assert.equal(publicBatteryOperationalLabel(status("PREPARATION")), "Em preparação");
   assert.equal(publicBatteryOperationalLabel(status("RUNNING")), "Em andamento");
   assert.equal(publicBatteryOperationalLabel(status("PAUSED")), "Pausada");
-  assert.equal(publicBatteryOperationalLabel(status("FINISHED", false, 90_000)), "Em apuração");
-  assert.equal(publicBatteryOperationalLabel(status("FINISHED", false, 7_200_000)), "CAP atingido · em apuração");
+  assert.equal(publicBatteryOperationalLabel(status("FINISHED", false, 90_000)), "Finalizada");
+  assert.equal(publicBatteryOperationalLabel(status("FINISHED", false, 7_200_000)), "Finalizada");
   assert.equal(publicBatteryOperationalLabel(status("FINISHED", true, 7_200_000)), "Finalizada");
+  assert.equal(publicBatteryOperationalLabel(status("CANCELLED")), "Cancelada");
 });
 
 test("battery start times are rendered in the explicit Brasília timezone", () => {

@@ -12,6 +12,7 @@ import { Expand, Minimize2, RotateCw } from 'lucide-react';
 import { liveBoardHrefForBattery, liveBoardHrefForEvent } from '@/lib/live-board-navigation';
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
+import { cancelledProofLabel } from '@/lib/zero3-result-display';
 import { inspectPublicBoardPayload, isPublicBoardJsonParseError } from '@/lib/public-board-response';
 import { publicBatteryOperationalLabel, publicBatteryOperationalState } from '@/lib/public-battery-status';
 import { formatBrasiliaDateTime as formatScheduledBrasiliaDateTime } from '@/lib/brasilia-schedule';
@@ -258,7 +259,8 @@ function UnifiedEventBatteryTable({
           const capElapsed = battery.state === 'PREPARATION' ? battery.elapsedMs : elapsed;
           const capState = capReached
             ? 'CAP ATINGIDO · CONGELADO'
-            : battery.state === 'PREPARATION' ? 'AGUARDANDO LARGADA' : timerStateLabel(battery.state);
+            : battery.state === 'PAUSED' ? 'PAUSADO · TEMPO CONGELADO'
+              : battery.state === 'PREPARATION' ? 'AGUARDANDO LARGADA' : timerStateLabel(battery.state);
           const rows = registrations.length ? registrations : [null];
 
           return rows.map(registration => {
@@ -307,7 +309,12 @@ function UnifiedEventBatteryTable({
                     )
                   : { result: undefined, placement: null, label: 'PENDENTE', published: false };
                 const result = cell.result;
-                const value = result?.status === 'DNS' || result?.status === 'DNF'
+                const cancelledLabel = result
+                  ? cancelledProofLabel(result.status, result.rawValue)
+                  : null;
+                const value = cancelledLabel && result?.rawValue != null
+                  ? `${result.rawValue}${proof.unit ? ` ${proof.unit}` : ''}`
+                  : result?.status === 'DNS' || result?.status === 'DNF'
                   ? result.status
                   : result?.rawValue != null
                     ? `${result.rawValue}${proof.unit ? ` ${proof.unit}` : ''}`
@@ -315,7 +322,7 @@ function UnifiedEventBatteryTable({
                 const placement = cell.published ? cell.placement : null;
                 return <td key={proof.id} className="tv-unified-result-cell">
                   <strong>{placement ? `${placement}º · ` : ''}{value}</strong>
-                  <small className={cell.label === 'PARCIAL' || cell.label === 'REVISADO' ? 'provisional' : ''}>{cell.label}</small>
+                  <small className={cancelledLabel || cell.label === 'PARCIAL' || cell.label === 'REVISADO' ? 'provisional' : ''}>{cancelledLabel ?? cell.label}</small>
                 </td>;
               })}
             </tr>;
@@ -352,7 +359,8 @@ function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serve
   const capElapsed = battery.state === 'PREPARATION' ? battery.elapsedMs : elapsed;
   const capState = capReached
     ? 'CAP ATINGIDO · CONGELADO'
-    : battery.state === 'PREPARATION' ? 'AGUARDANDO LARGADA' : timerStateLabel(battery.state);
+    : battery.state === 'PAUSED' ? 'PAUSADO · TEMPO CONGELADO'
+      : battery.state === 'PREPARATION' ? 'AGUARDANDO LARGADA' : timerStateLabel(battery.state);
 
   const publishedForProof=(category:string,proofId:string)=>{
     const categoryRegs=registrations.filter(reg=>reg.category===category);
@@ -404,12 +412,14 @@ function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serve
                   .find(item=>item.category===reg.category);
                 const entry=leaderboard?.entries.find(item=>item.registrationId===reg.id);
                 const score=entry?.proofScores.find(item=>item.proofId===proof.id);
-                const value=result?.status==='DNS'||result?.status==='DNF'?result.status
+                const cancelledLabel=result?cancelledProofLabel(result.status,result.rawValue):null;
+                const value=cancelledLabel&&result?.rawValue!=null?`${result.rawValue}${proof.unit?` ${proof.unit}`:''}`
+                  :result?.status==='DNS'||result?.status==='DNF'?result.status
                   :result?.rawValue!=null?`${result.rawValue}${proof.unit?` ${proof.unit}`:''}`:'—';
                 const isPublished=result?.status==='VALIDATED'&&result.publishedRevision===result.revision;
-                const label=!result?'PENDENTE':result.status==='PROVISIONAL'?'PROVISÓRIO · AGUARDA REVISÃO'
+                const label=cancelledLabel??(!result?'PENDENTE':result.status==='PROVISIONAL'?'PROVISÓRIO · AGUARDA REVISÃO'
                   :result.status==='VALIDATED'&&isPublished?'PUBLICADO NO RANKING'
-                  :result.status==='VALIDATED'?'REVISADO · AGUARDA PUBLICAR RANKING':result.status;
+                  :result.status==='VALIDATED'?'REVISADO · AGUARDA PUBLICAR RANKING':result.status);
                 const provisional=result?.status==='PROVISIONAL'||(result?.status==='VALIDATED'&&!isPublished);
                 const placement=published?score?.placement:null;
                 return <td key={proof.id}><strong>{placement?`${placement}º · `:''}{value}</strong>

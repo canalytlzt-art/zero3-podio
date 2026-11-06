@@ -105,7 +105,7 @@ export function EventBatteryTimerPanel({
   const canEditSchedule = canControl && !battery.operationalFinalized;
   const controls = battery.operationalFinalized
     ? []
-    : capReached && state !== "FINISHED" && state !== "CANCELLED"
+    : capReached && state !== "FINISHED"
       ? []
       : eventBatteryTimerActions(state);
   const statusChoices = eventBatteryTimerStatusChoices(state);

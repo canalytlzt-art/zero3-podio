@@ -587,6 +587,34 @@ test("unrounded marks remain distinct and missing values do not create false tie
   assert.deepEqual(beyondFloatPrecision.entries.map((entry) => entry.proofScores[0]?.points), [1, 2]);
 });
 
+test("a validated zero is retained as a cancelled proof exception and never earns points", () => {
+  const pair = registrations.filter((registration) => registration.category === "RX").slice(0, 2);
+  for (const direction of ["LOWER", "HIGHER"] as const) {
+    const proof = { ...proofs[0]!, direction };
+    const board = calculateCategoryLeaderboard({
+      category: "RX",
+      eventStatus: "FINISHED",
+      proofs: [proof],
+      registrations: pair,
+      results: [
+        { id: `cancelled-${direction}`, registrationId: pair[0]!.id, proofId: proof.id, rawValue: "0.000", status: "VALIDATED" },
+        { id: `valid-${direction}`, registrationId: pair[1]!.id, proofId: proof.id, rawValue: 10, status: "VALIDATED" },
+      ],
+    });
+
+    const cancelled = board.entries.find((entry) => entry.registrationId === pair[0]!.id)!;
+    const valid = board.entries.find((entry) => entry.registrationId === pair[1]!.id)!;
+    assert.equal(cancelled.proofScores[0]?.value, 0, "the recorded zero remains visible");
+    assert.equal(cancelled.proofScores[0]?.status, "DNF");
+    assert.equal(cancelled.proofScores[0]?.points, null);
+    assert.equal(cancelled.proofScores[0]?.placement, null);
+    assert.equal(cancelled.status, "EXCEPTION_RULE_PENDING");
+    assert.equal(valid.proofScores[0]?.placement, 1);
+    assert.equal(valid.proofScores[0]?.points, 1);
+    assert.equal(board.status, "EXCEPTION_RULE_PENDING");
+  }
+});
+
 test("event-wide places include all 13 registrations instead of restarting by battery", () => {
   const thirteen = Array.from({ length: 13 }, (_, index) => ({
     id: `registration-${String(index + 1).padStart(2, "0")}`,

@@ -144,7 +144,6 @@ export async function buildRankingPublicationPlan(input: {
 
     if (!["VALIDATED", "DNS", "DNF"].includes(row.status)) continue;
     reviewedCellKeys.add(cellKey);
-    if (samePublishedValue(row)) continue;
 
     if (
       !registration ||
@@ -160,6 +159,29 @@ export async function buildRankingPublicationPlan(input: {
       });
       continue;
     }
+
+    if (row.status === "VALIDATED" && numericValue(row.rawValue) === 0) {
+      const cancelledResult: RankingPublicationSnapshotResult = {
+        id: row.id,
+        registrationId: row.registrationId,
+        proofId: row.proofId,
+        rawValue: row.rawValue,
+        status: "DNF",
+        category: row.category,
+        revision: row.revision,
+        elapsedMs: row.elapsedMs,
+      };
+      baseByCell.set(cellKey, cancelledResult);
+      issues.push({
+        code: "EXCEPTION_RULE_PENDING",
+        message: "A marca 0 representa Prova cancelada. O valor foi preservado sem pontos; os demais resultados válidos ainda podem ser publicados.",
+        blocking: false,
+        resultId: row.id,
+      });
+      continue;
+    }
+
+    if (samePublishedValue(row)) continue;
 
     if (row.status === "DNS" || row.status === "DNF") {
       issues.push({
@@ -248,10 +270,17 @@ export async function buildRankingPublicationPlan(input: {
   }
   for (const board of calculated.leaderboards) {
     if (board.status === "EXCEPTION_RULE_PENDING") {
+      const hasOtherUnresolvedException = [...baseByCell.values()].some((result) =>
+        result.category === board.category &&
+        (result.status === "DNS" || result.status === "DNF") &&
+        numericValue(result.rawValue) !== 0,
+      );
       issues.push({
         code: "EXCEPTION_RULE_PENDING",
-        message: `A categoria ${board.category} tem exceção sem regra oficial de pontuação.`,
-        blocking: true,
+        message: hasOtherUnresolvedException
+          ? `A categoria ${board.category} tem exceção sem regra oficial de pontuação.`
+          : `A categoria ${board.category} tem prova cancelada sem regra numérica; as demais marcas válidas podem ser publicadas.`,
+        blocking: hasOtherUnresolvedException,
         resultId: null,
       });
     }

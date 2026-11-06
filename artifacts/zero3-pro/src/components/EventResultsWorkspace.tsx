@@ -29,6 +29,7 @@ import type {
 } from '@workspace/api-client-react';
 import { ArrowLeft, Check, ChevronRight, CircleAlert, Clock3, RefreshCw, Upload } from 'lucide-react';
 import { formatEventResultValue, groupResultsQueue, summarizeRegistrationResults } from '@/lib/event-results-workspace';
+import { cancelledProofLabel } from '@/lib/zero3-result-display';
 import { getHttpErrorStatus, pollingIntervalAfterError, shouldRefetchAfterError, shouldRetryZero3Query } from '@/lib/api-error-policy';
 import './EventResultsWorkspace.css';
 
@@ -797,9 +798,13 @@ export function EventResultsWorkspace({
                     ? publicationPreview?.resultStates.find((state) => state.resultId === result.id)
                     : undefined;
                   const resultIsUnassigned = !selectedBattery && Boolean(result);
+                  const resultCancelledLabel = result
+                    ? cancelledProofLabel(result.status, result.rawValue)
+                    : null;
                   const resultPublicationLabel = resultIsUnassigned
                     ? 'Parcial · vínculo pendente'
-                    : resultPublicationState?.state
+                    : resultCancelledLabel
+                      ?? resultPublicationState?.state
                       ?? (!result ? 'Faltando' : publicationQuery.isError
                         ? 'Estado de publicação indisponível'
                         : result.status === 'VALIDATED' ? 'Revisado' : 'Parcial');
@@ -812,7 +817,7 @@ export function EventResultsWorkspace({
                         <div className="erw-proof-name"><strong>{proof.name || `Prova ${proof.order}`}</strong><small>{proof.metricType === 'TIME' ? 'Tempo' : proof.metricType === 'REPETITIONS' ? 'Repetições' : proof.metricType === 'LOAD' ? 'Carga' : proof.metricType === 'CUSTOM' ? 'Marca' : 'Não configurada'}{proof.unit ? ` · ${proof.unit}` : ''}</small></div>
                          <span className={`erw-proof-status ${resultPublicationState?.state === 'PUBLICADO' ? 'is-confirmed' : result ? 'is-provisional' : ''}`}>{resultPublicationLabel}</span>
                       </header>
-                      <div className="erw-proof-value-line"><span>Marca atual</span><strong>{formatEventResultValue(result?.rawValue ?? null, proof)}</strong>{result && <small>Rev. {result.revision} · {resultPublicationState?.state ?? (publicationQuery.isError ? 'publicação indisponível' : result.status === 'VALIDATED' ? 'Revisado' : 'Parcial')}{resultPublicationState?.previouslyPublished && resultPublicationState.state !== 'PUBLICADO' ? ' · publicação anterior mantida' : ''}</small>}</div>
+                      <div className="erw-proof-value-line"><span>Marca atual</span><strong>{formatEventResultValue(result?.rawValue ?? null, proof)}</strong>{result && <small>{resultCancelledLabel ?? `Rev. ${result.revision} · ${resultPublicationState?.state ?? (publicationQuery.isError ? 'publicação indisponível' : result.status === 'VALIDATED' ? 'Revisado' : 'Parcial')}`}{resultPublicationState?.previouslyPublished && resultPublicationState.state !== 'PUBLICADO' ? ' · publicação anterior mantida' : ''}</small>}</div>
                       {!proof.configured ? (
                         <div className="erw-unconfigured-note"><CircleAlert size={15} /><span>Marca desativada. Configure esta prova antes de lançar resultados.</span></div>
                       ) : resultIsUnassigned ? (
