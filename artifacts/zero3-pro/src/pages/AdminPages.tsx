@@ -37,6 +37,8 @@ import { normalizeTeamNameInput, teamNameInputError } from '@/lib/roster-managem
 import { describeAthleteReplacement, normalizeAthleteSearch } from '@/lib/athlete-search';
 import { primaryTimerAction, timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode, zero3EventBatteryDeleteConfirmation } from '@/lib/event-battery-code';
+import { parseBrasiliaDateTimeInput } from '@/lib/brasilia-schedule';
+import { nextAvailableBatteryOrder } from '@/lib/battery-sequence';
 import {
  batteryIssueActionLabel, batteryIssueHref, batteryIssueLabel,
  batteryReadinessCount, getBatteryReadinessIssues,
@@ -678,7 +680,7 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const [resultsFocusIssue,setResultsFocusIssue]=useState<BatteryReadinessIssue|null>(null);
  const activeId=batteryModel.activeBattery?.batteryId;
  const batteries=batteriesQuery.data??[];
- const nextOrder=Math.max(0,...batteries.map(item=>item.order))+1;
+ const nextOrder=nextAvailableBatteryOrder(batteries.map(item=>item.order));
  const refresh=()=>{
   void qc.invalidateQueries({queryKey:getListZero3EventBatteriesQueryKey(eventId)});
   void qc.invalidateQueries({queryKey:getGetZero3PublicBoardQueryKey({eventId})});
@@ -719,7 +721,10 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
  const createBattery=(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget);
   const formElement=event.currentTarget;
-   create.mutate({eventId,data:{name:String(form.get('name')||'').trim(),order:Number(form.get('order')),registrationIds:createRegistrationIds}},{
+    let scheduledStartAt:string|null;
+    try{scheduledStartAt=parseBrasiliaDateTimeInput(String(form.get('scheduledStartAt')||''));}
+    catch(failure){setError(feedback(failure));return;}
+    create.mutate({eventId,data:{name:String(form.get('name')||'').trim(),order:Number(form.get('order')),scheduledStartAt,registrationIds:createRegistrationIds}},{
     onSuccess:()=>{refresh();setError('');formElement.reset();setOrder(undefined);setCreateRegistrationIds([]);},
    onError:failure=>setError(feedback(failure)),
   });
@@ -855,7 +860,8 @@ function EventBatteries({eventId,batteryModel}:{eventId:string;batteryModel:Zero
    <h2 className="panel-title">Criar bateria do evento</h2>
    <p className="field-help">Uma inscrição participa uma única vez no evento. A bateria inclui, em paralelo, todas as provas cadastradas.</p>
    <Field label="Nome da bateria" name="name" required placeholder="Bateria 01"/>
-   <div className="field"><label htmlFor="event-battery-order">Número no evento</label><input id="event-battery-order" name="order" type="number" min="1" required value={order??nextOrder} onChange={event=>setOrder(Number(event.target.value))}/></div>
+   <div className="field"><label htmlFor="event-battery-order">Número na sequência · P{String(order??nextOrder).padStart(2,'0')}</label><input id="event-battery-order" name="order" type="number" min="1" required value={order??nextOrder} onChange={event=>setOrder(Number(event.target.value))}/><span className="field-help">Próximo número disponível sugerido automaticamente; ajuste aqui se necessário.</span></div>
+   <div className="field"><label htmlFor="event-battery-scheduled-start">Início previsto · horário de Brasília</label><input id="event-battery-scheduled-start" name="scheduledStartAt" type="datetime-local" step="60"/><span className="field-help">Opcional. Sem horário cadastrado, a TV mostra —. A programação não inicia o cronômetro.</span></div>
     <div className="field"><span className="battery-picker-field-label">Inscrições da bateria</span><BatteryRegistrationPicker
      registrations={registrations.data||[]}
      batteries={batteries}

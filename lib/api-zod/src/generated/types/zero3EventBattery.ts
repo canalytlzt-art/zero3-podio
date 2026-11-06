@@ -17,6 +17,8 @@ export interface Zero3EventBattery {
   /** @minimum 1 */
   order: number;
   name: string;
+  /** @nullable */
+  scheduledStartAt: Date | null;
   state: Zero3TimerState;
   /** @minimum 0 */
   elapsedMs: number;

@@ -1410,12 +1410,14 @@ components:
       properties:
         expectedName: { type: string, minLength: 1, maxLength: 120 }
         expectedOrder: { type: integer, minimum: 1 }
+        expectedScheduledStartAt: { type: ["string", "null"], format: date-time }
         expectedRegistrationIds:
           type: array
           uniqueItems: true
           items: { type: string }
         name: { type: string, minLength: 1, maxLength: 120 }
         order: { type: integer, minimum: 1 }
+        scheduledStartAt: { type: ["string", "null"], format: date-time }
         swapWithBatteryId: { type: string }
         registrationIds:
           type: array
@@ -1808,6 +1810,7 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 120 }
         order: { type: integer, minimum: 1 }
+        scheduledStartAt: { type: ["string", "null"], format: date-time }
         registrationIds:
           type: array
           uniqueItems: true
@@ -1847,6 +1850,7 @@ components:
         eventId: { type: string }
         order: { type: integer, minimum: 1 }
         name: { type: string }
+        scheduledStartAt: { type: ["string", "null"], format: date-time }
         state: { $ref: "#/components/schemas/Zero3TimerState" }
         elapsedMs: { type: integer, minimum: 0 }
         eventElapsedMs: { type: integer, minimum: 0 }
@@ -1878,7 +1882,7 @@ components:
         operationalFinalizedAt: { type: ["string", "null"], format: date-time }
         timerVersion: { type: integer, minimum: 0 }
         updatedAt: { type: string, format: date-time }
-      required: [id, eventId, order, name, state, elapsedMs, eventElapsedMs, eventLimitMs, timeCapMs, preparationEndsAt, preparationRemainingMs, preparationSeconds, startedAt, preparationStartedAt, firstStartedAt, stoppedAt, registrations, proofs, proofLeaderboards, results, categories, pendingResultCount, reviewedResultCount, expectedResultCount, finalizationCurrent, finalized, finalizationFingerprint, finalizationVersion, finalizedAt, timerVersion, updatedAt]
+      required: [id, eventId, order, name, scheduledStartAt, state, elapsedMs, eventElapsedMs, eventLimitMs, timeCapMs, preparationEndsAt, preparationRemainingMs, preparationSeconds, startedAt, preparationStartedAt, firstStartedAt, stoppedAt, registrations, proofs, proofLeaderboards, results, categories, pendingResultCount, reviewedResultCount, expectedResultCount, finalizationCurrent, finalized, finalizationFingerprint, finalizationVersion, finalizedAt, timerVersion, updatedAt]
     Zero3BatteryTimeCapUpdateInput:
       type: object
       properties:
@@ -2216,6 +2220,7 @@ components:
         proofName: { type: string }
         order: { type: integer }
         name: { type: string }
+        scheduledStartAt: { type: ["string", "null"], format: date-time }
         heatIds: { type: array, items: { type: string } }
         categories: { type: array, items: { type: string } }
         registrations: { type: array, items: { $ref: "#/components/schemas/Zero3BatteryEntry" } }

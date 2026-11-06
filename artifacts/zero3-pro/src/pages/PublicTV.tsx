@@ -12,7 +12,8 @@ import { RotateCw } from 'lucide-react';
 import { liveBoardHrefForBattery, liveBoardHrefForEvent } from '@/lib/live-board-navigation';
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
-import { formatBrasiliaDateTime, publicBatteryOperationalLabel, publicBatteryOperationalState } from '@/lib/public-battery-status';
+import { publicBatteryOperationalLabel, publicBatteryOperationalState } from '@/lib/public-battery-status';
+import { formatBrasiliaDateTime as formatScheduledBrasiliaDateTime } from '@/lib/brasilia-schedule';
 
 // Keep target=_blank links native; Wouter's Link handler cancels their navigation.
 function Link(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
@@ -89,6 +90,7 @@ type TvEventBattery = {
   eventId: string;
   order: number;
   name: string;
+  scheduledStartAt: string | Date | null;
   state: string;
   elapsedMs: number;
   timeCapMs: number;
@@ -120,6 +122,7 @@ function toTvEventBattery(
     eventId: battery.eventId,
     order: battery.order,
     name: battery.name,
+    scheduledStartAt: eventBattery.scheduledStartAt ?? null,
     state: battery.state,
     elapsedMs: battery.elapsedMs ?? timer?.elapsedMs ?? 0,
     timeCapMs: battery.timeCapMs ?? timer?.timeCapMs ?? 0,
@@ -193,34 +196,15 @@ function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serve
     result.status==='VALIDATED'&&result.publishedRevision===result.revision).length;
   const resultsStatus=publishedCount===0?'RESULTADOS PROVISÓRIOS':'RANKING OFICIAL PARCIAL';
   const clockDelta=Math.max(0,now.getTime()-Date.parse(serverTime));
-  const startedAt=battery.firstStartedAt??battery.startedAt;
-  const preparationRemaining=battery.preparationEndsAt
-    ?Math.max(0,new Date(battery.preparationEndsAt).getTime()-now.getTime())
-    :Math.max(0,battery.preparationRemainingMs-clockDelta);
   const rawElapsed=battery.elapsedMs+(battery.state==='RUNNING'&&!battery.operationalFinalized?clockDelta:0);
   const capReached=Boolean(battery.timeCapMs>0&&rawElapsed>=battery.timeCapMs);
   const elapsed=Math.min(rawElapsed,battery.timeCapMs||rawElapsed);
   const categoriesWithTeams=categories.filter(category=>registrations.some(reg=>reg.category===category));
 
-  function batteryClock() {
-    if(!startedAt) {
-      return <div className="tv-battery-time-pending">
-        <small>HORÁRIO PREVISTO</small>
-        <strong>Não informado</strong>
-        {battery.state==='PREPARATION'&&<small className="tv-battery-preparation-time">
-          PREPARAÇÃO · {duration(preparationRemaining)}
-        </small>}
-      </div>;
-    }
-    return <div className="tv-battery-time-readout">
-      <small>INÍCIO REAL · BRASÍLIA</small>
-      <time>{formatBrasiliaDateTime(startedAt)}</time>
-      <strong>{duration(elapsed)}</strong>
-      <small className="tv-battery-time-state">
-        {capReached?'CAP ATINGIDO · CRONÔMETRO CONGELADO':timerStateLabel(battery.state)}
-      </small>
-    </div>;
-  }
+  const capElapsed = battery.state === 'PREPARATION' ? battery.elapsedMs : elapsed;
+  const capState = capReached
+    ? 'CAP ATINGIDO · CONGELADO'
+    : battery.state === 'PREPARATION' ? 'AGUARDANDO LARGADA' : timerStateLabel(battery.state);
 
   const publishedForProof=(category:string,proofId:string)=>{
     const categoryRegs=registrations.filter(reg=>reg.category===category);
@@ -248,11 +232,18 @@ function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serve
         <div className="tv-event-result-table-wrap">
           <table className="tv-event-result-table tv-event-battery-results-table">
             <thead><tr>
-              <th>INÍCIO / TEMPO</th><th>EQUIPE / ATLETAS</th>
+              <th>INÍCIO PREVISTO</th><th>CAP</th><th>EQUIPE / ATLETAS</th>
               {proofs.map(proof=><th key={proof.id}><span>PROVA {proof.order}</span><small>{proof.name||`Prova ${proof.order}`}</small></th>)}
             </tr></thead>
             <tbody>{registrations.length ? registrations.map((reg,index)=><tr key={reg.id}>
-              {index===0&&<td rowSpan={registrations.length} className="tv-event-battery-clock-cell">{batteryClock()}</td>}
+              <td className="tv-event-battery-schedule-cell">
+                <small>BRASÍLIA</small>
+                <strong>{formatScheduledBrasiliaDateTime(battery.scheduledStartAt)}</strong>
+              </td>
+              <td className="tv-event-battery-cap-cell">
+                <strong>{duration(capElapsed)}</strong>
+                <small>{capState}</small>
+              </td>
               <td className="tv-event-battery-team-cell">
                 <strong>{reg.teamName||reg.athleteNames.join(' / ')||'Equipe sem nome'}</strong>
                 {reg.athleteNames.length>0&&<small>{reg.athleteNames.join(' · ')}</small>}
@@ -277,7 +268,8 @@ function EventBatteryCard({battery,serverTime,now}:{battery:TvEventBattery;serve
                   <small className={provisional?'provisional':''}>{label}</small></td>;
               })}
             </tr>) : <tr>
-              <td className="tv-event-battery-clock-cell">{batteryClock()}</td>
+              <td className="tv-event-battery-schedule-cell"><small>BRASÍLIA</small><strong>{formatScheduledBrasiliaDateTime(battery.scheduledStartAt)}</strong></td>
+              <td className="tv-event-battery-cap-cell"><strong>{duration(capElapsed)}</strong><small>{capState}</small></td>
               <td className="tv-event-battery-empty-cell" colSpan={proofs.length+1}>
                 <strong>Bateria sem equipes vinculadas</strong>
                 <span>As provas ficam disponíveis quando inscrições forem associadas.</span>

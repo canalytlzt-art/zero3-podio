@@ -454,17 +454,19 @@ body:has(.tv-root) {
 .tv-event-battery-statuses { display: grid; justify-items: end; gap: 5px; color: #c5bbd1; font: 700 8px/1.35 Consolas, 'Courier New', monospace; text-align: right; }
 .tv-event-battery-statuses .tv-battery-state { width: fit-content; text-align: center; }
 .tv-event-result-table-wrap { overflow-x: auto; overscroll-behavior-inline: contain; }
-.tv-event-battery-results-table { width: 100%; min-width: 930px; table-layout: fixed; border-collapse: collapse; text-align: left; }
+.tv-event-battery-results-table { width: 100%; min-width: 1040px; table-layout: fixed; border-collapse: collapse; text-align: left; }
 .tv-event-battery-results-table th { padding: 9px 10px; color: #c7bdd3; border-bottom: 1px solid #3b3547; background: #191722; font: 700 8px/1.35 Consolas, 'Courier New', monospace; text-transform: uppercase; }
 .tv-event-battery-results-table th > span,
 .tv-event-battery-results-table th > small { display: block; }
 .tv-event-battery-results-table th > small { margin-top: 3px; color: #aaa0b8; font-size: 7px; font-weight: 500; line-height: 1.35; text-transform: none; overflow-wrap: anywhere; }
 .tv-event-battery-results-table th:first-child,
-.tv-event-battery-results-table td:first-child { width: 180px; }
+.tv-event-battery-results-table td:first-child { width: 145px; }
 .tv-event-battery-results-table th:nth-child(2),
-.tv-event-battery-results-table td:nth-child(2) { width: 250px; }
-.tv-event-battery-results-table th:nth-child(n+3),
-.tv-event-battery-results-table td:nth-child(n+3) { width: 125px; }
+.tv-event-battery-results-table td:nth-child(2) { width: 125px; }
+.tv-event-battery-results-table th:nth-child(3),
+.tv-event-battery-results-table td:nth-child(3) { width: 250px; }
+.tv-event-battery-results-table th:nth-child(n+4),
+.tv-event-battery-results-table td:nth-child(n+4) { width: 130px; }
 .tv-event-battery-results-table td { padding: 10px; color: #f2eff5; border-top: 1px solid #3b3547; vertical-align: top; font-size: 9px; }
 .tv-event-battery-results-table tbody tr:first-child td { border-top: 0; }
 .tv-event-battery-results-table td strong,
@@ -478,15 +480,12 @@ body:has(.tv-root) {
 .tv-event-battery-empty-cell span { display: block; }
 .tv-event-battery-empty-cell strong { color: #f8f6fb; font-size: 11px; }
 .tv-event-battery-empty-cell span { margin-top: 4px; color: #c5bbd1; font-size: 9px; }
-.tv-battery-time-readout,
-.tv-battery-time-pending { display: grid; justify-items: start; gap: 5px; min-width: 0; }
-.tv-battery-time-readout > small:first-child,
-.tv-battery-time-pending > small:first-child { color: #c5b0eb; font: 700 8px/1.35 Consolas, 'Courier New', monospace; letter-spacing: .06em; }
-.tv-battery-time-readout > time { color: #b8aec5; font: 7px/1.3 Consolas, 'Courier New', monospace; overflow-wrap: anywhere; }
-.tv-battery-time-readout > strong { color: var(--arena-lime) !important; font: 750 clamp(22px, 2vw, 30px)/1 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tv-battery-time-readout > .tv-battery-time-state,
-.tv-battery-time-pending > .tv-battery-preparation-time { color: #c5bbd1; font: 700 7px/1.35 Consolas, 'Courier New', monospace; }
-.tv-battery-time-pending > strong { color: #f2eff5; font-size: 12px; line-height: 1.3; }
+.tv-event-battery-schedule-cell { background: #191722; }
+.tv-event-battery-schedule-cell small,
+.tv-event-battery-cap-cell small { display:block; color:#b8aec5; font:700 7px/1.35 Consolas,'Courier New',monospace; letter-spacing:.04em; }
+.tv-event-battery-schedule-cell strong { color:#f2eff5; font:700 12px/1.3 Consolas,'Courier New',monospace; font-variant-numeric:tabular-nums; }
+.tv-event-battery-cap-cell { background:#191722; }
+.tv-event-battery-cap-cell strong { color:var(--arena-lime) !important; font:750 clamp(19px,1.65vw,25px)/1 'Bahnschrift','Arial Narrow','Segoe UI',sans-serif !important; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .tv-event-battery-team-cell .tv-category { display: inline-flex; width: fit-content; margin-top: 5px; }
 .tv-event-battery-podiums { display: grid; gap: 10px; padding: 10px; }
 .tv-event-battery-card-heading .tv-eventline { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
@@ -505,16 +504,16 @@ body:has(.tv-root) {
   .tv-status-chip { padding: 7px 9px; font-size: 8px; }
   .tv-event-battery-card-heading { flex-direction: column; }
   .tv-event-battery-statuses { justify-items: start; text-align: left; }
-  .tv-event-battery-results-table { min-width: 900px; }
+  .tv-event-battery-results-table { min-width: 1040px; }
   .tv-event-battery-results-table th:first-child,
-  .tv-event-battery-results-table td:first-child { width: 160px; }
+  .tv-event-battery-results-table td:first-child { width: 145px; }
   .tv-legacy-battery-timer { min-width: min(100%, 190px); }
 }
 @media (max-width: 390px) {
   .tv-header { grid-template-columns: minmax(78px, 1fr) auto; }
   .tv-logo { width: 82px; }
   .tv-header-center .tv-clock { font-size: 27px; }
-  .tv-event-battery-results-table { min-width: 880px; }
+  .tv-event-battery-results-table { min-width: 1040px; }
 }
 
 /* Compact TV identity: reuse the event photo without bringing back a global timer. */
@@ -522,7 +521,7 @@ body:has(.tv-root) {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  min-height: clamp(88px, 7.5vw, 116px);
+  min-height: clamp(112px, 9vw, 142px);
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: clamp(12px, 2vw, 28px);
   padding: 12px clamp(12px, 1.8vw, 22px) 14px;
@@ -537,9 +536,9 @@ body:has(.tv-root) {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, #15141df7 0%, #15141de8 27%, #15141db8 52%, #15141d78 100%),
+    linear-gradient(90deg, #15141df7 0%, #15141de8 24%, #15141db8 48%, #15141d70 100%),
     linear-gradient(0deg, #15141dcc 0%, #15141d35 62%, #15141d70 100%),
-    var(--tv-photo) right 32% / auto 235% no-repeat;
+    var(--tv-photo) center 38% / cover no-repeat;
 }
 .tv-header > * { position: relative; z-index: 1; }
 .tv-brand {
@@ -596,7 +595,7 @@ body:has(.tv-root) {
 
 @media (max-width: 760px) {
   .tv-header {
-    min-height: 0;
+    min-height: 104px;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: auto auto;
     gap: 9px 10px;
@@ -606,7 +605,7 @@ body:has(.tv-root) {
     background:
       linear-gradient(90deg, #15141df5 0%, #15141de0 48%, #15141d9c 100%),
       linear-gradient(0deg, #15141dc9, #15141d56),
-      var(--tv-photo) left 48% / auto 180% no-repeat;
+      var(--tv-photo) center 38% / cover no-repeat;
   }
   .tv-brand {
     grid-column: 1;
@@ -634,6 +633,7 @@ body:has(.tv-root) {
   }
 }
 @media (max-width: 390px) {
+  .tv-header { min-height: 98px; }
   .tv-header { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .tv-brand { gap: 6px; }
   .tv-brand .tv-logo { width: clamp(62px, 18vw, 72px); }

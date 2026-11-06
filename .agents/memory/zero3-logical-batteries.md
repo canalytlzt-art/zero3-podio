@@ -22,3 +22,9 @@ Each battery has its own configurable runtime CAP (default 2 hours), excluding t
 **Why:** The user explicitly requested per-battery time limits while preserving independent timer state, the existing event limit, and the separation between timer stop, operational finalization, and official publication.
 
 **How to apply:** Store the limit by stable battery ID in D1. Enforce role, timer state, expected version, and audit requirements on the server; derive CAP ATINGIDO from the frozen run and keep every other running battery unchanged.
+
+Scheduled start is also attached to the stable battery ID and event, but remains separate from the actual timer start and elapsed time. It is displayed in Brasília time, stays visible after launch, and may be edited without starting, pausing, resetting, or changing the timer. An unset schedule stays unset rather than being inferred from battery order.
+
+**Why:** The user explicitly distinguished expected start time from recorded timer start and prohibited inventing intervals or coupling schedule edits to timer commands.
+
+**How to apply:** Persist an optional scheduled instant on the event battery. Convert operator-entered local time using `America/Sao_Paulo`; keep timer state and CAP fields independent and only suggest an order for new batteries without renumbering existing ones.

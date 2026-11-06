@@ -310,6 +310,8 @@ export interface Zero3EventBatteryUpdateInput {
   expectedName: string;
   /** @minimum 1 */
   expectedOrder: number;
+  /** @nullable */
+  expectedScheduledStartAt?: string | null;
   expectedRegistrationIds: string[];
   /**
      * @minLength 1
@@ -318,6 +320,8 @@ export interface Zero3EventBatteryUpdateInput {
   name: string;
   /** @minimum 1 */
   order: number;
+  /** @nullable */
+  scheduledStartAt?: string | null;
   swapWithBatteryId?: string;
   registrationIds: string[];
 }
@@ -790,6 +794,8 @@ export interface Zero3EventBatteryInput {
   name: string;
   /** @minimum 1 */
   order: number;
+  /** @nullable */
+  scheduledStartAt?: string | null;
   registrationIds: string[];
 }
 
@@ -944,6 +950,8 @@ export interface Zero3EventBattery {
   /** @minimum 1 */
   order: number;
   name: string;
+  /** @nullable */
+  scheduledStartAt: string | null;
   state: Zero3TimerState;
   /** @minimum 0 */
   elapsedMs: number;
@@ -1311,6 +1319,8 @@ export interface Zero3PublicBattery {
   proofName: string;
   order: number;
   name: string;
+  /** @nullable */
+  scheduledStartAt?: string | null;
   heatIds: string[];
   categories: string[];
   registrations: Zero3BatteryEntry[];

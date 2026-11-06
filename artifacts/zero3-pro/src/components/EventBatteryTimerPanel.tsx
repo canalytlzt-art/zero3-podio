@@ -5,14 +5,20 @@ import {
   getListZero3EventBatteriesQueryKey,
   useControlZero3Timer,
   useGetZero3Me,
+  useUpdateZero3EventBattery,
   useUpdateZero3EventBatteryTimeCap,
 } from "@workspace/api-client-react";
 import type { Zero3EventBattery, Zero3PublicBoard } from "@workspace/api-client-react";
-import { Clock3, Pause, Play, RotateCw, Settings2, Square, X } from "lucide-react";
+import { CalendarClock, Clock3, Pause, Play, RotateCw, Settings2, Square, X } from "lucide-react";
 import { eventBatteryCode } from "@/lib/event-battery-code";
 import { projectEventElapsedDelta } from "@/lib/battery-time-display";
 import { eventBatteryTimerActions } from "@/lib/event-battery-timer-controls";
 import { timerStateLabel } from "@/lib/zero3-timer-controls";
+import {
+  formatBrasiliaDateTime,
+  formatBrasiliaDateTimeInput,
+  parseBrasiliaDateTimeInput,
+} from "@/lib/brasilia-schedule";
 
 type BatteryTimer = NonNullable<Zero3PublicBoard["batteryTimers"]>[number];
 const DEFAULT_CAP_MS = 2 * 60 * 60 * 1000;
@@ -44,11 +50,14 @@ export function EventBatteryTimerPanel({
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [editingCap, setEditingCap] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [scheduledStartInput, setScheduledStartInput] = useState("");
   const [capMinutes, setCapMinutes] = useState("120");
   const [capSeconds, setCapSeconds] = useState("0");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const command = useControlZero3Timer();
+  const updateBattery = useUpdateZero3EventBattery();
   const updateCap = useUpdateZero3EventBatteryTimeCap();
   const me = useGetZero3Me();
   const queryClient = useQueryClient();
@@ -88,6 +97,7 @@ export function EventBatteryTimerPanel({
       ? canControl && ["IDLE", "PREPARATION"].includes(state)
       : role === "ADMIN" && state === "PAUSED"
   );
+  const canEditSchedule = canControl && !battery.operationalFinalized;
   const controls = battery.operationalFinalized || capReached
     ? []
     : eventBatteryTimerActions(state);
@@ -170,6 +180,43 @@ export function EventBatteryTimerPanel({
     });
   };
 
+  const saveSchedule = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    let scheduledStartAt: string | null;
+    try {
+      scheduledStartAt = parseBrasiliaDateTimeInput(scheduledStartInput);
+    } catch (failure) {
+      setError(errorMessage(failure));
+      return;
+    }
+    setError("");
+    setNotice("");
+    updateBattery.mutate({
+      eventId: battery.eventId,
+      batteryId: battery.id,
+      data: {
+        expectedName: battery.name,
+        expectedOrder: battery.order,
+        expectedScheduledStartAt: battery.scheduledStartAt,
+        expectedRegistrationIds: battery.registrations.map((registration) => registration.id),
+        name: battery.name,
+        order: battery.order,
+        scheduledStartAt,
+        registrationIds: battery.registrations.map((registration) => registration.id),
+      },
+    }, {
+      onSuccess: () => {
+        setEditingSchedule(false);
+        setNotice("Horário previsto atualizado. O cronômetro não foi alterado.");
+        refresh();
+      },
+      onError: (failure) => {
+        setError(errorMessage(failure));
+        refresh();
+      },
+    });
+  };
+
   const actionIcon = (action: string) => {
     if (action === "prepare") return <Play size={13} aria-hidden="true"/>;
     if (action === "pause") return <Pause size={13} aria-hidden="true"/>;
@@ -195,6 +242,47 @@ export function EventBatteryTimerPanel({
             <span className={`pill ${state === "RUNNING" ? "warn" : capReached ? "good" : "neutral"}`}>{stateText}</span>
           </div>
         </header>
+      )}
+      <div className="event-battery-schedule">
+        <div>
+          <small>INÍCIO PREVISTO · BRASÍLIA</small>
+          <strong>{formatBrasiliaDateTime(battery.scheduledStartAt)}</strong>
+        </div>
+        <button
+          type="button"
+          className="button small"
+          disabled={!canEditSchedule || updateBattery.isPending}
+          aria-label={`Editar início previsto da bateria ${eventBatteryCode(battery.order)}`}
+          onClick={() => {
+            setScheduledStartInput(formatBrasiliaDateTimeInput(battery.scheduledStartAt));
+            setError("");
+            setNotice("");
+            setEditingSchedule((current) => !current);
+          }}
+        >
+          <CalendarClock size={13} aria-hidden="true"/> Programação
+        </button>
+      </div>
+      {editingSchedule && (
+        <form className="event-battery-schedule-form" onSubmit={saveSchedule}>
+          <label htmlFor={`battery-scheduled-start-${battery.id}`}>Data e horário previsto · fuso de Brasília</label>
+          <input
+            id={`battery-scheduled-start-${battery.id}`}
+            type="datetime-local"
+            step="60"
+            value={scheduledStartInput}
+            onChange={(event) => setScheduledStartInput(event.currentTarget.value)}
+            disabled={updateBattery.isPending}
+          />
+          <span className="field-help">Deixe em branco para remover a previsão. A programação não inicia, pausa ou zera o cronômetro.</span>
+          <div className="toolbar">
+            <button type="submit" className="button primary small" disabled={updateBattery.isPending}>
+              {updateBattery.isPending ? "Salvando…" : "Salvar horário"}
+            </button>
+            <button type="button" className="button small" disabled={updateBattery.isPending}
+              onClick={() => setEditingSchedule(false)}>Cancelar</button>
+          </div>
+        </form>
       )}
       <div className="event-battery-timer-metrics">
         <div className="event-battery-timer-main">

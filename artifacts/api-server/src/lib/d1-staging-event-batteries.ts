@@ -78,6 +78,7 @@ type ProofRow = {
 };
 type BatteryRow = {
   id: string; event_id: string; battery_order: number; name: string; created_at: string;
+  scheduled_start_at: string | null;
   time_cap_ms: number;
   operational_finalized_at: string | null; operational_finalized_by: string | null;
 };
@@ -342,6 +343,7 @@ export async function listD1EventBatteries(DB: D1Database, eventId: string, now 
       eventId: battery.event_id,
       order: battery.battery_order,
       name: battery.name,
+      scheduledStartAt: d1Date(battery.scheduled_start_at),
       state: run?.state ?? "IDLE",
       elapsedMs: elapsedByBattery.get(battery.id) ?? 0,
       eventElapsedMs,
@@ -733,6 +735,22 @@ export async function handleD1StagingEventBatteries(
         return true;
       }
       const currentRegistrationIds = battery.registrations.map((item) => item.id);
+      const hasScheduledStartUpdate = body.data.scheduledStartAt !== undefined;
+      const currentScheduledStartAt = battery.scheduledStartAt
+        ? new Date(battery.scheduledStartAt).toISOString()
+        : null;
+      if (hasScheduledStartUpdate && body.data.expectedScheduledStartAt === undefined) {
+        res.status(400).json({ error: "Confirme o horário previsto atual antes de alterá-lo." });
+        return true;
+      }
+      const expectedScheduledStartAt = body.data.expectedScheduledStartAt
+        ? new Date(body.data.expectedScheduledStartAt).toISOString()
+        : null;
+      if (hasScheduledStartUpdate && expectedScheduledStartAt !== currentScheduledStartAt) {
+        d1ApiError(req, res, 409, "BATTERY_SCHEDULE_CHANGED",
+          "A programação mudou em outra tela. Atualize antes de salvar.");
+        return true;
+      }
       if (body.data.expectedName !== battery.name ||
           body.data.expectedOrder !== battery.order ||
           !sameStringSet(body.data.expectedRegistrationIds, currentRegistrationIds)) {
@@ -764,7 +782,8 @@ export async function handleD1StagingEventBatteries(
       const otherBattery = decision.kind === "swap"
         ? batteries.find((item) => item.id === decision.other.id)
         : undefined;
-      if (batteryTimerBlocksStructureChange(battery.state) ||
+      if (((body.data.name.trim() !== battery.name || body.data.order !== battery.order || compositionChanged) &&
+            batteryTimerBlocksStructureChange(battery.state)) ||
           (otherBattery && batteryTimerBlocksStructureChange(otherBattery.state))) {
         d1ApiError(req, res, 409, "BATTERY_TIMER_ACTIVE",
           "Pare a preparação ou cronômetro em execução antes de alterar a ordem. O tempo pausado é preservado.");
@@ -805,7 +824,16 @@ export async function handleD1StagingEventBatteries(
       const nextName = body.data.name.trim();
       const nextOrder = body.data.order;
       const metadataChanged = nextName !== battery.name || nextOrder !== battery.order;
-      if (!metadataChanged && !compositionChanged) {
+      const nextScheduledStartAt = hasScheduledStartUpdate && body.data.scheduledStartAt
+        ? new Date(body.data.scheduledStartAt).toISOString()
+        : hasScheduledStartUpdate ? null : currentScheduledStartAt;
+      const scheduleChanged = hasScheduledStartUpdate && nextScheduledStartAt !== currentScheduledStartAt;
+      if (scheduleChanged && battery.operationalFinalized) {
+        d1ApiError(req, res, 409, "BATTERY_OPERATIONAL_FINALIZED",
+          "A programação de uma bateria finalizada não pode ser alterada.");
+        return true;
+      }
+      if (!metadataChanged && !compositionChanged && !scheduleChanged) {
         res.json(UpdateZero3EventBatteryResponse.parse(battery));
         return true;
       }
@@ -835,17 +863,21 @@ export async function handleD1StagingEventBatteries(
           WHERE event_id=? AND battery_order=? AND id<>?)`;
       const targetFreeBindings = isSwap ? [] as const : [params.data.eventId, nextOrder, battery.id] as const;
       const firstUpdate = DB.prepare(`UPDATE zero3_batteries
-        SET name=?,battery_order=?
-        WHERE id=? AND event_id=? AND name=? AND battery_order=?
+        SET name=?,battery_order=?,scheduled_start_at=?
+        WHERE id=? AND event_id=? AND name=? AND battery_order=? AND scheduled_start_at IS ?
           AND NOT EXISTS(SELECT 1 FROM zero3_battery_runs
-            WHERE battery_id=? AND event_id=? AND state IN ('PREPARATION','RUNNING'))
+            WHERE battery_id=? AND event_id=? AND state IN ('PREPARATION','RUNNING')
+              AND ?=1)
           ${targetFreeSql}
           ${compositionGuardSql}`)
         .bind(
           isSwap || compositionChanged ? marker : nextName,
           initialOrder,
+          nextScheduledStartAt,
           battery.id, params.data.eventId, body.data.expectedName, body.data.expectedOrder,
-          battery.id, params.data.eventId,
+          currentScheduledStartAt,
+          battery.id, params.data.eventId, body.data.name.trim() !== battery.name ||
+            body.data.order !== battery.order || compositionChanged ? 1 : 0,
           ...targetFreeBindings,
           ...compositionGuardBindings,
         );
@@ -1219,9 +1251,12 @@ export async function handleD1StagingEventBatteries(
       }
       const batteryId = newD1Id();
       const stamp = d1IsoNow();
+      const scheduledStartAt = body.data.scheduledStartAt
+        ? new Date(body.data.scheduledStartAt).toISOString()
+        : null;
       await DB.batch([
-        DB.prepare("INSERT INTO zero3_batteries(id,event_id,battery_order,name,created_at) VALUES(?,?,?,?,?)")
-          .bind(batteryId, event.id, body.data.order, body.data.name.trim(), stamp),
+        DB.prepare("INSERT INTO zero3_batteries(id,event_id,battery_order,name,scheduled_start_at,created_at) VALUES(?,?,?,?,?,?)")
+          .bind(batteryId, event.id, body.data.order, body.data.name.trim(), scheduledStartAt, stamp),
         ...registrationIds.map((registrationId) => DB.prepare(`INSERT INTO zero3_battery_entries
           (battery_id,registration_id,lane_label,assigned_at)
           SELECT ?,id,lane_label,? FROM zero3_registrations WHERE id=? AND event_id=? AND confirmation_status<>'CANCELLED'`)

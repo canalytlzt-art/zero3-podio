@@ -494,6 +494,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       eventId:battery.eventId,batteryId:battery.id,
       proofId:firstProof?.id??"",proofOrder:firstProof?.order??1,proofName:firstProof?.name??"",
       order:battery.order,name:battery.name,heatIds:[],categories:battery.categories,
+      scheduledStartAt:battery.scheduledStartAt,
       registrations:battery.registrations.map(reg=>({...reg,heatId:null,batteryId:battery.id})),
       results:battery.results,leaderboards:battery.proofLeaderboards[0]?.leaderboards??[],
       state:battery.state,pendingResultCount:battery.pendingResultCount,

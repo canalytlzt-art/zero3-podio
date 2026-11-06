@@ -20,8 +20,8 @@ sqlite3 -bail "$DB" <<'SQL'
 PRAGMA foreign_keys = ON;
 INSERT INTO zero3_events(id,name,proof_name,categories)
 VALUES('10000000-0000-4000-8000-000000000001','Timer fixture','Prova 1','["RX","SC"]');
-INSERT INTO zero3_batteries(id,event_id,battery_order,name)
-VALUES('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,'Bateria de teste');
+INSERT INTO zero3_batteries(id,event_id,battery_order,name,scheduled_start_at)
+VALUES('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,'Bateria de teste','2026-11-05T15:30:00.000Z');
 INSERT INTO zero3_battery_runs(battery_id,event_id,state,elapsed_ms,started_at,version)
 VALUES('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','PAUSED',12000,NULL,2);
 INSERT INTO zero3_battery_time_cap_audit(
@@ -47,6 +47,12 @@ assert_eq() {
 assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT time_cap_ms FROM zero3_batteries WHERE battery_order=1;")" "7200000" "existing batteries receive the 2-hour default"
 assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT COUNT(*) FROM zero3_battery_time_cap_audit WHERE event_id='10000000-0000-4000-8000-000000000001';")" "1" "CAP edit is auditable"
 assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT elapsed_ms FROM zero3_battery_runs WHERE state='PAUSED';")" "12000" "existing timer duration is preserved"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT scheduled_start_at FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000001';")" "2026-11-05T15:30:00.000Z" "scheduled start persists as a UTC instant"
+
+sqlite3 -bail "$DB" "UPDATE zero3_batteries SET scheduled_start_at='2026-11-05T16:30:00.000Z' WHERE id='20000000-0000-4000-8000-000000000001';"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT scheduled_start_at FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000001';")" "2026-11-05T16:30:00.000Z" "schedule edits persist independently"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT time_cap_ms FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000001';")" "7200000" "schedule edits do not change the CAP"
+assert_eq "$(sqlite3 -batch -noheader "$DB" "SELECT elapsed_ms FROM zero3_battery_runs WHERE state='PAUSED';")" "12000" "schedule edits do not change elapsed time"
 assert_eq "$(sqlite3 -batch -noheader "$DB" 'PRAGMA foreign_key_check;')" "" "foreign-key integrity before delete"
 
 sqlite3 -bail "$DB" "PRAGMA foreign_keys=ON; DELETE FROM zero3_batteries WHERE id='20000000-0000-4000-8000-000000000001';"

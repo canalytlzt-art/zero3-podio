@@ -559,6 +559,7 @@ export const ListZero3EventBatteriesResponseItem = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullable(),
   "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
   "elapsedMs": zod.number().int().min(listZero3EventBatteriesResponseElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(listZero3EventBatteriesResponseEventElapsedMsMin),
@@ -677,6 +678,7 @@ export const createZero3EventBatteryBodyNameMax = 120;
 export const CreateZero3EventBatteryBody = zod.object({
   "name": zod.string().min(1).max(createZero3EventBatteryBodyNameMax),
   "order": zod.number().int().min(1),
+  "scheduledStartAt": zod.coerce.date().nullish(),
   "registrationIds": zod.array(zod.string())
 })
 
@@ -739,6 +741,7 @@ export const CreateZero3EventBatteryResponse = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullable(),
   "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
   "elapsedMs": zod.number().int().min(createZero3EventBatteryResponseElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(createZero3EventBatteryResponseEventElapsedMsMin),
@@ -860,9 +863,11 @@ export const updateZero3EventBatteryBodyNameMax = 120;
 export const UpdateZero3EventBatteryBody = zod.object({
   "expectedName": zod.string().min(1).max(updateZero3EventBatteryBodyExpectedNameMax),
   "expectedOrder": zod.number().int().min(1),
+  "expectedScheduledStartAt": zod.coerce.date().nullish(),
   "expectedRegistrationIds": zod.array(zod.string()),
   "name": zod.string().min(1).max(updateZero3EventBatteryBodyNameMax),
   "order": zod.number().int().min(1),
+  "scheduledStartAt": zod.coerce.date().nullish(),
   "swapWithBatteryId": zod.string().optional(),
   "registrationIds": zod.array(zod.string())
 })
@@ -926,6 +931,7 @@ export const UpdateZero3EventBatteryResponse = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullable(),
   "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
   "elapsedMs": zod.number().int().min(updateZero3EventBatteryResponseElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(updateZero3EventBatteryResponseEventElapsedMsMin),
@@ -1149,6 +1155,7 @@ export const UpdateZero3EventBatteryTimeCapResponse = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullable(),
   "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
   "elapsedMs": zod.number().int().min(updateZero3EventBatteryTimeCapResponseElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(updateZero3EventBatteryTimeCapResponseEventElapsedMsMin),
@@ -1321,6 +1328,7 @@ export const SetZero3ActiveEventBatteryResponse = zod.union([zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullable(),
   "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
   "elapsedMs": zod.number().int().min(setZero3ActiveEventBatteryResponseOneElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(setZero3ActiveEventBatteryResponseOneEventElapsedMsMin),
@@ -2741,6 +2749,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "proofName": zod.string(),
   "order": zod.number().int(),
   "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullish(),
   "heatIds": zod.array(zod.string()),
   "categories": zod.array(zod.string()),
   "registrations": zod.array(zod.object({
@@ -2932,6 +2941,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullable(),
   "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
   "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseCompletedEventBatteriesItemElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(getZero3PublicBoardResponseCompletedEventBatteriesItemEventElapsedMsMin),
@@ -3037,6 +3047,7 @@ export const GetZero3PublicBoardResponse = zod.object({
   "eventId": zod.string(),
   "order": zod.number().int().min(1),
   "name": zod.string(),
+  "scheduledStartAt": zod.coerce.date().nullable(),
   "state": zod.enum(['IDLE', 'PREPARATION', 'RUNNING', 'PAUSED', 'FINISHED']),
   "elapsedMs": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemElapsedMsMin),
   "eventElapsedMs": zod.number().int().min(getZero3PublicBoardResponseEventBatteriesItemEventElapsedMsMin),

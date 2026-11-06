@@ -19,6 +19,8 @@ export interface Zero3PublicBattery {
   proofName: string;
   order: number;
   name: string;
+  /** @nullable */
+  scheduledStartAt?: Date | null;
   heatIds: string[];
   categories: string[];
   registrations: Zero3BatteryEntry[];
