@@ -1280,7 +1280,7 @@ components:
       enum: [PROVISIONAL, VALIDATED, DNS, DNF]
     Zero3TimerState:
       type: string
-      enum: [IDLE, PREPARATION, RUNNING, PAUSED, FINISHED]
+      enum: [IDLE, PREPARATION, RUNNING, PAUSED, FINISHED, CANCELLED]
     Zero3Me:
       type: object
       properties:
@@ -1942,7 +1942,7 @@ components:
       properties:
         action:
           type: string
-          enum: [prepare, start, pause, resume, finish, reset]
+          enum: [prepare, start, pause, resume, finish, reset, cancel]
         expectedVersion: { type: integer, minimum: 0 }
         commandId: { type: string, minLength: 1 }
         expectedProofId: { type: string, minLength: 1 }

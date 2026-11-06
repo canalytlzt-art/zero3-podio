@@ -5,7 +5,8 @@ export type PublicBatteryOperationalState =
   | "PAUSED"
   | "UNDER_REVIEW"
   | "CAP_REACHED"
-  | "FINALIZED";
+  | "FINALIZED"
+  | "CANCELLED";
 
 export function publicBatteryOperationalState(input: {
   state: string;
@@ -23,10 +24,10 @@ export function publicBatteryOperationalState(input: {
       return "RUNNING";
     case "PAUSED":
       return "PAUSED";
+    case "CANCELLED":
+      return "CANCELLED";
     case "FINISHED":
-      return input.timeCapMs > 0 && input.elapsedMs >= input.timeCapMs
-        ? "CAP_REACHED"
-        : "UNDER_REVIEW";
+      return "FINALIZED";
     default:
       return "UNDER_REVIEW";
   }
@@ -41,6 +42,7 @@ export function publicBatteryOperationalLabel(state: PublicBatteryOperationalSta
     case "UNDER_REVIEW": return "Em apuração";
     case "CAP_REACHED": return "CAP atingido · em apuração";
     case "FINALIZED": return "Finalizada";
+    case "CANCELLED": return "Cancelada";
   }
 }
 

@@ -655,13 +655,29 @@ export async function handleD1StagingEventBatteries(
             : { state: "FINISHED", elapsed_ms: Math.min(liveElapsed, batteryTimer.time_cap_ms), started_at: null, preparation_ends_at: run.preparation_ends_at,
                 preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:nowIso };
           break;
+        case "cancel":
+          if (!["IDLE", "PREPARATION", "RUNNING", "PAUSED"].includes(run.state)) {
+            res.status(400).json({ error: "Esta bateria já está finalizada ou cancelada." }); return true;
+          }
+          next = {
+            state: "CANCELLED",
+            elapsed_ms: run.state === "RUNNING"
+              ? Math.min(liveElapsed, batteryTimer.time_cap_ms)
+              : run.state === "PAUSED" ? Math.min(run.elapsed_ms, batteryTimer.time_cap_ms) : 0,
+            started_at: null,
+            preparation_ends_at: null,
+            preparation_started_at: run.preparation_started_at,
+            first_started_at: run.first_started_at,
+            stopped_at: nowIso,
+          };
+          break;
         case "reset":
-          if (run.state !== "IDLE" && run.state !== "PREPARATION") {
-            res.status(409).json({ error: "O tempo acumulado não pode ser apagado após o início da prova." });
+          if (!["IDLE", "PREPARATION", "PAUSED", "FINISHED", "CANCELLED"].includes(run.state)) {
+            res.status(409).json({ error: "Pause, finalize ou cancele a bateria antes de voltar para Não iniciada." });
             return true;
           }
-          next = { state: "IDLE", elapsed_ms: 0, started_at: null, preparation_ends_at: run.preparation_ends_at,
-            preparation_started_at:run.preparation_started_at,first_started_at:run.first_started_at,stopped_at:run.stopped_at };
+          next = { state: "IDLE", elapsed_ms: 0, started_at: null, preparation_ends_at: null,
+            preparation_started_at:null,first_started_at:run.first_started_at,stopped_at:nowIso };
           break;
       }
       const saved = await DB.prepare(`UPDATE zero3_battery_runs

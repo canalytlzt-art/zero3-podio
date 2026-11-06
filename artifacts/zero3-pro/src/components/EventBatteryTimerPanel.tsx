@@ -12,7 +12,12 @@ import type { Zero3EventBattery, Zero3PublicBoard } from "@workspace/api-client-
 import { CalendarClock, Clock3, Pause, Play, RotateCw, Settings2, Square, X } from "lucide-react";
 import { eventBatteryCode } from "@/lib/event-battery-code";
 import { projectEventElapsedDelta } from "@/lib/battery-time-display";
-import { eventBatteryTimerActions } from "@/lib/event-battery-timer-controls";
+import {
+  eventBatteryTimerActions,
+  eventBatteryTimerStatusAction,
+  eventBatteryTimerStatusChoices,
+  type EventBatteryTimerState,
+} from "@/lib/event-battery-timer-controls";
 import { timerStateLabel } from "@/lib/zero3-timer-controls";
 import {
   formatBrasiliaDateTime,
@@ -98,9 +103,12 @@ export function EventBatteryTimerPanel({
       : role === "ADMIN" && state === "PAUSED"
   );
   const canEditSchedule = canControl && !battery.operationalFinalized;
-  const controls = battery.operationalFinalized || capReached
+  const controls = battery.operationalFinalized
     ? []
-    : eventBatteryTimerActions(state);
+    : capReached && state !== "FINISHED" && state !== "CANCELLED"
+      ? []
+      : eventBatteryTimerActions(state);
+  const statusChoices = eventBatteryTimerStatusChoices(state);
 
   const refresh = () => {
     void queryClient.invalidateQueries({
@@ -115,6 +123,10 @@ export function EventBatteryTimerPanel({
     if (!canControl || command.isPending || battery.operationalFinalized) return;
     if (action === "finish" &&
         !window.confirm(`Parar o cronômetro ${eventBatteryCode(battery.order)} · ${battery.name}? O tempo será preservado; a bateria não será finalizada nem publicada.`)) return;
+    if (action === "cancel" &&
+        !window.confirm(`Cancelar somente a bateria ${eventBatteryCode(battery.order)} · ${battery.name}? O cronômetro será interrompido. Marcas, revisões e publicações serão preservadas.`)) return;
+    if (action === "reset" &&
+        !window.confirm(`Voltar a bateria ${eventBatteryCode(battery.order)} · ${battery.name} para Não iniciada e zerar somente o cronômetro? Resultados, revisões e publicações serão preservados.`)) return;
     if (eventLimitReached && (action === "prepare" || action === "resume")) {
       setError("O limite acumulado de 2 horas do evento foi atingido.");
       return;
@@ -134,6 +146,10 @@ export function EventBatteryTimerPanel({
         refresh();
         setNotice(action === "finish"
           ? "Cronômetro parado. O encerramento operacional e a publicação continuam separados."
+          : action === "cancel"
+            ? "Bateria cancelada. Somente o cronômetro foi interrompido; os resultados foram preservados."
+            : action === "reset"
+              ? "Cronômetro zerado para uma nova largada. Resultados e confirmações foram preservados."
           : `Comando “${action === "prepare" ? "Iniciar" : action === "pause" ? "Pausar" : action === "resume" ? "Retomar" : "Cancelar preparação"}” confirmado pelo servidor.`);
       },
       onError: (failure) => setError(errorMessage(failure)),
@@ -222,9 +238,10 @@ export function EventBatteryTimerPanel({
     if (action === "pause") return <Pause size={13} aria-hidden="true"/>;
     if (action === "resume") return <RotateCw size={13} aria-hidden="true"/>;
     if (action === "reset") return <X size={13} aria-hidden="true"/>;
+    if (action === "cancel") return <X size={13} aria-hidden="true"/>;
     return <Square size={13} aria-hidden="true"/>;
   };
-  const stateText = capReached ? "CAP ATINGIDO"
+  const stateText = capReached ? "FINALIZADA · CAP ATINGIDO"
     : battery.operationalFinalized ? "FINALIZADA · CRONÔMETRO CONGELADO"
     : timerStateLabel(state);
   const statusValue = state === "PREPARATION" ? preparationMs : elapsedMs;
@@ -302,6 +319,23 @@ export function EventBatteryTimerPanel({
         </div>
       </div>
       <div className="event-battery-timer-actions">
+        <label className="event-battery-status-control">
+          Status da bateria
+          <select
+            aria-label={`Status da bateria ${eventBatteryCode(battery.order)}`}
+            value={state}
+            disabled={!canControl || command.isPending || battery.operationalFinalized}
+            onChange={(event) => {
+              const nextState = event.currentTarget.value as EventBatteryTimerState;
+              const action = eventBatteryTimerStatusAction(state, nextState);
+              if (action) runCommand(action);
+            }}
+          >
+            {statusChoices.map((choice) => (
+              <option key={choice.state} value={choice.state}>{choice.label}</option>
+            ))}
+          </select>
+        </label>
         {controls.map((control) => (
           <button
             key={control.action}

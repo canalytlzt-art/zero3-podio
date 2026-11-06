@@ -14,8 +14,9 @@ export function timerStateLabel(state?: string | null): string {
   switch (state) {
     case "PREPARATION": return "Em preparação";
     case "RUNNING": return "Em andamento";
-    case "PAUSED":
-    case "FINISHED": return "Em apuração";
+    case "PAUSED": return "Pausada";
+    case "FINISHED": return "Finalizada";
+    case "CANCELLED": return "Cancelada";
     default: return "Não iniciada";
   }
 }
