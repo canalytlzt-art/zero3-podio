@@ -18,3 +18,4 @@
 - [D1 staging migration gate](zero3-d1-migration-gate.md) — Check the remote migration ledger and schema before staging Worker releases; a successful build does not apply D1 migrations.
 - [Cloudflare staging builds](zero3-cloudflare-builds.md) — Workers Builds needs a user-scoped API token; staging branches must be configured as production branches to avoid preview-only deploy failures.
 - [ZERO3 public-dialog browser testing](zero3-public-dialog-testing.md) — Exercise Radix tab state and focus with real keyboard and pointer events; programmatic `.click()` can misrepresent user interaction.
+- [ZERO3 fullscreen browser testing](zero3-fullscreen-browser-testing.md) — Headless Chromium may not exit native fullscreen on synthetic Escape; verify native events separately from the in-page fallback.

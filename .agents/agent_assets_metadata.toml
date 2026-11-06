@@ -336,3 +336,45 @@ mtime_ms = 1793968467226
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/e4a90e67-4611-484a-ba5a-f78ec888d027/19237e41-5f96-4f9c-af47-ed5a2a349763"
 storage_version_token = "1793968672708714"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "JKgGwdoEGYUnAbuG3f5Sf"
+uri = "file://generated-artifacts/zero3-tv-normal.png"
+type = "image"
+title = "TV — modo normal"
+description = "Captura local de /tv no Preview Replit, 1366×768; ambiente sem evento disponível."
+logical_id = "110f3a2f-3f2c-45cb-92a5-bbbdb03a61df"
+content_hash = "sha256:35ae03418c0a6ebc23850b5731d07c4319241fb9326764a328f4bb39b56c49c5"
+size = 182011
+mtime_ms = 1793970927590
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/110f3a2f-3f2c-45cb-92a5-bbbdb03a61df/b65dd780-b0d9-4f4b-8cbc-f303d8c14367"
+storage_version_token = "1793971084168398"
+content_type = "image/png"
+
+[[outputs]]
+id = "8SH4OCGAVa1f9lMxDJ5-B"
+uri = "file://generated-artifacts/zero3-tv-fullscreen.png"
+type = "image"
+title = "TV — modo expandido"
+description = "Captura local do contêiner da TV em tela cheia nativa, 1366×768; ambiente sem evento disponível."
+logical_id = "ce89c216-d8f8-4ce3-a72e-f659d7805137"
+content_hash = "sha256:86cafa721daffab97b87fa896323e9918f39785ece9975131c9440fa742778c9"
+size = 181904
+mtime_ms = 1793970928114
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/ce89c216-d8f8-4ce3-a72e-f659d7805137/1c2b64eb-f729-4441-8ca4-07352a077837"
+storage_version_token = "1793971084656436"
+content_type = "image/png"
+
+[[outputs]]
+id = "LLYvePwZAfT8tVNMKLrwK"
+uri = "file://generated-artifacts/zero3-tv-proof-ranking-preview.jpg"
+type = "image"
+title = "Prévia da TV após o ajuste"
+description = "Captura local de /tv com eventId; o Preview não possui um evento carregado e mostra ‘Aguardando evento’. A captura confirma o layout, não as colocações com dados reais."
+logical_id = "151402b6-3340-482e-b1dd-417236691765"
+content_hash = "sha256:f3413a5dbaf8b875b8688b499888a9802c8f35d32ae04f163b9c61658ccc6128"
+size = 41368
+mtime_ms = 1793971734394
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c34ff9c5-0bc9-4555-ac33-a0b3dce48d79/151402b6-3340-482e-b1dd-417236691765/85513282-12c6-448f-9272-4a98040cb8bf"
+storage_version_token = "1793971743192235"
+content_type = "image/jpeg"

@@ -1,4 +1,4 @@
-import { useEffect, useState, type AnchorHTMLAttributes, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type AnchorHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { useSearch } from 'wouter';
 import { getGetZero3PublicBoardQueryKey, useGetZero3PublicBoard } from '@workspace/api-client-react';
 import type {
@@ -8,7 +8,7 @@ import type {
   Zero3PublicBoard,
   Zero3PublicBattery,
 } from '@workspace/api-client-react';
-import { RotateCw } from 'lucide-react';
+import { Expand, Minimize2, RotateCw } from 'lucide-react';
 import { liveBoardHrefForBattery, liveBoardHrefForEvent } from '@/lib/live-board-navigation';
 import { timerStateLabel } from '@/lib/zero3-timer-controls';
 import { eventBatteryCode } from '@/lib/event-battery-code';
@@ -16,6 +16,7 @@ import { inspectPublicBoardPayload, isPublicBoardJsonParseError } from '@/lib/pu
 import { publicBatteryOperationalLabel, publicBatteryOperationalState } from '@/lib/public-battery-status';
 import { formatBrasiliaDateTime as formatScheduledBrasiliaDateTime } from '@/lib/brasilia-schedule';
 import { RulesDialog } from '@/components/public/RulesDialog';
+import { resolvePublicTvResultCell } from '@/lib/public-tv-placement';
 
 // Keep target=_blank links native; Wouter's Link handler cancels their navigation.
 function Link(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
@@ -24,6 +25,20 @@ function Link(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
 
 const publicBase = import.meta.env.BASE_URL;
 const tvAssetsStyle = { '--tv-photo': `url("${publicBase}zero3-games/zero3-foto.jpg")` } as CSSProperties;
+
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
+function currentFullscreenElement() {
+  const fullscreenDocument = document as FullscreenDocument;
+  return document.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement ?? null;
+}
 
 const clockText=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(d);
 const duration=(ms?:number|null)=>ms==null?'—':`${String(Math.floor(ms/60000)).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(Math.floor(ms%1000/10)).padStart(2,'0')}`;
@@ -184,6 +199,7 @@ function EventBatteryBoard({board,now}:{board:Zero3PublicBoard;now:Date}){
       <UnifiedEventBatteryTable
         eventBatteries={eventBatteries}
         proofs={proofs}
+        eventResults={board.results}
         serverTime={board.serverTime}
         now={now}
       />
@@ -194,11 +210,13 @@ function EventBatteryBoard({board,now}:{board:Zero3PublicBoard;now:Date}){
 function UnifiedEventBatteryTable({
   eventBatteries,
   proofs,
+  eventResults,
   serverTime,
   now,
 }: {
   eventBatteries: TvEventBattery[];
   proofs: Zero3Proof[];
+  eventResults: Zero3PublicBoard['results'];
   serverTime: string;
   now: Date;
 }) {
@@ -232,14 +250,6 @@ function UnifiedEventBatteryTable({
           const publishedCount = battery.results.filter(result =>
             result.status === 'VALIDATED' && result.publishedRevision === result.revision).length;
           const resultsStatus = publishedCount === 0 ? 'PROVISÓRIO' : 'OFICIAL PARCIAL';
-          const publishedForProof = (category: string, proofId: string) => {
-            const categoryRegistrations = registrations.filter(reg => reg.category === category);
-            return categoryRegistrations.length > 0 && categoryRegistrations.every(reg => {
-              const result = battery.results.find(item =>
-                item.registrationId === reg.id && item.proofId === proofId);
-              return result?.status === 'VALIDATED' && result.publishedRevision === result.revision;
-            });
-          };
           const clockDelta = Math.max(0, now.getTime() - Date.parse(serverTime));
           const rawElapsed = battery.elapsedMs +
             (battery.state === 'RUNNING' && !battery.operationalFinalized ? clockDelta : 0);
@@ -288,35 +298,24 @@ function UnifiedEventBatteryTable({
                   <small>{registration.athleteNames.join(' · ')}</small>}
               </td>
               {proofs.map(proof => {
-                const result = registration
-                  ? battery.results.find(item =>
-                      item.registrationId === registration.id && item.proofId === proof.id)
-                  : undefined;
-                const published = registration && publishedForProof(category, proof.id);
-                const leaderboard = battery.proofLeaderboards
-                  .find(item => item.proofId === proof.id)?.leaderboards
-                  .find(item => item.category === category);
-                const entry = registration && leaderboard?.entries
-                  .find(item => item.registrationId === registration.id);
-                const score = entry?.proofScores.find(item => item.proofId === proof.id);
+                const cell = registration
+                  ? resolvePublicTvResultCell(
+                      battery.results,
+                      eventResults,
+                      registration.id,
+                      proof.id,
+                    )
+                  : { result: undefined, placement: null, label: 'PENDENTE', published: false };
+                const result = cell.result;
                 const value = result?.status === 'DNS' || result?.status === 'DNF'
                   ? result.status
                   : result?.rawValue != null
                     ? `${result.rawValue}${proof.unit ? ` ${proof.unit}` : ''}`
                     : '—';
-                const isPublished = result?.status === 'VALIDATED' &&
-                  result.publishedRevision === result.revision;
-                const label = !result ? 'PENDENTE'
-                  : result.status === 'PROVISIONAL' ? 'PROVISÓRIO · AGUARDA REVISÃO'
-                  : result.status === 'VALIDATED' && isPublished ? 'PUBLICADO NO RANKING'
-                  : result.status === 'VALIDATED' ? 'REVISADO · AGUARDA PUBLICAR RANKING'
-                  : result.status;
-                const provisional = result?.status === 'PROVISIONAL' ||
-                  (result?.status === 'VALIDATED' && !isPublished);
-                const placement = published ? score?.placement : null;
+                const placement = cell.published ? cell.placement : null;
                 return <td key={proof.id} className="tv-unified-result-cell">
                   <strong>{placement ? `${placement}º · ` : ''}{value}</strong>
-                  <small className={provisional ? 'provisional' : ''}>{label}</small>
+                  <small className={cell.label === 'PARCIAL' || cell.label === 'REVISADO' ? 'provisional' : ''}>{cell.label}</small>
                 </td>;
               })}
             </tr>;
@@ -471,19 +470,93 @@ export function PublicTV(){
   const connectionLabel=boardQuery.isError
     ?boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO · DADOS CONFIRMADOS'
     :connected?'AO VIVO':'SINCRONIZANDO';
-  if(boardQuery.isLoading&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status="SINCRONIZANDO"/><div className="public-empty"><h1>Conectando à transmissão</h1><p>Carregando o placar oficial do evento.</p><RulesDialog/></div></div></main>;
-  if(invalidBoardResponse)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status="RESPOSTA INVÁLIDA" offline/><div className="public-empty" role="alert" data-testid="error-public-board-invalid"><h1>Resposta inválida do placar</h1><p>A API respondeu com dados incompletos ou malformados. Tente novamente.</p><div className="tv-public-empty-actions"><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Tentar novamente</button><RulesDialog/></div></div></div></main>;
-  if(boardQuery.isError&&!board)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status={boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'} offline/><div className="public-empty" role="alert" data-testid="error-public-board-connection"><h1>Transmissão indisponível</h1><p>Falha de conexão ou HTTP ao carregar os dados oficiais.</p><div className="tv-public-empty-actions"><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button><RulesDialog/></div></div></div></main>;
-  if(!board?.event)return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board"><TvPageHeader now={now} status={connected?'CONECTADO':'AGUARDANDO EVENTO'} offline={!connected}/><div className="public-empty"><h1>Aguardando evento</h1><p>A transmissão será atualizada quando um evento estiver disponível.</p><RulesDialog/></div></div></main>;
-  return <main className="tv-root" style={tvAssetsStyle}><div className="tv-board">
-     <TvPageHeader now={now} eventLabel={`${board.event.name} · ${board.event.proofName}`} status={connectionLabel} offline={!connected}/>
-        {board.batteryOperationsEnabled?<BatteryBoard board={board} now={now}/>:<div className="tv-live-board-callout"><span>Listas completas e ranking geral do evento</span><div className="tv-public-actions"><RulesDialog/><Link href={liveBoardHrefForEvent(board.event.id)} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">Abrir Placar ao Vivo <span aria-hidden="true">↗</span></Link></div></div>}
-    <div className="tv-footer-note">PLACAR OFICIAL · PONTUAÇÃO E CLASSIFICAÇÃO CALCULADAS NO SERVIDOR</div>
-  </div></main>;
+   if(boardQuery.isLoading&&!board)return <TvPageShell now={now} status="SINCRONIZANDO"><div className="public-empty"><h1>Conectando à transmissão</h1><p>Carregando o placar oficial do evento.</p><RulesDialog/></div></TvPageShell>;
+   if(invalidBoardResponse)return <TvPageShell now={now} status="RESPOSTA INVÁLIDA" offline><div className="public-empty" role="alert" data-testid="error-public-board-invalid"><h1>Resposta inválida do placar</h1><p>A API respondeu com dados incompletos ou malformados. Tente novamente.</p><div className="tv-public-empty-actions"><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Tentar novamente</button><RulesDialog/></div></div></TvPageShell>;
+   if(boardQuery.isError&&!board)return <TvPageShell now={now} status={boardQuery.isFetching?'RECONNECTANDO':'SEM CONEXÃO'} offline><div className="public-empty" role="alert" data-testid="error-public-board-connection"><h1>Transmissão indisponível</h1><p>Falha de conexão ou HTTP ao carregar os dados oficiais.</p><div className="tv-public-empty-actions"><button className="tv-retry" onClick={()=>boardQuery.refetch()}><RotateCw size={13}/> Reconectar</button><RulesDialog/></div></div></TvPageShell>;
+   if(!board?.event)return <TvPageShell now={now} status={connected?'CONECTADO':'AGUARDANDO EVENTO'} offline={!connected}><div className="public-empty"><h1>Aguardando evento</h1><p>A transmissão será atualizada quando um evento estiver disponível.</p><RulesDialog/></div></TvPageShell>;
+   return <TvPageShell now={now} eventLabel={`${board.event.name} · ${board.event.proofName}`} status={connectionLabel} offline={!connected}>
+     {board.batteryOperationsEnabled?<BatteryBoard board={board} now={now}/>:<div className="tv-live-board-callout"><span>Listas completas e ranking geral do evento</span><div className="tv-public-actions"><RulesDialog/><Link href={liveBoardHrefForEvent(board.event.id)} target="_blank" rel="noopener noreferrer" data-testid="link-tv-live-board">Abrir Placar ao Vivo <span aria-hidden="true">↗</span></Link></div></div>}
+     <div className="tv-footer-note">PLACAR OFICIAL · PONTUAÇÃO E CLASSIFICAÇÃO CALCULADAS NO SERVIDOR</div>
+   </TvPageShell>;
 }
-function TvPageHeader({now,eventLabel,status,offline=false}:{now:Date;eventLabel?:string;status:string;offline?:boolean}){
+function TvPageShell({now,eventLabel,status,offline=false,children}:{now:Date;eventLabel?:string;status:string;offline?:boolean;children:ReactNode}){
+  const rootRef=useRef<HTMLElement|null>(null);
+  const [nativeFullscreenActive,setNativeFullscreenActive]=useState(false);
+  const [fallbackFullscreenActive,setFallbackFullscreenActive]=useState(false);
+  const fullscreenActive=nativeFullscreenActive||fallbackFullscreenActive;
+
+  useEffect(()=>{
+    const syncFullscreenState=()=>setNativeFullscreenActive(currentFullscreenElement()===rootRef.current);
+    document.addEventListener('fullscreenchange',syncFullscreenState);
+    document.addEventListener('webkitfullscreenchange',syncFullscreenState);
+    syncFullscreenState();
+    return()=>{
+      document.removeEventListener('fullscreenchange',syncFullscreenState);
+      document.removeEventListener('webkitfullscreenchange',syncFullscreenState);
+    };
+  },[]);
+
+  useEffect(()=>{
+    if(!fallbackFullscreenActive)return;
+    const previousOverflow=document.body.style.overflow;
+    const previousOverscroll=document.body.style.overscrollBehavior;
+    document.body.style.overflow='hidden';
+    document.body.style.overscrollBehavior='none';
+    const exitOnEscape=(event:KeyboardEvent)=>{
+      if(event.key!=='Escape')return;
+      event.preventDefault();
+      setFallbackFullscreenActive(false);
+    };
+    window.addEventListener('keydown',exitOnEscape);
+    return()=>{
+      window.removeEventListener('keydown',exitOnEscape);
+      document.body.style.overflow=previousOverflow;
+      document.body.style.overscrollBehavior=previousOverscroll;
+    };
+  },[fallbackFullscreenActive]);
+
+  const toggleFullscreen=async()=>{
+    const root=rootRef.current as FullscreenElement|null;
+    if(!root)return;
+    if(fallbackFullscreenActive){
+      setFallbackFullscreenActive(false);
+      return;
+    }
+    if(currentFullscreenElement()===root){
+      const fullscreenDocument=document as FullscreenDocument;
+      const exitFullscreen=document.exitFullscreen?.bind(document)
+        ??fullscreenDocument.webkitExitFullscreen?.bind(document);
+      if(exitFullscreen){
+        try{await exitFullscreen();}catch{/* Keep the icon synchronized with the actual fullscreen state. */}
+      }
+      return;
+    }
+    const requestFullscreen=root.requestFullscreen?.bind(root)
+      ??root.webkitRequestFullscreen?.bind(root);
+    if(requestFullscreen){
+      try{await requestFullscreen();return;}catch{/* Fall back to an expanded in-page view. */}
+    }
+    setFallbackFullscreenActive(true);
+  };
+
+  return <main ref={rootRef} className={`tv-root${fallbackFullscreenActive?' is-fullscreen-fallback':''}`} style={tvAssetsStyle}
+    data-fullscreen-active={fullscreenActive?'true':'false'} data-testid="page-public-tv">
+    <div className="tv-board">
+      <TvPageHeader now={now} eventLabel={eventLabel} status={status} offline={offline}
+        fullscreenActive={fullscreenActive} onToggleFullscreen={()=>{void toggleFullscreen();}}/>
+      {children}
+    </div>
+  </main>;
+}
+function TvPageHeader({now,eventLabel,status,offline=false,fullscreenActive,onToggleFullscreen}:{now:Date;eventLabel?:string;status:string;offline?:boolean;fullscreenActive:boolean;onToggleFullscreen:()=>void}){
   return <header className="tv-header">
     <div className="tv-brand">
+      <button className="tv-fullscreen-toggle" type="button"
+        aria-label={fullscreenActive?'Sair da tela cheia':'Entrar em tela cheia'}
+        aria-pressed={fullscreenActive} title={fullscreenActive?'Sair da tela cheia':'Entrar em tela cheia'}
+        onClick={onToggleFullscreen} data-testid="button-toggle-tv-fullscreen">
+        {fullscreenActive?<Minimize2 size={18} aria-hidden="true"/>:<Expand size={18} aria-hidden="true"/>}
+      </button>
       <img className="tv-logo" src={`${publicBase}zero3-games/zero3-logo.png`} alt="ZERO3 PRO"/>
       <div className="tv-brand-copy">
         <div className="tv-program-title">LEADERBOARD <span>03 PRO</span></div>
