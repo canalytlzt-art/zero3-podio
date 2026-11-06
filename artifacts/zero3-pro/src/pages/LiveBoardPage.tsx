@@ -47,6 +47,12 @@ const statusLabels: Record<string, string> = {
   DNF: 'DNF',
   MISSING: 'Aguardando resultado',
 };
+const rankingProofHeadings: Record<number, string> = {
+  1: 'Carga',
+  2: 'Rep',
+  3: 'For Time',
+  4: 'Condition',
+};
 
 function statusLabel(status?: string | null) {
   return status ? statusLabels[status] || status.replaceAll('_', ' ').toLocaleLowerCase('pt-BR') : 'Aguardando';
@@ -495,6 +501,7 @@ function ProofPoints({ proof, score, registrationId }: {
   score?: Zero3LeaderboardProofScore;
   registrationId: string;
 }) {
+  const heading = rankingProofHeadings[proof.order] ?? `P${proof.order}`;
   const pending = !score || score.points == null;
   const value = score?.points != null
     ? `${score.points} pt`
@@ -503,7 +510,7 @@ function ProofPoints({ proof, score, registrationId }: {
       : pending ? '—' : statusLabel(score.status);
   return (
     <div className="lb-proof-cell" data-testid={`points-proof-${registrationId}-${proof.id}`}>
-      <span title={proof.name}>P{proof.order}</span>
+      <span title={proof.name} aria-label={`${heading}: ${proof.name}`}>{heading}</span>
       <strong>{value}</strong>
       {score?.placement != null && <small>{score.placement}º lugar</small>}
       {pending && <small>{score ? statusLabel(score.status) : 'Pendente'}</small>}

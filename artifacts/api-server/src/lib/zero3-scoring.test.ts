@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   calculateAllResultPlacements,
   calculateCategoryLeaderboard,
-  rankingPodiumsFromSnapshot,
+  mergeRankingPodiums,
+  rankingPodiumsFromLeaderboards,
   scoreTieBreaksFromSnapshot,
   type ScoreProof,
   type ScoreRegistration,
@@ -441,8 +442,8 @@ test("four proof placements 13, 4, 7, and 2 sum to 26 event points", () => {
   assert.equal(target?.totalPoints, 26);
 });
 
-test("public event podium is derived from the same published leaderboard, including shared places", () => {
-  const podiums = rankingPodiumsFromSnapshot([{
+test("event podium defaults to the category leaderboard and keeps shared places", () => {
+  const podiums = rankingPodiumsFromLeaderboards([{
     category: "RX",
     entries: [
       { registrationId: "rx-a", teamName: "Equipe A", athleteNames: ["Atleta A"], overallPlace: 1, totalPoints: 4 },
@@ -460,6 +461,22 @@ test("public event podium is derived from the same published leaderboard, includ
       { place: 3, registrationId: "rx-c", teamName: "Equipe C", athleteNames: ["Atleta C"] },
     ],
   }]);
+});
+
+test("manually published podium overrides only its event category presentation", () => {
+  const calculated = [
+    { category: "SC", places: [{ place: 1, registrationId: "sc-rank", teamName: "Classificada", athleteNames: ["Atleta"] }] },
+    { category: "RX", places: [{ place: 1, registrationId: "rx-rank", teamName: "RX classificada", athleteNames: ["Atleta RX"] }] },
+  ];
+  const manual = [{
+    category: "SC",
+    places: [{ place: 1, registrationId: "sc-manual", teamName: "Indicação manual", athleteNames: ["Atleta 2"] }],
+  }];
+  assert.deepEqual(mergeRankingPodiums(calculated, manual), [
+    ...manual,
+    calculated[1],
+  ]);
+  assert.equal(calculated[0]?.places[0]?.registrationId, "sc-rank");
 });
 
 test("DNS/DNF without an event exception rule cannot make the classification final", () => {

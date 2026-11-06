@@ -24,7 +24,8 @@ import { workerLogger } from "./worker-logger";
 import { isD1SchemaNotReady } from "./d1-staging-shared";
 import {
   calculateAllResultPlacements,
-  rankingPodiumsFromSnapshot,
+  mergeRankingPodiums,
+  rankingPodiumsFromLeaderboards,
   scoreTieBreaksFromSnapshot,
 } from "./zero3-scoring";
 import {
@@ -363,9 +364,10 @@ async function publicBoard(DB: D1Database, eventId?: string) {
       }];
     }),
   }));
-  const podiums = rankingPublication
-    ? rankingPodiumsFromSnapshot(scoring.leaderboards)
-    : manuallyPublishedPodiums;
+  const podiums = mergeRankingPodiums(
+    rankingPublication ? rankingPodiumsFromLeaderboards(scoring.leaderboards) : [],
+    manuallyPublishedPodiums,
+  );
   const selectedRows = activeResult.results.filter((row) => row.heat_id);
   const firstSelected = selectedRows[0];
   const selectedOrder = firstSelected ? (firstSelected.battery_order ?? firstSelected.heat_order) : null;

@@ -96,7 +96,8 @@ import { hasSignedInUserSession } from "../lib/auth-session";
 import { workerLogger } from "../lib/worker-logger";
 import {
   calculateAllResultPlacements,
-  rankingPodiumsFromSnapshot,
+  mergeRankingPodiums,
+  rankingPodiumsFromLeaderboards,
   scoreTieBreaksFromSnapshot,
   type ResultPlacement,
   type ScoreProof,
@@ -381,7 +382,7 @@ async function eventScoring(event: EventRow) {
     leaderboards: calculated.leaderboards,
     placements: calculated.placements,
     hasRankingPublication: latestRankingRows.length > 0,
-    publishedPodiums: rankingPodiumsFromSnapshot(calculated.leaderboards),
+    publishedPodiums: rankingPodiumsFromLeaderboards(calculated.leaderboards),
   };
 }
 
@@ -2428,7 +2429,10 @@ router.get(
         proofs: scoring.proofs,
         registrations: scoring.registrations,
         leaderboards: scoring.leaderboards,
-         podiums: scoring.hasRankingPublication ? scoring.publishedPodiums : podiums,
+        podiums: mergeRankingPodiums(
+          scoring.hasRankingPublication ? scoring.publishedPodiums : [],
+          podiums,
+        ),
         activeHeats,
       }),
     );

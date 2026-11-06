@@ -219,17 +219,10 @@ export function scoreTieBreaksFromSnapshot(snapshot: unknown): ScoreTieBreakReso
   return resolutions;
 }
 
-/** Derive the public event podium from the same versioned ranking snapshot. */
-export function rankingPodiumsFromSnapshot(snapshot: unknown): RankingPodium[] {
-  if (typeof snapshot === "string") {
-    try {
-      return rankingPodiumsFromSnapshot(JSON.parse(snapshot));
-    } catch (cause) {
-      throw new Error("Publicação do ranking armazenada está inválida.", { cause });
-    }
-  }
-  if (!Array.isArray(snapshot)) return [];
-  return snapshot.flatMap((board) => {
+/** Derive the event podium presentation from the calculated category leaderboards. */
+export function rankingPodiumsFromLeaderboards(leaderboards: unknown): RankingPodium[] {
+  if (!Array.isArray(leaderboards)) return [];
+  return leaderboards.flatMap((board) => {
     if (!board || typeof board !== "object" || Array.isArray(board)) return [];
     const row = board as Record<string, unknown>;
     if (typeof row.category !== "string" || !Array.isArray(row.entries)) return [];
@@ -254,6 +247,23 @@ export function rankingPodiumsFromSnapshot(snapshot: unknown): RankingPodium[] {
       }];
     }).sort((a, b) => a.place - b.place);
     return places.length ? [{ category: row.category, places }] : [];
+  });
+}
+
+/** Keep manual, event/category-scoped presentation choices above the calculated default. */
+export function mergeRankingPodiums(
+  rankingPodiums: readonly RankingPodium[],
+  manuallyPublishedPodiums: readonly RankingPodium[],
+): RankingPodium[] {
+  const rankingByCategory = new Map(rankingPodiums.map((podium) => [podium.category, podium]));
+  const manualByCategory = new Map(manuallyPublishedPodiums.map((podium) => [podium.category, podium]));
+  const categories = [...new Set([
+    ...rankingPodiums.map((podium) => podium.category),
+    ...manuallyPublishedPodiums.map((podium) => podium.category),
+  ])];
+  return categories.flatMap((category) => {
+    const podium = manualByCategory.get(category) ?? rankingByCategory.get(category);
+    return podium ? [podium] : [];
   });
 }
 
