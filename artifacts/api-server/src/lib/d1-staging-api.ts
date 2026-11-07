@@ -46,7 +46,7 @@ import {
 import { advanceD1TimerPreparation, d1TimerDto } from "./d1-staging-timer";
 import { resolveZero3DisplayTeamName } from "./zero3-team-name";
 import { buildRankingPublicationPlan } from "./zero3-ranking-publication";
-import { visiblePodiumObservations } from "./zero3-podium";
+import { listD1PublishedPodiumRows } from "./d1-staging-podium-draft";
 
 type D1Env = { DB: D1Database };
 type Member = { clerk_user_id: string; email: string; role: string; active: number };
@@ -197,9 +197,7 @@ async function publicBoard(DB: D1Database, eventId?: string) {
     DB.prepare("SELECT * FROM zero3_registrations WHERE event_id = ? ORDER BY created_at").bind(event.id).all<RegistrationRow>(),
     DB.prepare("SELECT * FROM zero3_results WHERE event_id = ? ORDER BY captured_at DESC").bind(event.id).all<ResultRow>(),
     DB.prepare("SELECT id, full_name FROM zero3_athletes").all<{id: string; full_name: string}>(),
-    DB.prepare("SELECT * FROM zero3_podium_versions WHERE event_id = ? AND published = 1 ORDER BY version DESC").bind(event.id).all<{
-      category: string; registration_ids: string; arbitration_note: string | null; published: number;
-    }>(),
+    listD1PublishedPodiumRows(DB, event.id),
     DB.prepare(`SELECT ah.category,ah.heat_id,ah.updated_at,h.name AS heat_name,
       h.proof_id,h.battery_order,h."order" AS heat_order,p.proof_order,p.name AS proof_name
       FROM zero3_active_heats ah LEFT JOIN zero3_heats h ON h.id=ah.heat_id
@@ -354,22 +352,16 @@ async function publicBoard(DB: D1Database, eventId?: string) {
   });
   const latestPodium = new Map<string, {
     registrationIds: string;
-    arbitrationNote: string | null;
-    placeObservations: Array<{ place: number; registrationId: string; note: string }>;
   }>();
-  for (const podium of podiumResult.results) {
+  for (const podium of podiumResult) {
     if (!latestPodium.has(podium.category)) {
-      const registrationIds = nullableStringArray(podium.registration_ids);
       latestPodium.set(podium.category, {
         registrationIds: podium.registration_ids,
-        ...visiblePodiumObservations(podium.published === 1, podium.arbitration_note, registrationIds),
       });
     }
   }
   const manuallyPublishedPodiums = [...latestPodium].map(([category, podium]) => ({
     category,
-    arbitrationNote: podium.arbitrationNote,
-    placeObservations: podium.placeObservations,
     places: nullableStringArray(podium.registrationIds).flatMap((registrationId, index) => {
       if (!registrationId) return [];
       const reg = registrationsById.get(registrationId);

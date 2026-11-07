@@ -5,6 +5,7 @@ import {
   encodePodiumPlaceObservations,
   hasUniquePodiumRegistrations,
   normalizePodiumArbitrationNote,
+  retainPodiumArbitrationNoteWhenOmitted,
   readPodiumPlaceObservations,
   visiblePodiumObservations,
 } from "./zero3-podium";
@@ -14,6 +15,21 @@ test("empty and whitespace-only arbitration observations are absent", () => {
   assert.equal(normalizePodiumArbitrationNote(null), null);
   assert.equal(normalizePodiumArbitrationNote(""), null);
   assert.equal(normalizePodiumArbitrationNote(" \t \n "), null);
+});
+
+test("omitting the disabled note field preserves existing PostgreSQL draft notes", () => {
+  assert.equal(
+    retainPodiumArbitrationNoteWhenOmitted("Nota histórica", null, false),
+    "Nota histórica",
+  );
+  assert.equal(
+    retainPodiumArbitrationNoteWhenOmitted("Nota histórica", null, true),
+    null,
+  );
+  assert.equal(
+    retainPodiumArbitrationNoteWhenOmitted(null, "Nota nova", true),
+    "Nota nova",
+  );
 });
 
 test("arbitration observation is trimmed as plain text and keeps line breaks", () => {
@@ -92,6 +108,9 @@ test("legacy scalar observations remain readable without becoming per-place note
 });
 
 test("the API contract accepts per-place notes and remains compatible with scalar clients", () => {
+  const medalsOnly = SaveZero3PodiumDraftBody.safeParse({
+    registrationIds: ["rx-a", "rx-b", "rx-c"],
+  });
   const perPlace = SaveZero3PodiumDraftBody.safeParse({
     registrationIds: ["rx-a", "rx-b", "rx-c"],
     placeObservations: [
@@ -104,6 +123,11 @@ test("the API contract accepts per-place notes and remains compatible with scala
     registrationIds: ["rx-a", "rx-b", "rx-c"],
     arbitrationNote: "Observação antiga",
   });
+  assert.equal(medalsOnly.success, true);
+  if (medalsOnly.success) {
+    assert.equal(Object.hasOwn(medalsOnly.data, "arbitrationNote"), false);
+    assert.equal(Object.hasOwn(medalsOnly.data, "placeObservations"), false);
+  }
   assert.equal(perPlace.success, true);
   assert.equal(legacy.success, true);
 });

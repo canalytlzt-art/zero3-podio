@@ -107,6 +107,7 @@ import {
   encodePodiumPlaceObservations,
   hasUniquePodiumRegistrations,
   normalizePodiumArbitrationNote,
+  retainPodiumArbitrationNoteWhenOmitted,
   readPodiumPlaceObservations,
   visiblePodiumObservations,
 } from "../lib/zero3-podium";
@@ -2234,11 +2235,16 @@ router.put(
       res.status(400).json({ error: "Cada posição do pódio deve ser única." });
       return;
     }
-    let storedArbitrationNote: string | null;
+    const arbitrationNoteWasProvided =
+      body.data.placeObservations !== undefined ||
+      Object.prototype.hasOwnProperty.call(body.data, "arbitrationNote");
+    let requestedArbitrationNote: string | null = null;
     try {
-      storedArbitrationNote = body.data.placeObservations !== undefined
+      requestedArbitrationNote = body.data.placeObservations !== undefined
         ? encodePodiumPlaceObservations(body.data.placeObservations, body.data.registrationIds)
-        : normalizePodiumArbitrationNote(body.data.arbitrationNote);
+        : arbitrationNoteWasProvided
+          ? normalizePodiumArbitrationNote(body.data.arbitrationNote)
+          : null;
     } catch {
       res.status(400).json({ error: "Cada observação deve corresponder à inscrição selecionada na mesma colocação." });
       return;
@@ -2271,6 +2277,11 @@ router.put(
       )
       .orderBy(desc(zero3PodiumsTable.version));
     const latest = versions[0];
+    const storedArbitrationNote = retainPodiumArbitrationNoteWhenOmitted(
+      latest?.arbitrationNote,
+      requestedArbitrationNote,
+      arbitrationNoteWasProvided,
+    );
     const version =
       latest && !latest.published ? latest.version : (latest?.version ?? 0) + 1;
     const saved = latest && !latest.published

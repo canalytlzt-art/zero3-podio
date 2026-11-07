@@ -10,6 +10,9 @@ import {
 } from "./d1-staging-shared";
 import {
   D1PodiumDraftVersionConflict,
+  listD1PodiumVersions,
+  listD1PublishedPodiumRows,
+  publishD1PodiumDraft,
   saveD1PodiumDraft,
 } from "./d1-staging-podium-draft";
 
@@ -25,6 +28,9 @@ function makeD1(db: DatabaseSync): D1Database {
         async first<T>() {
           return (db.prepare(sql).get(...values as (string | number | null)[]) as T | undefined) ?? null;
         },
+        async all<T>() {
+          return { results: db.prepare(sql).all(...values as (string | number | null)[]) as T[] };
+        },
         async run() {
           const result = db.prepare(sql).run(...values as (string | number | null)[]);
           return { success: true, meta: { changes: Number(result.changes) } };
@@ -35,13 +41,12 @@ function makeD1(db: DatabaseSync): D1Database {
   } as unknown as D1Database;
 }
 
-function database({ arbitrationNote = true }: { arbitrationNote?: boolean } = {}) {
+function database() {
   const db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE zero3_podium_versions (
     event_id TEXT NOT NULL,
     category TEXT NOT NULL,
     registration_ids TEXT NOT NULL CHECK(json_valid(registration_ids)),
-    ${arbitrationNote ? "arbitration_note TEXT," : ""}
     published INTEGER NOT NULL DEFAULT 0,
     published_by TEXT,
     published_at TEXT,
@@ -49,7 +54,18 @@ function database({ arbitrationNote = true }: { arbitrationNote?: boolean } = {}
     version INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL,
     PRIMARY KEY(event_id,category,version)
-  )`);
+  );
+  CREATE TABLE zero3_registrations (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    category TEXT NOT NULL
+  );
+  INSERT INTO zero3_registrations(id,event_id,category) VALUES
+    ('reg-a','event-demo','RX'),
+    ('reg-b','event-demo','RX'),
+    ('reg-c','event-demo','RX'),
+    ('reg-d','event-demo','RX'),
+    ('reg-sc','event-demo','SC');`);
   return db;
 }
 
@@ -57,12 +73,10 @@ const save = (
   DB: D1Database,
   registrationIds: Array<string | null>,
   updatedAt: string,
-  arbitrationNote: string | null = null,
 ) => saveD1PodiumDraft(DB, {
   eventId: "event-demo",
   category: "RX",
   registrationIds,
-  arbitrationNote,
   updatedAt,
 });
 
@@ -76,18 +90,29 @@ function mockResponse() {
   return { response, result: () => ({ statusCode, body }) };
 }
 
-test("new podium draft and edits save as private versions without touching publication", async () => {
+test("legacy D1 schema saves and reopens manual medal choices without arbitration_note", async () => {
   const db = database();
-  const DB = makeD1(db);
-  const initial = await save(DB, ["reg-a", "reg-b", "reg-c"], "2026-11-06T12:00:00.000Z");
+  const writer = makeD1(db);
+  const reader = makeD1(db);
+  const columns = db.prepare("PRAGMA table_info(zero3_podium_versions)").all() as Array<{ name: string }>;
+  assert.equal(columns.some((column) => column.name === "arbitration_note"), false);
+
+  const initial = await save(writer, ["reg-a", "reg-b", "reg-c"], "2026-11-06T12:00:00.000Z");
   assert.equal(initial.version, 1);
   assert.equal(initial.published, 0);
 
-  const edited = await save(DB, ["reg-a", "reg-c", "reg-b"], "2026-11-06T12:01:00.000Z", "Revisão manual");
+  const reopened = await listD1PodiumVersions(reader, "event-demo", "RX");
+  assert.equal(reopened.length, 1);
+  assert.deepEqual(JSON.parse(reopened[0]!.registration_ids), ["reg-a", "reg-b", "reg-c"]);
+
+  const edited = await save(writer, ["reg-a", "reg-c", "reg-b"], "2026-11-06T12:01:00.000Z");
   assert.equal(edited.version, 1);
   assert.deepEqual(JSON.parse(edited.registration_ids), ["reg-a", "reg-c", "reg-b"]);
-  assert.equal(edited.arbitration_note, "Revisão manual");
+  assert.equal("arbitration_note" in edited, false);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM zero3_podium_versions").get()?.count, 1);
+
+  const reopenedAfterEdit = await listD1PodiumVersions(reader, "event-demo", "RX");
+  assert.deepEqual(JSON.parse(reopenedAfterEdit[0]!.registration_ids), ["reg-a", "reg-c", "reg-b"]);
   db.close();
 });
 
@@ -127,36 +152,66 @@ test("concurrent edits use compare-and-swap and preserve the winning draft", asy
   db.close();
 });
 
-test("saving after publication creates a new draft and leaves the published version intact", async () => {
+test("publication is explicit, shared, idempotent, and later edits preserve published history", async () => {
   const db = database();
-  const DB = makeD1(db);
-  await save(DB, ["reg-a", "reg-b", "reg-c"], "2026-11-06T12:00:00.000Z");
-  db.prepare(`UPDATE zero3_podium_versions
-    SET published=1,published_by='operator',published_at='2026-11-06T12:02:00.000Z'
-    WHERE version=1`).run();
+  const writer = makeD1(db);
+  const reader = makeD1(db);
+  await save(writer, ["reg-a", "reg-b", "reg-c"], "2026-11-06T12:00:00.000Z");
 
-  const draft = await save(DB, ["reg-c", "reg-b", "reg-a"], "2026-11-06T12:03:00.000Z");
+  const publication = await publishD1PodiumDraft(writer, {
+    eventId: "event-demo",
+    category: "RX",
+    publishedBy: "authorized-admin",
+    reason: "Homologação manual",
+    publishedAt: "2026-11-06T12:02:00.000Z",
+  });
+  assert.equal(publication.kind, "PUBLISHED");
+  if (publication.kind !== "PUBLISHED") throw new Error("Expected publication.");
+  assert.equal(publication.podium.published, 1);
+  assert.equal(publication.podium.published_by, "authorized-admin");
+  assert.equal(publication.podium.publish_reason, "Homologação manual");
+
+  const repeat = await publishD1PodiumDraft(writer, {
+    eventId: "event-demo",
+    category: "RX",
+    publishedBy: "authorized-admin",
+    reason: "Segunda tentativa",
+    publishedAt: "2026-11-06T12:03:00.000Z",
+  });
+  assert.equal(repeat.kind, "ALREADY_PUBLISHED");
+
+  const publicRows = await listD1PublishedPodiumRows(reader, "event-demo");
+  assert.equal(publicRows.length, 1);
+  assert.deepEqual(JSON.parse(publicRows[0]!.registration_ids), ["reg-a", "reg-b", "reg-c"]);
+  assert.equal("arbitration_note" in publicRows[0]!, false);
+
+  const draft = await save(writer, ["reg-d", "reg-b", "reg-c"], "2026-11-06T12:04:00.000Z");
   assert.equal(draft.version, 2);
   assert.equal(draft.published, 0);
   assert.deepEqual(JSON.parse(String(db.prepare("SELECT registration_ids FROM zero3_podium_versions WHERE version=1").get()?.registration_ids)),
     ["reg-a", "reg-b", "reg-c"]);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM zero3_podium_versions WHERE published=1").get()?.count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM zero3_podium_versions").get()?.count, 2);
   db.close();
 });
 
-test("the un-applied arbitration-note migration is reported as schema-not-ready", async () => {
-  const db = database({ arbitrationNote: false });
-  await assert.rejects(
-    saveD1PodiumDraft(makeD1(db), {
-      eventId: "event-demo",
-      category: "RX",
-      registrationIds: ["reg-a", "reg-b", "reg-c"],
-      arbitrationNote: null,
-      updatedAt: "2026-11-06T12:00:00.000Z",
-    }),
-    (error: unknown) => classifyD1Failure(error) === "SCHEMA_NOT_READY",
-  );
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM zero3_podium_versions").get()?.count, 0);
+test("publication refuses incomplete, duplicate, or wrong-category choices without changing the draft", async () => {
+  const db = database();
+  const DB = makeD1(db);
+  await save(DB, ["reg-a", "reg-a", "reg-b"], "2026-11-06T12:00:00.000Z");
+  const invalidDuplicate = await publishD1PodiumDraft(DB, {
+    eventId: "event-demo", category: "RX", publishedBy: "admin",
+    reason: "Test", publishedAt: "2026-11-06T12:01:00.000Z",
+  });
+  assert.equal(invalidDuplicate.kind, "INVALID_SELECTION");
+
+  await save(DB, ["reg-a", "reg-b", "reg-sc"], "2026-11-06T12:02:00.000Z");
+  const invalidCategory = await publishD1PodiumDraft(DB, {
+    eventId: "event-demo", category: "RX", publishedBy: "admin",
+    reason: "Test", publishedAt: "2026-11-06T12:03:00.000Z",
+  });
+  assert.equal(invalidCategory.kind, "INVALID_SELECTION");
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM zero3_podium_versions WHERE published=1").get()?.count, 0);
   db.close();
 });
 

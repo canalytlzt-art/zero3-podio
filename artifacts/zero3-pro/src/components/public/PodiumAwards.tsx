@@ -31,6 +31,7 @@ export function PodiumAwards({
   const shownPlaces = showEmptyPositions
     ? [1, 2, 3]
     : [1, 2, 3].filter((place) => places.some((item) => item.place === place));
+  const medalLabels = ["Ouro", "Prata", "Bronze"] as const;
   const note = arbitrationNote?.trim();
 
   return (
@@ -46,7 +47,7 @@ export function PodiumAwards({
             <article className={`zero3-podium-award place-${place}`} key={place}>
               <Trophy className="zero3-podium-award-icon" size={19} aria-hidden="true" />
               <div className="zero3-podium-award-copy">
-                <span>{place}º lugar</span>
+                <span>{medalLabels[place - 1]} · {place}º lugar</span>
                 <strong>{displayName || "Aguardando indicação"}</strong>
                 {winner?.teamName && winner.athleteNames.length > 0 && (
                   <small>{winner.athleteNames.join(" · ")}</small>
