@@ -104,12 +104,7 @@ import {
 } from "../lib/zero3-scoring";
 import { normalizeEventCategories, validateEventCategories } from "../lib/zero3-categories";
 import {
-  encodePodiumPlaceObservations,
   hasUniquePodiumRegistrations,
-  normalizePodiumArbitrationNote,
-  retainPodiumArbitrationNoteWhenOmitted,
-  readPodiumPlaceObservations,
-  visiblePodiumObservations,
 } from "../lib/zero3-podium";
 import { findZero3RegistrationConflict } from "../lib/zero3-registration-conflict";
 import rosterRouter from "./zero3-roster";
@@ -616,17 +611,31 @@ async function currentEvent(eventId?: string): Promise<EventRow | undefined> {
   return latest;
 }
 
-function podiumApiDto(row: typeof zero3PodiumsTable.$inferSelect | null) {
+const PODIUM_VERSION_SELECT = {
+  eventId: zero3PodiumsTable.eventId,
+  category: zero3PodiumsTable.category,
+  registrationIds: zero3PodiumsTable.registrationIds,
+  published: zero3PodiumsTable.published,
+  publishedBy: zero3PodiumsTable.publishedBy,
+  publishedAt: zero3PodiumsTable.publishedAt,
+  publishReason: zero3PodiumsTable.publishReason,
+  version: zero3PodiumsTable.version,
+  updatedAt: zero3PodiumsTable.updatedAt,
+} as const;
+
+type PodiumVersionRow = Omit<typeof zero3PodiumsTable.$inferSelect, "arbitrationNote">;
+
+function podiumApiDto(row: PodiumVersionRow | null) {
   if (!row) return null;
   return {
     ...row,
-    ...readPodiumPlaceObservations(row.arbitrationNote, row.registrationIds),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
 async function publicPodiums(eventId: string) {
   const versions = await db
-    .select()
+    .select(PODIUM_VERSION_SELECT)
     .from(zero3PodiumsTable)
     .where(
       and(
@@ -679,7 +688,6 @@ async function publicPodiums(eventId: string) {
     podiums.push({
       category,
       places,
-      ...visiblePodiumObservations(podium.published, podium.arbitrationNote, podium.registrationIds),
     });
   }
   return podiums;
@@ -2194,7 +2202,7 @@ router.get(
       return;
     }
     const rows = await db
-      .select()
+      .select(PODIUM_VERSION_SELECT)
       .from(zero3PodiumsTable)
       .where(
         and(
@@ -2235,18 +2243,13 @@ router.put(
       res.status(400).json({ error: "Cada posição do pódio deve ser única." });
       return;
     }
-    const arbitrationNoteWasProvided =
-      body.data.placeObservations !== undefined ||
-      Object.prototype.hasOwnProperty.call(body.data, "arbitrationNote");
-    let requestedArbitrationNote: string | null = null;
-    try {
-      requestedArbitrationNote = body.data.placeObservations !== undefined
-        ? encodePodiumPlaceObservations(body.data.placeObservations, body.data.registrationIds)
-        : arbitrationNoteWasProvided
-          ? normalizePodiumArbitrationNote(body.data.arbitrationNote)
-          : null;
-    } catch {
-      res.status(400).json({ error: "Cada observação deve corresponder à inscrição selecionada na mesma colocação." });
+    const hasUnpersistableNotes = Boolean(body.data.arbitrationNote?.trim()) ||
+      body.data.placeObservations?.some((item) => Boolean(item.note?.trim()));
+    if (hasUnpersistableNotes) {
+      res.status(400).json({
+        code: "PODIUM_NOTES_UNAVAILABLE",
+        error: "Observações não estão disponíveis neste ambiente e não foram salvas. Apenas as três escolhas do pódio serão persistidas.",
+      });
       return;
     }
     if (selected.length) {
@@ -2267,7 +2270,7 @@ router.put(
       }
     }
     const versions = await db
-      .select()
+      .select(PODIUM_VERSION_SELECT)
       .from(zero3PodiumsTable)
       .where(
         and(
@@ -2277,11 +2280,6 @@ router.put(
       )
       .orderBy(desc(zero3PodiumsTable.version));
     const latest = versions[0];
-    const storedArbitrationNote = retainPodiumArbitrationNoteWhenOmitted(
-      latest?.arbitrationNote,
-      requestedArbitrationNote,
-      arbitrationNoteWasProvided,
-    );
     const version =
       latest && !latest.published ? latest.version : (latest?.version ?? 0) + 1;
     const saved = latest && !latest.published
@@ -2290,7 +2288,6 @@ router.put(
             .update(zero3PodiumsTable)
             .set({
               registrationIds: body.data.registrationIds,
-              arbitrationNote: storedArbitrationNote,
               updatedAt: new Date(),
             })
             .where(
@@ -2300,7 +2297,7 @@ router.put(
                 eq(zero3PodiumsTable.version, version),
               ),
             )
-            .returning()
+            .returning(PODIUM_VERSION_SELECT)
         )[0]
       : (
           await db
@@ -2309,11 +2306,10 @@ router.put(
               eventId: params.data.eventId,
               category: params.data.category,
               registrationIds: body.data.registrationIds,
-              arbitrationNote: storedArbitrationNote,
               version,
               published: false,
             })
-            .returning()
+            .returning(PODIUM_VERSION_SELECT)
         )[0];
     res.json(SaveZero3PodiumDraftResponse.parse(podiumApiDto(saved)));
   },
@@ -2334,7 +2330,7 @@ router.post(
       return;
     }
     const [draft] = await db
-      .select()
+      .select(PODIUM_VERSION_SELECT)
       .from(zero3PodiumsTable)
       .where(
         and(
@@ -2378,10 +2374,10 @@ router.post(
           eq(zero3PodiumsTable.published, false),
         ),
       )
-      .returning();
+      .returning(PODIUM_VERSION_SELECT);
     if (!published) {
       const [current] = await db
-        .select()
+        .select(PODIUM_VERSION_SELECT)
         .from(zero3PodiumsTable)
         .where(
           and(

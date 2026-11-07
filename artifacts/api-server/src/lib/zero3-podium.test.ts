@@ -5,7 +5,6 @@ import {
   encodePodiumPlaceObservations,
   hasUniquePodiumRegistrations,
   normalizePodiumArbitrationNote,
-  retainPodiumArbitrationNoteWhenOmitted,
   readPodiumPlaceObservations,
   visiblePodiumObservations,
 } from "./zero3-podium";
@@ -15,21 +14,6 @@ test("empty and whitespace-only arbitration observations are absent", () => {
   assert.equal(normalizePodiumArbitrationNote(null), null);
   assert.equal(normalizePodiumArbitrationNote(""), null);
   assert.equal(normalizePodiumArbitrationNote(" \t \n "), null);
-});
-
-test("omitting the disabled note field preserves existing PostgreSQL draft notes", () => {
-  assert.equal(
-    retainPodiumArbitrationNoteWhenOmitted("Nota histórica", null, false),
-    "Nota histórica",
-  );
-  assert.equal(
-    retainPodiumArbitrationNoteWhenOmitted("Nota histórica", null, true),
-    null,
-  );
-  assert.equal(
-    retainPodiumArbitrationNoteWhenOmitted(null, "Nota nova", true),
-    "Nota nova",
-  );
 });
 
 test("arbitration observation is trimmed as plain text and keeps line breaks", () => {

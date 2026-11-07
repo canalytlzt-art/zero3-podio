@@ -21,14 +21,6 @@ export function normalizePodiumArbitrationNote(value: unknown): string | null {
   return normalized.length ? normalized : null;
 }
 
-export function retainPodiumArbitrationNoteWhenOmitted(
-  existing: string | null | undefined,
-  requested: string | null,
-  wasProvided: boolean,
-): string | null {
-  return wasProvided ? requested : existing ?? null;
-}
-
 export function encodePodiumPlaceObservations(
   value: readonly PodiumPlaceObservationInput[],
   registrationIds: readonly (string | null)[],

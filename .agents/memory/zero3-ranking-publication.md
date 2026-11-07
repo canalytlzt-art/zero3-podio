@@ -9,6 +9,12 @@ When final overall point sums are equal, only the actual distance recorded by th
 
 The public podium defaults to the published category ranking, while a saved manual podium for that event/category overrides presentation only; ranking recalculation must not clear it or change marks and points.
 
+For the current staging D1 schema, manual podiums persist through `registration_ids`, version, and publication fields; `arbitration_note` is absent. The user explicitly chose to avoid migrations for the medal-only flow. Keep note entry disabled and do not select or write the missing column in the podium save/read/publication paths.
+
 **Why:** The organizer confirmed that this event's `Condition` raw mark represents total distance, not repetition count. Distance is a final-tie rule only, while proof ties still share points; treating the legacy metric label or an absent value as distance would silently change the ranking.
 
 **How to apply:** Keep result editing, battery publication, event-wide ranking publication, and manual podium publication distinct. Use the shared server scorer for publication previews, category rankings, leaderboards, and default podiums. Preserve raw decimal precision; enable manual tie controls only for an exact final overall tie after the Condition rule. Recompute placements from published results on explicit ranking publication. For public output, use the category ranking as the default podium and prefer an existing published manual selection for that category; never feed podium choices back into scoring.
+
+**Why:** The organizer requested medal-only manual podiums on the existing D1 schema and declined the pending migrations; depending on an absent column would keep both saving and public display broken.
+
+**How to apply:** Before touching podium persistence in this staging project, inspect the active schema. Use compare-and-swap on the existing versioned rows, keep explicit publication separate, and do not run the deferred migrations unless the user later approves them.
